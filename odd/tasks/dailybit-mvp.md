@@ -51,6 +51,14 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 ```
 
 ## Task breakdown
+### Task 5 — Base64 image storage — DONE
+- Commit: `0ade084` (feature/dailybit-mvp)
+- Writer: gentle-ai-worker (pipeline + views + README); parent deleted emptied storage.ts, gitignored key.json
+- Native review: lineage `review-ffc3188df35afd72` APPROVED — reliability lens, glm-5.2 @ thinking low; authority burned via exact acknowledge-approved
+- Reviewer model routing configured at ~/.pi/gentle-ai/models.json (opencode-go/glm-5.2, thinking low, six review-* keys)
+- Advisory follow-ups (non-blocking, from approved review): cap without fallback (97-98), compression untested (72-105), data-URL anchor target in RyanView (245), doc-size headroom constant (19), legacy imageUrl drop in old docs (433), raw error surface (380)
+
+### Task 5 (original entry)
 5. **Base64 image storage** — user decision: replace Firebase Storage uploads with client-side compress + Base64 data URL stored in the task document field `imageBase64`; render via <img src={imageBase64} />. Guard the Firestore 1MB doc limit (compress to max 1024px / JPEG 0.75, reject >900KB). Remove storage service. Keep key.json out of git.
 
 ## Completed breakdown
