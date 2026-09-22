@@ -50,14 +50,11 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
   createdAt: timestamp
 ```
 
-## Task breakdown
-1. **Scaffold + core services** — Vite/TS/Tailwind project, firebase.ts, types.ts,
-   auth/firestore/storage services, useAuth hook, auth gate. Build green.
-2. **DeveloperView UI** — report editor: sections, tasks (short input + counter),
-   image upload, links, MC questions to Ryan.
-3. **RyanView UI** — daily rollup (realtime), per-task notes, answer MC questions,
-   post questions to team.
-4. **Verification & polish** — build, typecheck, smoke review, docs.
+## Task breakdown — ALL DONE
+1. **Scaffold + core services** — DONE (af8c81c)
+2. **DeveloperView UI** — DONE (ed1fe35)
+3. **RyanView UI** — DONE (3dbbbf3)
+4. **Verification & polish** — DONE (d280e2a)
 
 ## External dependencies (blocked on user, not on tasks)
 - `.env.local` with `VITE_FIREBASE_*` keys (a `.env.example` is generated)
@@ -79,6 +76,12 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 - Checks observed: typecheck exit 0, build exit 0 (both runs)
 - Service gaps found and closed: subscribeReport now also emits ryanNotes (RyanNoteWithId); new subscribeUserProfiles for 'X of Y developers reported'
 - Notes flow: addRyanNote -> realtime subscription -> report-level (targetTaskId '') and per-task rendering with remove
+
+### Task 4 — Verification + polish + README — DONE
+- Commit: `d280e2a` (feature/dailybit-mvp)
+- Final verification: gentle-ai-verify full pass — typecheck PASS, build PASS, README sanity PASS; 2 high + 2 medium defects found and fixed by gentle-ai-worker (lead writes vs security rules, answer rejection handling, date normalization, fire-and-forget logging)
+- Accepted low-risk minors: index-derived keys on dynamic option/link lists
+- Not verified: live browser/Firebase runtime; deployed rules (README rules are a starting point)
 
 ### Task 1 — Scaffold + core services — DONE
 - Commit: `af8c81c` (feature/dailybit-mvp) — 20 files, 4709 insertions
