@@ -10,4 +10,5 @@ dist/
 
 # Local Pi runtime state
 .atl/
+.venv/
 key.json
