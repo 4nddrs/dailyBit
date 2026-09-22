@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment files
+.env.local
+.env*.local
+
+# Local Pi runtime state
+.atl/
