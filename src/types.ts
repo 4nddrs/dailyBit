@@ -54,10 +54,17 @@ export interface LeadNote {
   createdAt: Timestamp;
 }
 
-export interface TeamQuestion {
+export type LeadQuestionKind = 'text' | 'options';
+
+export interface LeadQuestion {
+  taskId: string;
+  sectionId: string;
   questionText: string;
-  options: string[];
-  selectedAnswers?: Record<string, number>;
+  kind: LeadQuestionKind;
+  options?: string[];
+  answerText?: string;
+  selectedAnswer?: number;
+  answeredAt?: Timestamp;
   createdAt: Timestamp;
 }
 
@@ -68,7 +75,7 @@ export type TaskData = Task;
 export type TaskLinkData = TaskLink;
 export type QuestionData = Question;
 export type LeadNoteData = LeadNote;
-export type TeamQuestionData = TeamQuestion;
+export type LeadQuestionData = LeadQuestion;
 
 export interface TaskWithId extends Task {
   id: string;
@@ -88,11 +95,16 @@ export interface LeadNoteWithId extends LeadNote {
   id: string;
 }
 
+export interface LeadQuestionWithId extends LeadQuestion {
+  id: string;
+}
+
 export interface ReportTree extends Report {
   id: string;
   sections: SectionWithTasks[];
   questions?: QuestionWithId[];
   notes?: LeadNoteWithId[];
+  leadQuestions?: LeadQuestionWithId[];
 }
 
 export interface ReportSummary extends Report {

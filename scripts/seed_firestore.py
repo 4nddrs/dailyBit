@@ -22,7 +22,6 @@ TEST_DEVELOPERS = {
     "test-dev-lena": {"name": "Lena (test)", "role": "dev"},
 }
 
-TEAM_QUESTION_ID = "priority-next-week"
 SOFIA_DATE_PICKER_TASK_ID = "fixed-date-picker-normalization"
 SERVER_TIMESTAMP = firestore.SERVER_TIMESTAMP
 
@@ -244,11 +243,23 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                 },
             },
             {
-                "path": f"teamQuestions/{TEAM_QUESTION_ID}",
+                "path": f"reports/{sofia_today}/leadQuestions/date-picker-follow-up",
                 "data": {
-                    "questionText": "Which area should we prioritize next week?",
-                    "options": ["Auth hardening", "Report templates", "Mobile layout"],
-                    "selectedAnswers": {"test-dev-sofia": 0, "test-dev-marco": 1},
+                    "taskId": SOFIA_DATE_PICKER_TASK_ID,
+                    "sectionId": "frontend",
+                    "questionText": "Can you share the exact edge case you fixed?",
+                    "kind": "text",
+                    "createdAt": SERVER_TIMESTAMP,
+                },
+            },
+            {
+                "path": f"reports/{sofia_today}/leadQuestions/login-form-follow-up",
+                "data": {
+                    "taskId": "polished-login-form-styling",
+                    "sectionId": "frontend",
+                    "questionText": "Which login form change should we ship first?",
+                    "kind": "options",
+                    "options": ["Spacing fix", "Color contrast fix", "Both together"],
                     "createdAt": SERVER_TIMESTAMP,
                 },
             },
@@ -283,8 +294,8 @@ def read_back(db: firestore.Client, today: str) -> dict[str, int]:
         "reports_today": len(list(db.collection("reports").where("date", "==", today).stream())),
         "questions": len(list(db.collection_group("questions").stream())),
         "leadNotes": len(list(db.collection_group("leadNotes").stream())),
+        "leadQuestions": len(list(db.collection_group("leadQuestions").stream())),
         "images": len(list(db.collection_group("images").stream())),
-        "teamQuestions": len(list(db.collection("teamQuestions").stream())),
     }
 
 

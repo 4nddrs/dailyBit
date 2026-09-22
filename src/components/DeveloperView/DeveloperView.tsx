@@ -4,6 +4,7 @@ import {
   addSection,
   addTask,
   addTaskImage,
+  answerLeadQuestion,
   removeQuestion,
   removeSection,
   removeTask,
@@ -12,7 +13,14 @@ import {
   updateTask,
 } from '../../services/firestore';
 import { useMyReport } from '../../hooks/useMyReport';
-import type { QuestionWithId, SectionWithTasks, TaskLink, TaskWithId } from '../../types';
+import type {
+  LeadNoteWithId,
+  LeadQuestionWithId,
+  QuestionWithId,
+  SectionWithTasks,
+  TaskLink,
+  TaskWithId,
+} from '../../types';
 
 const TASK_DESCRIPTION_LIMIT = 140;
 const QUESTION_OPTION_LIMIT = 6;
@@ -59,6 +67,10 @@ function runSafely(operation: Promise<unknown>, message: string): void {
   operation.catch((error) => {
     console.error(message, error);
   });
+}
+
+function getOptionLabel(index: number): string {
+  return optionLabels[index] ?? String(index + 1);
 }
 
 
@@ -338,14 +350,164 @@ function TaskLinks({
   );
 }
 
+function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
+  if (notes.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {notes.map((note) => (
+        <p
+          className="rounded-xl border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
+          key={note.id}
+        >
+          <span className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function LeadQuestionCard({ reportId, question }: { reportId: string; question: LeadQuestionWithId }) {
+  const isAnswered = question.kind === 'text' ? Boolean(question.answerText) : question.selectedAnswer !== undefined;
+  const [editing, setEditing] = useState(!isAnswered);
+  const [answerText, setAnswerText] = useState(question.answerText ?? '');
+  const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
+  const [submittingText, setSubmittingText] = useState(false);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAnswerText(question.answerText ?? '');
+  }, [question.answerText]);
+
+  useEffect(() => {
+    setEditing(!isAnswered);
+  }, [isAnswered]);
+
+  async function handleTextSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedAnswer = answerText.trim();
+
+    if (!trimmedAnswer) {
+      return;
+    }
+
+    setSubmittingText(true);
+    setAnswerError(null);
+    try {
+      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer });
+      setEditing(false);
+    } catch (caughtError) {
+      console.error('Lead question answer failed', caughtError);
+      setAnswerError('Answer could not be saved. Please try again.');
+    } finally {
+      setSubmittingText(false);
+    }
+  }
+
+  async function handleOptionSelect(index: number) {
+    setSubmittingIndex(index);
+    setAnswerError(null);
+    try {
+      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index });
+      setEditing(false);
+    } catch (caughtError) {
+      console.error('Lead question answer failed', caughtError);
+      setAnswerError('Answer could not be saved. Please try again.');
+    } finally {
+      setSubmittingIndex(null);
+    }
+  }
+
+  return (
+    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
+      <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+
+      {!editing && isAnswered ? (
+        <div className="mt-2">
+          {question.kind === 'text' ? (
+            <p className="rounded-lg border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+              {question.answerText}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(question.options ?? []).map((option, index) => (
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                    question.selectedAnswer === index
+                      ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                      : 'border-line bg-canvas-subtle text-fg-muted'
+                  }`}
+                  key={`${option}-${index}`}
+                >
+                  {getOptionLabel(index)}. {option}
+                </span>
+              ))}
+            </div>
+          )}
+          <button
+            className="mt-2 rounded-xl border border-line bg-control px-3 py-1.5 text-xs font-semibold text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={() => setEditing(true)}
+          >
+            Change answer
+          </button>
+        </div>
+      ) : question.kind === 'text' ? (
+        <form className="mt-2" onSubmit={handleTextSubmit}>
+          <textarea
+            className="min-h-16 w-full resize-y rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+            value={answerText}
+            onChange={(event) => setAnswerText(event.target.value)}
+            placeholder="Type your answer"
+          />
+          <div className="mt-2 flex justify-end">
+            <button
+              className="rounded-xl border border-white/15 bg-success-emphasis px-3 py-2 text-xs font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+              type="submit"
+              disabled={!answerText.trim() || submittingText}
+            >
+              {submittingText ? 'Sending...' : 'Send answer'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(question.options ?? []).map((option, index) => (
+            <button
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+                question.selectedAnswer === index
+                  ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                  : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
+              }`}
+              key={`${option}-${index}`}
+              type="button"
+              disabled={submittingIndex !== null}
+              onClick={() => void handleOptionSelect(index)}
+            >
+              {submittingIndex === index ? 'Saving...' : `${getOptionLabel(index)}. ${option}`}
+            </button>
+          ))}
+        </div>
+      )}
+      {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
+    </article>
+  );
+}
+
 function TaskCard({
   reportId,
   sectionId,
   task,
+  leadNotes,
+  leadQuestions,
 }: {
   reportId: string;
   sectionId: string;
   task: TaskWithId;
+  leadNotes: LeadNoteWithId[];
+  leadQuestions: LeadQuestionWithId[];
 }) {
   const [description, setDescription] = useState(task.description);
   const [uploading, setUploading] = useState(false);
@@ -479,6 +641,15 @@ function TaskCard({
 
         <TaskLinks links={task.links ?? []} onChange={updateLinks} />
       </div>
+
+      <LeadNotesReadOnly notes={leadNotes} />
+      {leadQuestions.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          {leadQuestions.map((question) => (
+            <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -486,9 +657,13 @@ function TaskCard({
 function SectionCard({
   reportId,
   section,
+  leadNotesByTask,
+  leadQuestionsByTask,
 }: {
   reportId: string;
   section: SectionWithTasks;
+  leadNotesByTask: Map<string, LeadNoteWithId[]>;
+  leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
   return (
     <section className="rounded-3xl border border-line bg-canvas-subtle p-4">
@@ -511,6 +686,8 @@ function SectionCard({
               reportId={reportId}
               sectionId={section.id}
               task={task}
+              leadNotes={leadNotesByTask.get(task.id) ?? []}
+              leadQuestions={leadQuestionsByTask.get(task.id) ?? []}
             />
           ))
         ) : (
@@ -528,9 +705,13 @@ function SectionCard({
 function SectionsList({
   reportId,
   sections,
+  leadNotesByTask,
+  leadQuestionsByTask,
 }: {
   reportId: string;
   sections: SectionWithTasks[];
+  leadNotesByTask: Map<string, LeadNoteWithId[]>;
+  leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
   const sortedSections = useMemo(
     () => [...sections].sort((a, b) => a.order - b.order),
@@ -557,6 +738,8 @@ function SectionsList({
               key={section.id}
               reportId={reportId}
               section={section}
+              leadNotesByTask={leadNotesByTask}
+              leadQuestionsByTask={leadQuestionsByTask}
             />
           ))
         ) : (
@@ -732,6 +915,25 @@ function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questi
 export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   const { reportTree, reportId, loading } = useMyReport(userId);
 
+  const leadNotesByTask = useMemo(() => {
+    const grouped = new Map<string, LeadNoteWithId[]>();
+    (reportTree?.notes ?? []).forEach((note) => {
+      if (!note.targetTaskId) {
+        return;
+      }
+      grouped.set(note.targetTaskId, [...(grouped.get(note.targetTaskId) ?? []), note]);
+    });
+    return grouped;
+  }, [reportTree?.notes]);
+
+  const leadQuestionsByTask = useMemo(() => {
+    const grouped = new Map<string, LeadQuestionWithId[]>();
+    (reportTree?.leadQuestions ?? []).forEach((question) => {
+      grouped.set(question.taskId, [...(grouped.get(question.taskId) ?? []), question]);
+    });
+    return grouped;
+  }, [reportTree?.leadQuestions]);
+
   if (loading || !reportId) {
     return (
       <div className="space-y-6">
@@ -760,6 +962,8 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
       <SectionsList
         reportId={reportId}
         sections={reportTree.sections}
+        leadNotesByTask={leadNotesByTask}
+        leadQuestionsByTask={leadQuestionsByTask}
       />
       <QuestionsPanel reportId={reportId} questions={reportTree.questions} />
     </div>

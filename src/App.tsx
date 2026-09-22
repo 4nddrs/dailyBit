@@ -42,7 +42,7 @@ function AuthForm() {
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </h1>
           <p className="mt-3 text-sm leading-6 text-fg-muted">
-            Sign in to manage daily reports and team questions.
+            Sign in to manage daily reports and questions.
           </p>
         </div>
 

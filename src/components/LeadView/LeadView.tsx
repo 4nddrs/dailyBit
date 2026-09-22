@@ -1,22 +1,23 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState, useEffect } from 'react';
 import {
   addLeadNote,
-  addTeamQuestion,
+  addLeadQuestion,
   answerQuestion,
   getUserProfile,
   removeLeadNote,
-  subscribeTeamQuestions,
+  removeLeadQuestion,
 } from '../../services/firestore';
 import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import type {
   LeadNoteWithId,
+  LeadQuestionKind,
+  LeadQuestionWithId,
   QuestionWithId,
   ReportTree,
   SectionWithTasks,
   TaskLink,
   TaskWithId,
-  TeamQuestion,
 } from '../../types';
 import { todayDateString } from '../../types';
 
@@ -27,8 +28,6 @@ const QUESTION_OPTION_LIMIT = 6;
 interface LeadViewProps {
   leadUserId: string;
 }
-
-type TeamQuestionWithId = TeamQuestion & { id: string };
 
 function normalizeDateString(dateString: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
@@ -168,6 +167,87 @@ function LeadNoteBlock({
   );
 }
 
+function ReadOnlyLeadNoteBlock({ notes }: { notes: LeadNoteWithId[] }) {
+  if (notes.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {notes.map((note) => (
+        <p
+          className="rounded-xl border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
+          key={note.id}
+        >
+          <span className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function LeadQuestionBlock({
+  questions,
+  onRemove,
+}: {
+  questions: LeadQuestionWithId[];
+  onRemove: (questionId: string) => void;
+}) {
+  if (questions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {questions.map((question) => {
+        const isAnswered =
+          question.kind === 'text' ? Boolean(question.answerText) : question.selectedAnswer !== undefined;
+
+        return (
+          <div
+            className="rounded-xl border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm"
+            key={question.id}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-semibold leading-6 text-done-fg">{question.questionText}</p>
+              <button
+                className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+                type="button"
+                onClick={() => onRemove(question.id)}
+              >
+                Remove
+              </button>
+            </div>
+
+            {!isAnswered ? (
+              <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
+            ) : question.kind === 'text' ? (
+              <p className="mt-2 rounded-lg border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+                {question.answerText}
+              </p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(question.options ?? []).map((option, index) => (
+                  <span
+                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                      question.selectedAnswer === index
+                        ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                        : 'border-line bg-canvas-subtle text-fg-muted'
+                    }`}
+                    key={`${option}-${index}`}
+                  >
+                    {getOptionLabel(index)}. {option}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function NoteComposer({
   label,
   onAdd,
@@ -209,6 +289,7 @@ function NoteComposer({
           value={noteText}
           onChange={(event) => setNoteText(event.target.value)}
           placeholder="Add a private lead note"
+          autoFocus
         />
       </label>
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
@@ -225,21 +306,181 @@ function NoteComposer({
   );
 }
 
+function LeadQuestionComposer({
+  onAdd,
+}: {
+  onAdd: (input: { questionText: string; kind: LeadQuestionKind; options?: string[] }) => Promise<void>;
+}) {
+  const [questionText, setQuestionText] = useState('');
+  const [kind, setKind] = useState<LeadQuestionKind>('text');
+  const [options, setOptions] = useState(['', '']);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updateOption(index: number, value: string) {
+    setOptions((currentOptions) =>
+      currentOptions.map((option, optionIndex) => (optionIndex === index ? value : option)),
+    );
+  }
+
+  function removeOption(index: number) {
+    if (options.length <= QUESTION_OPTION_MINIMUM) {
+      return;
+    }
+    setOptions((currentOptions) => currentOptions.filter((_, optionIndex) => optionIndex !== index));
+  }
+
+  const trimmedOptions = options.map((option) => option.trim()).filter(Boolean);
+  const canSubmit =
+    questionText.trim().length > 0 && (kind === 'text' || trimmedOptions.length >= QUESTION_OPTION_MINIMUM);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedQuestion = questionText.trim();
+
+    if (!trimmedQuestion || (kind === 'options' && trimmedOptions.length < QUESTION_OPTION_MINIMUM)) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onAdd({
+        questionText: trimmedQuestion,
+        kind,
+        options: kind === 'options' ? trimmedOptions : undefined,
+      });
+      setQuestionText('');
+      setOptions(['', '']);
+      setKind('text');
+    } catch (caughtError) {
+      console.error('Lead question failed', caughtError);
+      setError('Question could not be saved. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="mt-3 rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-3" onSubmit={handleSubmit}>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-done-fg">
+        Question for the developer
+        <textarea
+          className="mt-2 min-h-20 w-full resize-y rounded-xl border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-done-emphasis focus:ring-2 focus:ring-done-muted"
+          value={questionText}
+          onChange={(event) => setQuestionText(event.target.value)}
+          placeholder="What do you need to know about this task?"
+          autoFocus
+        />
+      </label>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+            kind === 'text'
+              ? 'border-done-emphasis/40 bg-done-muted text-done-fg'
+              : 'border-line bg-canvas-subtle text-fg-muted hover:border-done-emphasis/40'
+          }`}
+          type="button"
+          onClick={() => setKind('text')}
+        >
+          Free text
+        </button>
+        <button
+          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+            kind === 'options'
+              ? 'border-done-emphasis/40 bg-done-muted text-done-fg'
+              : 'border-line bg-canvas-subtle text-fg-muted hover:border-done-emphasis/40'
+          }`}
+          type="button"
+          onClick={() => setKind('options')}
+        >
+          Options
+        </button>
+      </div>
+
+      {kind === 'options' ? (
+        <div className="mt-3 space-y-2">
+          {options.map((option, index) => (
+            <div className="flex items-center gap-2" key={index}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
+                {getOptionLabel(index)}
+              </span>
+              <input
+                className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+                value={option}
+                onChange={(event) => updateOption(index, event.target.value)}
+                placeholder={`Option ${getOptionLabel(index)}`}
+              />
+              <button
+                className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
+                type="button"
+                disabled={options.length <= QUESTION_OPTION_MINIMUM}
+                onClick={() => removeOption(index)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button
+            className="rounded-xl border border-line bg-control px-3 py-2 text-xs font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            disabled={options.length >= QUESTION_OPTION_LIMIT}
+            onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
+          >
+            Add option
+          </button>
+        </div>
+      ) : null}
+
+      {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
+
+      <div className="mt-3 flex justify-end">
+        <button
+          className="rounded-xl bg-done-emphasis px-3 py-2 text-sm font-semibold text-white transition hover:bg-done-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          disabled={!canSubmit || submitting}
+        >
+          {submitting ? 'Asking...' : 'Ask question'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function TaskCard({
   reportId,
+  sectionId,
   task,
   notes,
+  questions,
   onAddNote,
   onRemoveNote,
+  onAddQuestion,
+  onRemoveQuestion,
 }: {
   reportId: string;
+  sectionId: string;
   task: TaskWithId;
   notes: LeadNoteWithId[];
+  questions: LeadQuestionWithId[];
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
+  onAddQuestion: (
+    taskId: string,
+    sectionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
+  onRemoveQuestion: (questionId: string) => void;
 }) {
+  const [openComposer, setOpenComposer] = useState<'question' | 'note' | null>(null);
+
+  function toggleComposer(composer: 'question' | 'note') {
+    setOpenComposer((current) => (current === composer ? null : composer));
+  }
+
   return (
-    <article className="rounded-2xl border border-line bg-canvas-subtle p-4">
+    <article className="group rounded-2xl border border-line bg-canvas-subtle p-4">
       <div className={`grid gap-4 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -262,13 +503,38 @@ function TaskCard({
         ) : null}
 
         <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>
+            <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+              <button
+                className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+                type="button"
+                onClick={() => toggleComposer('question')}
+              >
+                Question
+              </button>
+              <button
+                className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+                type="button"
+                onClick={() => toggleComposer('note')}
+              >
+                Note
+              </button>
+            </div>
+          </div>
           <LinkChips links={task.links} />
         </div>
       </div>
 
+      {openComposer === 'question' ? (
+        <LeadQuestionComposer onAdd={(input) => onAddQuestion(task.id, sectionId, input)} />
+      ) : null}
+      {openComposer === 'note' ? (
+        <NoteComposer label="Lead task note" onAdd={(noteText) => onAddNote(task.id, noteText)} />
+      ) : null}
+
+      <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
-      <NoteComposer label="Lead task note" onAdd={(noteText) => onAddNote(task.id, noteText)} />
       <span className="sr-only">Report {reportId}</span>
     </article>
   );
@@ -278,14 +544,24 @@ function SectionCard({
   reportId,
   section,
   notesByTarget,
+  questionsByTarget,
   onAddNote,
   onRemoveNote,
+  onAddQuestion,
+  onRemoveQuestion,
 }: {
   reportId: string;
   section: SectionWithTasks;
   notesByTarget: Map<string, LeadNoteWithId[]>;
+  questionsByTarget: Map<string, LeadQuestionWithId[]>;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
+  onAddQuestion: (
+    taskId: string,
+    sectionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
+  onRemoveQuestion: (questionId: string) => void;
 }) {
   return (
     <section className="rounded-2xl border border-line bg-canvas-subtle p-4">
@@ -296,10 +572,14 @@ function SectionCard({
             <TaskCard
               key={task.id}
               reportId={reportId}
+              sectionId={section.id}
               task={task}
               notes={notesByTarget.get(task.id) ?? []}
+              questions={questionsByTarget.get(task.id) ?? []}
               onAddNote={onAddNote}
               onRemoveNote={onRemoveNote}
+              onAddQuestion={onAddQuestion}
+              onRemoveQuestion={onRemoveQuestion}
             />
           ))
         ) : (
@@ -373,6 +653,8 @@ function ReportCard({
   leadUserId: string;
 }) {
   const notes = report.notes ?? [];
+  const leadQuestions = report.leadQuestions ?? [];
+
   const notesByTarget = useMemo(() => {
     const groupedNotes = new Map<string, LeadNoteWithId[]>();
     notes.forEach((note) => {
@@ -381,6 +663,17 @@ function ReportCard({
     return groupedNotes;
   }, [notes]);
 
+  const questionsByTarget = useMemo(() => {
+    const groupedQuestions = new Map<string, LeadQuestionWithId[]>();
+    leadQuestions.forEach((question) => {
+      groupedQuestions.set(question.taskId, [
+        ...(groupedQuestions.get(question.taskId) ?? []),
+        question,
+      ]);
+    });
+    return groupedQuestions;
+  }, [leadQuestions]);
+
   async function handleAddNote(targetTaskId: string, noteText: string) {
     await addLeadNote(report.id, { targetTaskId, noteText });
   }
@@ -388,6 +681,20 @@ function ReportCard({
   function handleRemoveNote(noteId: string) {
     removeLeadNote(report.id, noteId).catch((error: unknown) => {
       console.error('Failed to remove note', error);
+    });
+  }
+
+  async function handleAddQuestion(
+    taskId: string,
+    sectionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) {
+    await addLeadQuestion(report.id, { taskId, sectionId, ...input });
+  }
+
+  function handleRemoveQuestion(questionId: string) {
+    removeLeadQuestion(report.id, questionId).catch((error: unknown) => {
+      console.error('Failed to remove question', error);
     });
   }
 
@@ -403,10 +710,7 @@ function ReportCard({
         </span>
       </div>
 
-      <div className="mt-4">
-        <LeadNoteBlock notes={notesByTarget.get('') ?? []} onRemove={handleRemoveNote} />
-        <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
-      </div>
+      <ReadOnlyLeadNoteBlock notes={notesByTarget.get('') ?? []} />
 
       <div className="mt-5 space-y-4">
         {report.sections.length > 0 ? (
@@ -416,8 +720,11 @@ function ReportCard({
               reportId={report.id}
               section={section}
               notesByTarget={notesByTarget}
+              questionsByTarget={questionsByTarget}
               onAddNote={handleAddNote}
               onRemoveNote={handleRemoveNote}
+              onAddQuestion={handleAddQuestion}
+              onRemoveQuestion={handleRemoveQuestion}
             />
           ))
         ) : (
@@ -437,180 +744,6 @@ function ReportCard({
           )}
         </div>
       </section>
-    </article>
-  );
-}
-
-function AskTeamComposer() {
-  const [questionText, setQuestionText] = useState('');
-  const [options, setOptions] = useState(['', '']);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function updateOption(index: number, value: string) {
-    setOptions((currentOptions) =>
-      currentOptions.map((option, optionIndex) => (optionIndex === index ? value : option)),
-    );
-  }
-
-  function removeOption(index: number) {
-    if (options.length <= QUESTION_OPTION_MINIMUM) {
-      return;
-    }
-    setOptions((currentOptions) => currentOptions.filter((_, optionIndex) => optionIndex !== index));
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmedQuestion = questionText.trim();
-    const trimmedOptions = options.map((option) => option.trim()).filter(Boolean);
-
-    if (!trimmedQuestion || trimmedOptions.length < QUESTION_OPTION_MINIMUM) {
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    try {
-      await addTeamQuestion({ questionText: trimmedQuestion, options: trimmedOptions });
-      setQuestionText('');
-      setOptions(['', '']);
-    } catch (caughtError) {
-      console.error('Team question failed', caughtError);
-      setError('Question could not be posted. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5" onSubmit={handleSubmit}>
-      <div>
-        <h2 className="text-xl font-semibold text-fg">Ask the team</h2>
-        <p className="mt-1 text-sm text-fg-muted">Post a multiple-choice question for quick team input.</p>
-      </div>
-
-      <label className="mt-5 block text-sm font-medium text-done-fg">
-        Question
-        <input
-          className="mt-2 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
-          value={questionText}
-          onChange={(event) => setQuestionText(event.target.value)}
-          placeholder="What should the team decide?"
-        />
-      </label>
-
-      <div className="mt-4 space-y-2">
-        {options.map((option, index) => (
-          <div className="flex items-center gap-2" key={index}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
-              {getOptionLabel(index)}
-            </span>
-            <input
-              className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
-              value={option}
-              onChange={(event) => updateOption(index, event.target.value)}
-              placeholder={`Option ${getOptionLabel(index)}`}
-            />
-            <button
-              className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
-              type="button"
-              disabled={options.length <= QUESTION_OPTION_MINIMUM}
-              onClick={() => removeOption(index)}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {error ? <p className="mt-3 text-sm font-medium text-danger-fg">{error}</p> : null}
-
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
-        <button
-          className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
-          type="button"
-          disabled={options.length >= QUESTION_OPTION_LIMIT}
-          onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
-        >
-          Add option
-        </button>
-        <button
-          className="rounded-xl border border-white/15 bg-success-emphasis px-4 py-2 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
-          type="submit"
-          disabled={submitting || !questionText.trim() || options.filter((option) => option.trim()).length < QUESTION_OPTION_MINIMUM}
-        >
-          {submitting ? 'Posting...' : 'Post question'}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function TeamQuestionsPanel() {
-  const [teamQuestions, setTeamQuestions] = useState<TeamQuestionWithId[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = subscribeTeamQuestions((questions) => {
-      setTeamQuestions(questions);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  return (
-    <section className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5">
-      <div>
-        <h2 className="text-xl font-semibold text-fg">Team questions</h2>
-        <p className="mt-1 text-sm text-fg-muted">Selection counts update as developers answer.</p>
-      </div>
-
-      <div className="mt-5 space-y-3">
-        {loading ? (
-          <div className="rounded-2xl border border-line bg-canvas-subtle p-4 text-sm text-fg-muted">
-            Loading team questions...
-          </div>
-        ) : teamQuestions.length > 0 ? (
-          teamQuestions.map((question) => <TeamQuestionCard key={question.id} question={question} />)
-        ) : (
-          <EmptyState title="No team questions" description="Ask the team a focused question when you need a quick signal." />
-        )}
-      </div>
-    </section>
-  );
-}
-
-function TeamQuestionCard({ question }: { question: TeamQuestionWithId }) {
-  const selectedAnswers = question.selectedAnswers ?? {};
-  const selectedAnswerValues = Object.values(selectedAnswers);
-  const totalSelections = selectedAnswerValues.length;
-
-  return (
-    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
-        <span className="w-fit rounded-full bg-neutral-muted px-3 py-1 text-xs font-semibold text-fg">
-          {totalSelections} selections
-        </span>
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {question.options.map((option, index) => {
-          const count = selectedAnswerValues.filter((answerIndex) => answerIndex === index).length;
-          return (
-            <div
-              className="rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg"
-              key={`${option}-${index}`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-medium">{getOptionLabel(index)}. {option}</span>
-                <span className="text-xs font-semibold text-fg-muted">{count}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </article>
   );
 }
@@ -662,33 +795,26 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         totalDeveloperCount={totalDeveloperCount}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <section className="space-y-4">
-          {loading ? (
-            <div className="rounded-3xl border border-line bg-canvas p-8 text-sm text-fg-muted">
-              Loading reports...
-            </div>
-          ) : reportTrees.length > 0 ? (
-            reportTrees.map((report) => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                developerName={developerNames[report.userId] ?? report.userId}
-                leadUserId={leadUserId}
-              />
-            ))
-          ) : (
-            <EmptyState
-              title="No reports yet today"
-              description="Reports will appear here live after developers start their daily updates. Try a different date if you are reviewing past work."
+      <div className="space-y-4">
+        {loading ? (
+          <div className="rounded-3xl border border-line bg-canvas p-8 text-sm text-fg-muted">
+            Loading reports...
+          </div>
+        ) : reportTrees.length > 0 ? (
+          reportTrees.map((report) => (
+            <ReportCard
+              key={report.id}
+              report={report}
+              developerName={developerNames[report.userId] ?? report.userId}
+              leadUserId={leadUserId}
             />
-          )}
-        </section>
-
-        <aside className="space-y-6">
-          <AskTeamComposer />
-          <TeamQuestionsPanel />
-        </aside>
+          ))
+        ) : (
+          <EmptyState
+            title="No reports yet today"
+            description="Reports will appear here live after developers start their daily updates. Try a different date if you are reviewing past work."
+          />
+        )}
       </div>
     </div>
   );

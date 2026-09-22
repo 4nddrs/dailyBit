@@ -1,5 +1,4 @@
 import {
-  FieldPath,
   addDoc,
   collection,
   deleteDoc,
@@ -21,6 +20,8 @@ import { db } from '../firebase';
 import type {
   LeadNote,
   LeadNoteWithId,
+  LeadQuestion,
+  LeadQuestionWithId,
   Question,
   QuestionWithId,
   Report,
@@ -32,14 +33,17 @@ import type {
   TaskImage,
   TaskImageWithId,
   TaskWithId,
-  TeamQuestion,
   UserProfile,
   UserRole,
 } from '../types';
 
 export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'>;
 export type CreateLeadNoteInput = Pick<LeadNote, 'noteText' | 'targetTaskId'>;
-export type CreateTeamQuestionInput = Pick<TeamQuestion, 'questionText' | 'options'>;
+export type CreateLeadQuestionInput = Pick<
+  LeadQuestion,
+  'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options'
+>;
+export type AnswerLeadQuestionInput = { answerText: string } | { selectedAnswer: number };
 
 const collections = {
   users: 'users',
@@ -49,7 +53,7 @@ const collections = {
   images: 'images',
   questions: 'questions',
   leadNotes: 'leadNotes',
-  teamQuestions: 'teamQuestions',
+  leadQuestions: 'leadQuestions',
 } as const;
 
 function reportDocId(userId: string, date: string): string {
@@ -104,12 +108,12 @@ function leadNoteDoc(reportId: string, noteId: string) {
   return doc(leadNotesCollection(reportId), noteId);
 }
 
-function teamQuestionsCollection() {
-  return collection(db, collections.teamQuestions);
+function leadQuestionsCollection(reportId: string) {
+  return collection(reportDoc(reportId), collections.leadQuestions);
 }
 
-function teamQuestionDoc(questionId: string) {
-  return doc(teamQuestionsCollection(), questionId);
+function leadQuestionDoc(reportId: string, questionId: string) {
+  return doc(leadQuestionsCollection(reportId), questionId);
 }
 
 function toReportSummary(id: string, data: Report): ReportSummary {
@@ -189,6 +193,7 @@ export function subscribeReport(
   const taskImages = new Map<string, TaskImageWithId[]>();
   const questions: QuestionWithId[] = [];
   const notes: LeadNoteWithId[] = [];
+  const leadQuestions: LeadQuestionWithId[] = [];
   const taskUnsubscribes = new Map<string, Unsubscribe>();
   const imageUnsubscribes = new Map<string, Unsubscribe>();
 
@@ -217,6 +222,7 @@ export function subscribeReport(
       sections: sectionTrees,
       questions: [...questions],
       notes: [...notes],
+      leadQuestions: [...leadQuestions],
     });
   };
 
@@ -329,11 +335,23 @@ export function subscribeReport(
     emit();
   });
 
+  const leadQuestionsUnsubscribe = onSnapshot(leadQuestionsCollection(reportId), (snapshot) => {
+    leadQuestions.length = 0;
+    snapshot.docs.forEach((leadQuestionSnapshot) => {
+      leadQuestions.push({
+        id: leadQuestionSnapshot.id,
+        ...(leadQuestionSnapshot.data() as LeadQuestion),
+      });
+    });
+    emit();
+  });
+
   return () => {
     reportUnsubscribe();
     sectionsUnsubscribe();
     questionsUnsubscribe();
     notesUnsubscribe();
+    leadQuestionsUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
     imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
@@ -372,11 +390,33 @@ async function deleteTaskImages(reportId: string, sectionId: string, taskId: str
   }
 }
 
+// Firestore never cascades deletes, and leadQuestions/leadNotes live in
+// report-level collections rather than under the task, so both are queried
+// by their task-reference field and deleted explicitly.
+async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
+  const [questionSnapshots, noteSnapshots] = await Promise.all([
+    getDocs(query(leadQuestionsCollection(reportId), where('taskId', '==', taskId))),
+    getDocs(query(leadNotesCollection(reportId), where('targetTaskId', '==', taskId))),
+  ]);
+  const docsToDelete = [...questionSnapshots.docs, ...noteSnapshots.docs];
+
+  for (let start = 0; start < docsToDelete.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    docsToDelete
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((docSnapshot) => batch.delete(docSnapshot.ref));
+    await batch.commit();
+  }
+}
+
 export async function removeSection(reportId: string, sectionId: string): Promise<void> {
   const taskSnapshots = await getDocs(tasksCollection(reportId, sectionId));
   await Promise.all(
     taskSnapshots.docs.map((taskSnapshot) =>
-      deleteTaskImages(reportId, sectionId, taskSnapshot.id),
+      Promise.all([
+        deleteTaskImages(reportId, sectionId, taskSnapshot.id),
+        deleteTaskLeadArtifacts(reportId, taskSnapshot.id),
+      ]),
     ),
   );
   const batch = writeBatch(db);
@@ -413,7 +453,10 @@ export async function removeTask(
   sectionId: string,
   taskId: string,
 ): Promise<void> {
-  await deleteTaskImages(reportId, sectionId, taskId);
+  await Promise.all([
+    deleteTaskImages(reportId, sectionId, taskId),
+    deleteTaskLeadArtifacts(reportId, taskId),
+  ]);
   await deleteDoc(taskDoc(reportId, sectionId, taskId));
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
 }
@@ -481,38 +524,46 @@ export function removeLeadNote(reportId: string, noteId: string): Promise<void> 
   return deleteDoc(leadNoteDoc(reportId, noteId));
 }
 
-export async function addTeamQuestion(question: CreateTeamQuestionInput): Promise<string> {
-  const ref = await addDoc(teamQuestionsCollection(), {
-    ...question,
+export async function addLeadQuestion(
+  reportId: string,
+  question: CreateLeadQuestionInput,
+): Promise<string> {
+  const { taskId, sectionId, questionText, kind } = question;
+  // Firestore rejects undefined field values, so `options` is only written for
+  // options questions instead of being spread through as `options: undefined`.
+  const payload: Record<string, unknown> = {
+    taskId,
+    sectionId,
+    questionText,
+    kind,
     createdAt: serverTimestamp(),
-  });
+  };
+
+  if (kind === 'options') {
+    const nonEmptyOptions = (question.options ?? []).map((option) => option.trim()).filter(Boolean);
+    if (nonEmptyOptions.length < 2) {
+      throw new Error('An options question needs at least 2 non-empty options.');
+    }
+    payload.options = nonEmptyOptions;
+  }
+
+  const ref = await addDoc(leadQuestionsCollection(reportId), payload);
   return ref.id;
 }
 
-export function subscribeTeamQuestions(
-  callback: (questions: Array<TeamQuestion & { id: string }>) => void,
-): Unsubscribe {
-  const teamQuestionsQuery = query(teamQuestionsCollection(), orderBy('createdAt', 'desc'));
-  return onSnapshot(teamQuestionsQuery, (snapshot) => {
-    callback(
-      snapshot.docs.map((teamQuestion) => ({
-        id: teamQuestion.id,
-        ...(teamQuestion.data() as TeamQuestion),
-      })),
-    );
-  });
+export function removeLeadQuestion(reportId: string, questionId: string): Promise<void> {
+  return deleteDoc(leadQuestionDoc(reportId, questionId));
 }
 
-export function selectTeamQuestionAnswer(
+export async function answerLeadQuestion(
+  reportId: string,
   questionId: string,
-  uid: string,
-  optionIndex: number,
+  answer: AnswerLeadQuestionInput,
 ): Promise<void> {
-  return updateDoc(
-    teamQuestionDoc(questionId),
-    new FieldPath('selectedAnswers', uid),
-    optionIndex,
-  );
+  await updateDoc(leadQuestionDoc(reportId, questionId), {
+    ...answer,
+    answeredAt: serverTimestamp(),
+  });
 }
 
 export function subscribeReportsByDate(

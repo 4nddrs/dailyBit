@@ -45,7 +45,7 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
       trigger: 5+ files).
 - [x] T2 — Remove "No image" placeholders in both views. Route: delegated with T3 writer
       or inline (1–2 files).
-- [ ] T3 — Per-task lead questions (text/options) + hover Question/Note bar in Lead View,
+- [x] T3 — Per-task lead questions (text/options) + hover Question/Note bar in Lead View,
       answering in Developer View, remove `teamQuestions`. Route: delegated (writer
       trigger: 4+ files).
 
@@ -61,5 +61,7 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
 - T1: commit `2d82944`; review `review-76ced42d772140d9` APPROVED (4 lenses, no findings). tsc/build/py_compile OK; `grep -rni ryan` empty.
 - T2: done inline (2 files, mechanical). Lead View drops the image column when a task has no images. tsc OK.
 
+- T3: delegated writer (4+ files). `leadQuestions` subcollection (kind text|options), hover Question/Note bar, dev answers/re-answers, cascade delete of lead questions/notes with task/section, teamQuestions removed, README rules + seed updated. tsc/build/py_compile OK; grep teamQuestion/ryan empty. Composers stay open after submit (flagged).
+
 ## Next step
-- T3.
+- User deploys updated Firestore rules (leadNotes, leadQuestions) before using the build.
