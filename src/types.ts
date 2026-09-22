@@ -70,9 +70,14 @@ export interface SectionWithTasks extends Section {
   tasks: TaskWithId[];
 }
 
+export interface QuestionWithId extends Question {
+  id: string;
+}
+
 export interface ReportTree extends Report {
   id: string;
   sections: SectionWithTasks[];
+  questions?: QuestionWithId[];
 }
 
 export interface ReportSummary extends Report {

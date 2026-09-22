@@ -1,4 +1,6 @@
 import { FormEvent, useState } from 'react';
+import type { User } from 'firebase/auth';
+import { DeveloperView } from './components/DeveloperView';
 import { signIn, signUp } from './services/auth';
 import { useAuth } from './hooks/useAuth';
 
@@ -112,11 +114,24 @@ function AuthForm() {
 }
 
 interface AppShellProps {
+  user: User;
   profile: ReturnType<typeof useAuth>['profile'];
   signOut: ReturnType<typeof useAuth>['signOut'];
 }
 
-function AppShell({ profile, signOut }: AppShellProps) {
+function RyanPlaceholder() {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600 shadow-sm">
+      <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">DailyBit</p>
+      <h2 className="mt-2 text-2xl font-semibold text-slate-950">RyanView is coming</h2>
+      <p className="mt-3 text-sm leading-6">
+        The lead dashboard will arrive in task 3. Developer reports are available now.
+      </p>
+    </section>
+  );
+}
+
+function AppShell({ user, profile, signOut }: AppShellProps) {
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8">
       <div className="mx-auto max-w-5xl">
@@ -137,13 +152,13 @@ function AppShell({ profile, signOut }: AppShellProps) {
           </button>
         </header>
 
-        <section className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-slate-600">
-          {/* TODO: Route to DeveloperView or RyanView here once those components are implemented. */}
-          <h2 className="text-xl font-semibold text-slate-900">Daily report workspace</h2>
-          <p className="mt-2 text-sm leading-6">
-            The core services are ready. DeveloperView and RyanView arrive in the next task.
-          </p>
-        </section>
+        <div className="mt-6">
+          {profile?.role === 'lead' ? (
+            <RyanPlaceholder />
+          ) : (
+            <DeveloperView userId={user.uid} developerName={profile?.name ?? user.email ?? 'Developer'} />
+          )}
+        </div>
       </div>
     </main>
   );
@@ -160,5 +175,5 @@ export default function App() {
     );
   }
 
-  return user ? <AppShell profile={profile} signOut={signOut} /> : <AuthForm />;
+  return user ? <AppShell user={user} profile={profile} signOut={signOut} /> : <AuthForm />;
 }

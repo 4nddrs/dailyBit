@@ -19,6 +19,7 @@ import {
 import { db } from '../firebase';
 import type {
   Question,
+  QuestionWithId,
   Report,
   ReportSummary,
   ReportTree,
@@ -159,6 +160,7 @@ export function subscribeReport(
   let report: Report | null = null;
   const sections = new Map<string, Section>();
   const tasks = new Map<string, TaskWithId[]>();
+  const questions: QuestionWithId[] = [];
   const taskUnsubscribes = new Map<string, Unsubscribe>();
 
   const emit = () => {
@@ -175,7 +177,7 @@ export function subscribeReport(
       }))
       .sort((a, b) => a.order - b.order);
 
-    callback({ id: reportId, ...report, sections: sectionTrees });
+    callback({ id: reportId, ...report, sections: sectionTrees, questions: [...questions] });
   };
 
   const reportUnsubscribe = onSnapshot(reportDoc(reportId), (snapshot) => {
@@ -221,9 +223,21 @@ export function subscribeReport(
     emit();
   });
 
+  const questionsUnsubscribe = onSnapshot(questionsCollection(reportId), (snapshot) => {
+    questions.length = 0;
+    snapshot.docs.forEach((questionSnapshot) => {
+      questions.push({
+        id: questionSnapshot.id,
+        ...(questionSnapshot.data() as Question),
+      });
+    });
+    emit();
+  });
+
   return () => {
     reportUnsubscribe();
     sectionsUnsubscribe();
+    questionsUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
