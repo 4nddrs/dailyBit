@@ -58,6 +58,10 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 - Reviewer model routing configured at ~/.pi/gentle-ai/models.json (opencode-go/glm-5.2, thinking low, six review-* keys)
 - Advisory follow-ups (non-blocking, from approved review): cap without fallback (97-98), compression untested (72-105), data-URL anchor target in RyanView (245), doc-size headroom constant (19), legacy imageUrl drop in old docs (433), raw error surface (380)
 
+### Incident fixes (setup phase) — DONE
+- Commit `88103a0`: Firestore profile subscription errors now surface as a readable panel instead of infinite "Loading DailyBit...". Native review lineage `review-f46967940747d5c3` APPROVED; 3 advisory follow-ups: error-lockout without retry (App.tsx 167-181), raw error exposure (172), untested failure path (useAuth 42-45).
+- Root causes on user side (resolved in console): missing .env.local (blank page), Email/Password provider disabled (auth/configuration-not-found), Firestore/rules (infinite loading).
+
 ### Task 5 (original entry)
 5. **Base64 image storage** — user decision: replace Firebase Storage uploads with client-side compress + Base64 data URL stored in the task document field `imageBase64`; render via <img src={imageBase64} />. Guard the Firestore 1MB doc limit (compress to max 1024px / JPEG 0.75, reject >900KB). Remove storage service. Keep key.json out of git.
 
