@@ -7,6 +7,7 @@ import { subscribeUserProfile } from '../services/firestore';
 interface UseAuthResult {
   user: User | null;
   profile: UserProfile | null;
+  profileError: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -16,6 +17,7 @@ export function useAuth(): UseAuthResult {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | undefined;
@@ -25,14 +27,23 @@ export function useAuth(): UseAuthResult {
       unsubscribeProfile = undefined;
       setUser(nextUser);
       setProfile(null);
+      setProfileError(null);
       setAuthLoading(false);
 
       if (nextUser) {
         setProfileLoading(true);
-        unsubscribeProfile = subscribeUserProfile(nextUser.uid, (nextProfile) => {
-          setProfile(nextProfile);
-          setProfileLoading(false);
-        });
+        unsubscribeProfile = subscribeUserProfile(
+          nextUser.uid,
+          (nextProfile) => {
+            setProfile(nextProfile);
+            setProfileError(null);
+            setProfileLoading(false);
+          },
+          (error) => {
+            setProfileError(`Firestore profile read failed: ${error.code}: ${error.message}`);
+            setProfileLoading(false);
+          },
+        );
       } else {
         setProfileLoading(false);
       }
@@ -47,7 +58,8 @@ export function useAuth(): UseAuthResult {
   return {
     user,
     profile,
-    loading: authLoading || profileLoading,
+    profileError,
+    loading: authLoading || (profileLoading && !profileError),
     signOut: signOutService,
   };
 }

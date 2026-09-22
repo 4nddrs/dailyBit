@@ -14,6 +14,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type FirestoreError,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -125,10 +126,15 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 export function subscribeUserProfile(
   uid: string,
   callback: (profile: UserProfile | null) => void,
+  onError?: (error: FirestoreError) => void,
 ): Unsubscribe {
-  return onSnapshot(userDoc(uid), (snapshot) => {
-    callback(snapshot.exists() ? (snapshot.data() as UserProfile) : null);
-  });
+  return onSnapshot(
+    userDoc(uid),
+    (snapshot) => {
+      callback(snapshot.exists() ? (snapshot.data() as UserProfile) : null);
+    },
+    onError,
+  );
 }
 
 export function subscribeUserProfiles(

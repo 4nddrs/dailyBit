@@ -154,12 +154,27 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
 }
 
 export default function App() {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, profile, profileError, loading, signOut } = useAuth();
 
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
         Loading DailyBit...
+      </main>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
+        <section className="w-full max-w-lg rounded-2xl border border-rose-200 bg-rose-50 p-8 shadow-sm">
+          <h1 className="text-2xl font-semibold text-rose-950">Could not load your profile</h1>
+          <p className="mt-4 text-sm leading-6 text-rose-800">{profileError}</p>
+          <p className="mt-3 text-sm leading-6 text-rose-700">
+            Check that the Firestore database exists and its rules allow authenticated reads of the
+            users collection, then reload.
+          </p>
+        </section>
       </main>
     );
   }
