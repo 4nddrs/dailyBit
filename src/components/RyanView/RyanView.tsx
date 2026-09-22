@@ -241,11 +241,11 @@ function TaskCard({
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="grid gap-4 md:grid-cols-[7rem_1fr]">
-        {task.imageUrl ? (
-          <a href={task.imageUrl} rel="noreferrer" target="_blank" aria-label="Open task image">
+        {task.imageBase64 ? (
+          <a href={task.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
             <img
               className="h-24 w-full rounded-xl border border-slate-200 object-cover transition hover:opacity-90"
-              src={task.imageUrl}
+              src={task.imageBase64}
               alt="Task attachment thumbnail"
             />
           </a>

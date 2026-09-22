@@ -26,7 +26,7 @@ export interface TaskLink {
 
 export interface Task {
   description: string;
-  imageUrl?: string;
+  imageBase64?: string;
   links?: TaskLink[];
   order: number;
 }

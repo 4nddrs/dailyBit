@@ -10,3 +10,4 @@ dist/
 
 # Local Pi runtime state
 .atl/
+key.json

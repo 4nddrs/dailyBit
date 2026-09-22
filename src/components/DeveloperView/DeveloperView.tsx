@@ -9,13 +9,14 @@ import {
   renameSection,
   updateTask,
 } from '../../services/firestore';
-import { uploadTaskImage } from '../../services/storage';
 import { useMyReport } from '../../hooks/useMyReport';
 import type { QuestionWithId, SectionWithTasks, TaskLink, TaskWithId } from '../../types';
 
 const TASK_DESCRIPTION_LIMIT = 140;
 const QUESTION_OPTION_LIMIT = 6;
 const QUESTION_OPTION_MINIMUM = 2;
+const MAX_IMAGE_SIDE = 1024;
+const MAX_IMAGE_DATA_URL_LENGTH = 900_000;
 const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 interface DeveloperViewProps {
@@ -56,6 +57,51 @@ function runSafely(operation: Promise<unknown>, message: string): void {
   operation.catch((error) => {
     console.error(message, error);
   });
+}
+
+
+function loadImageFromObjectUrl(objectUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Image could not be loaded.'));
+    image.src = objectUrl;
+  });
+}
+
+async function compressTaskImage(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose an image file.');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageFromObjectUrl(objectUrl);
+    const longestSide = Math.max(image.naturalWidth, image.naturalHeight);
+    const scale = longestSide > MAX_IMAGE_SIDE ? MAX_IMAGE_SIDE / longestSide : 1;
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Image could not be processed.');
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    const imageBase64 = canvas.toDataURL('image/jpeg', 0.75);
+
+    if (imageBase64.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      throw new Error('Image too large after compression. Please use a smaller image.');
+    }
+
+    return imageBase64;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function Header({ date, developerName }: { date?: string; developerName: string }) {
@@ -292,14 +338,10 @@ function TaskLinks({
 
 function TaskCard({
   reportId,
-  userId,
-  date,
   sectionId,
   task,
 }: {
   reportId: string;
-  userId: string;
-  date: string;
   sectionId: string;
   task: TaskWithId;
 }) {
@@ -331,17 +373,22 @@ function TaskCard({
     setUploading(true);
     setUploadError(null);
     try {
-      const imageUrl = await uploadTaskImage(file, userId, date);
-      await updateTask(reportId, sectionId, task.id, { imageUrl });
+      const imageBase64 = await compressTaskImage(file);
+      await updateTask(reportId, sectionId, task.id, { imageBase64 });
     } catch (error) {
-      console.error('Image upload failed', error);
-      setUploadError('Upload failed. Please try again.');
+      console.error('Image processing failed', error);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
+  }
+
+  function removeImage() {
+    setUploadError(null);
+    runSafely(updateTask(reportId, sectionId, task.id, { imageBase64: '' }), 'Image remove failed');
   }
 
   function updateLinks(links: TaskLink[]) {
@@ -383,10 +430,10 @@ function TaskCard({
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[10rem_1fr]">
         <div>
-          {task.imageUrl ? (
+          {task.imageBase64 ? (
             <img
               className="h-28 w-full rounded-xl border border-slate-200 object-cover"
-              src={task.imageUrl}
+              src={task.imageBase64}
               alt="Task attachment preview"
             />
           ) : (
@@ -401,14 +448,26 @@ function TaskCard({
             accept="image/*"
             onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
           />
-          <button
-            className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
-            type="button"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {uploading ? 'Uploading...' : task.imageUrl ? 'Replace image' : 'Attach image'}
-          </button>
+          <div className="mt-2 flex gap-2">
+            <button
+              className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+              type="button"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? 'Processing...' : task.imageBase64 ? 'Replace image' : 'Attach image'}
+            </button>
+            {task.imageBase64 ? (
+              <button
+                className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-wait disabled:opacity-60"
+                type="button"
+                disabled={uploading}
+                onClick={removeImage}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
           {uploadError && (
             <p className="mt-1 text-xs font-medium text-rose-600" role="alert">{uploadError}</p>
           )}
@@ -422,13 +481,9 @@ function TaskCard({
 
 function SectionCard({
   reportId,
-  userId,
-  date,
   section,
 }: {
   reportId: string;
-  userId: string;
-  date: string;
   section: SectionWithTasks;
 }) {
   return (
@@ -450,8 +505,6 @@ function SectionCard({
             <TaskCard
               key={task.id}
               reportId={reportId}
-              userId={userId}
-              date={date}
               sectionId={section.id}
               task={task}
             />
@@ -470,13 +523,9 @@ function SectionCard({
 
 function SectionsList({
   reportId,
-  userId,
-  date,
   sections,
 }: {
   reportId: string;
-  userId: string;
-  date: string;
   sections: SectionWithTasks[];
 }) {
   const sortedSections = useMemo(
@@ -503,8 +552,6 @@ function SectionsList({
             <SectionCard
               key={section.id}
               reportId={reportId}
-              userId={userId}
-              date={date}
               section={section}
             />
           ))
@@ -708,8 +755,6 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
       <Header date={reportTree.date} developerName={developerName} />
       <SectionsList
         reportId={reportId}
-        userId={userId}
-        date={reportTree.date}
         sections={reportTree.sections}
       />
       <QuestionsPanel reportId={reportId} questions={reportTree.questions} />

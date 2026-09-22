@@ -47,7 +47,7 @@ Find each value in **Firebase Console > Project settings > Your apps > Web app c
 | `VITE_FIREBASE_API_KEY` | `apiKey` in the Firebase web app config. |
 | `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` in the Firebase web app config. |
 | `VITE_FIREBASE_PROJECT_ID` | `projectId` in the Firebase web app config. |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` in the Firebase web app config. |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Optional/unused for now; task images are stored as compressed Base64 data URLs in Firestore. |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` in the Firebase web app config. |
 | `VITE_FIREBASE_APP_ID` | `appId` in the Firebase web app config. |
 
@@ -57,7 +57,7 @@ Find each value in **Firebase Console > Project settings > Your apps > Web app c
 VITE_FIREBASE_API_KEY=
 VITE_FIREBASE_AUTH_DOMAIN=
 VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
+# VITE_FIREBASE_STORAGE_BUCKET= # Optional/unused for now.
 VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
 ```
@@ -99,7 +99,7 @@ reports/{userId}_{date}
 teamQuestions/{questionId}
 ```
 
-Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include an image URL and links; questions are developer-to-Ryan multiple-choice decisions; `ryanNotes` are Ryan's report-level or task-level notes; `teamQuestions` are Ryan's multiple-choice questions to the team.
+Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include a compressed Base64 image data URL and links; questions are developer-to-Ryan multiple-choice decisions; `ryanNotes` are Ryan's report-level or task-level notes; `teamQuestions` are Ryan's multiple-choice questions to the team.
 
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
@@ -181,15 +181,6 @@ service cloud.firestore {
     }
   }
 }
-
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /reports/{userId}/{date}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
 ```
 
 Security intent:
@@ -198,21 +189,21 @@ Security intent:
 - Only users with `role: 'lead'` can write `ryanNotes`.
 - Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`.
 - Only users with `role: 'lead'` can write `teamQuestions`.
-- Authenticated users can upload report files only under `reports/{userId}/{date}/*` for their own `userId`.
+- Firestore documents are limited to 1 MB; DailyBit compresses task images client-side before saving them to stay under that limit.
 
 ## Usage
 
 ### DeveloperView
 
 - Creates today's report automatically after sign-in.
-- Saves section titles, tasks, images, links, and questions as the developer edits.
+- Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
 - Keeps task descriptions short with a 140-character limit.
-- Lets developers attach images, add supporting links, and send multiple-choice questions to Ryan.
+- Lets developers attach compressed images directly in Firestore, add supporting links, and send multiple-choice questions to Ryan.
 
 ### RyanView
 
 - Shows a date-based rollup of submitted reports, including reported count for the team.
-- Displays each developer's sections, tasks, links, images, and questions in realtime.
+- Displays each developer's sections, tasks, links, Firestore-stored images, and questions in realtime.
 - Lets Ryan add report-level or task-level notes.
 - Lets Ryan answer developer questions and post multiple-choice questions to the team.
 
@@ -223,11 +214,10 @@ Security intent:
 | `users/{uid}` | User profile and role: `{ name, role: 'dev' | 'lead' }`. |
 | `reports/{userId}_{date}` | One report per user per day; stores `userId`, `date`, `createdAt`, and `updatedAt`. |
 | `reports/{reportId}/sections/{sectionId}` | Ordered group headings for a daily report. |
-| `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `imageUrl`, optional `links`, and `order`. |
+| `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `imageBase64` data URL, optional `links`, and `order`. |
 | `reports/{reportId}/questions/{questionId}` | Developer-to-Ryan multiple-choice questions and Ryan's selected answer. |
 | `reports/{reportId}/ryanNotes/{noteId}` | Ryan's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
 | `teamQuestions/{questionId}` | Ryan-to-team multiple-choice prompts. |
-| `storage/reports/{userId}/{date}/{fileName}` | Uploaded task images for a user's report date. |
 
 ## Roles
 

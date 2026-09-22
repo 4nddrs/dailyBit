@@ -50,7 +50,10 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
   createdAt: timestamp
 ```
 
-## Task breakdown — ALL DONE
+## Task breakdown
+5. **Base64 image storage** — user decision: replace Firebase Storage uploads with client-side compress + Base64 data URL stored in the task document field `imageBase64`; render via <img src={imageBase64} />. Guard the Firestore 1MB doc limit (compress to max 1024px / JPEG 0.75, reject >900KB). Remove storage service. Keep key.json out of git.
+
+## Completed breakdown
 1. **Scaffold + core services** — DONE (af8c81c)
 2. **DeveloperView UI** — DONE (ed1fe35)
 3. **RyanView UI** — DONE (3dbbbf3)
