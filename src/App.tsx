@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { DeveloperView } from './components/DeveloperView';
+import { RyanView } from './components/RyanView';
 import { signIn, signUp } from './services/auth';
 import { useAuth } from './hooks/useAuth';
 
@@ -119,22 +120,10 @@ interface AppShellProps {
   signOut: ReturnType<typeof useAuth>['signOut'];
 }
 
-function RyanPlaceholder() {
-  return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-8 text-slate-600 shadow-sm">
-      <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">DailyBit</p>
-      <h2 className="mt-2 text-2xl font-semibold text-slate-950">RyanView is coming</h2>
-      <p className="mt-3 text-sm leading-6">
-        The lead dashboard will arrive in task 3. Developer reports are available now.
-      </p>
-    </section>
-  );
-}
-
 function AppShell({ user, profile, signOut }: AppShellProps) {
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">DailyBit</p>
@@ -154,7 +143,7 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
 
         <div className="mt-6">
           {profile?.role === 'lead' ? (
-            <RyanPlaceholder />
+            <RyanView leadUserId={user.uid} />
           ) : (
             <DeveloperView userId={user.uid} developerName={profile?.name ?? user.email ?? 'Developer'} />
           )}

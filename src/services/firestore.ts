@@ -24,6 +24,7 @@ import type {
   ReportSummary,
   ReportTree,
   RyanNote,
+  RyanNoteWithId,
   Section,
   SectionWithTasks,
   Task,
@@ -130,6 +131,14 @@ export function subscribeUserProfile(
   });
 }
 
+export function subscribeUserProfiles(
+  callback: (profiles: UserProfile[]) => void,
+): Unsubscribe {
+  return onSnapshot(collection(db, collections.users), (snapshot) => {
+    callback(snapshot.docs.map((userSnapshot) => userSnapshot.data() as UserProfile));
+  });
+}
+
 export async function getOrCreateTodayReport(
   userId: string,
   date: string,
@@ -161,6 +170,7 @@ export function subscribeReport(
   const sections = new Map<string, Section>();
   const tasks = new Map<string, TaskWithId[]>();
   const questions: QuestionWithId[] = [];
+  const notes: RyanNoteWithId[] = [];
   const taskUnsubscribes = new Map<string, Unsubscribe>();
 
   const emit = () => {
@@ -177,7 +187,13 @@ export function subscribeReport(
       }))
       .sort((a, b) => a.order - b.order);
 
-    callback({ id: reportId, ...report, sections: sectionTrees, questions: [...questions] });
+    callback({
+      id: reportId,
+      ...report,
+      sections: sectionTrees,
+      questions: [...questions],
+      notes: [...notes],
+    });
   };
 
   const reportUnsubscribe = onSnapshot(reportDoc(reportId), (snapshot) => {
@@ -234,10 +250,22 @@ export function subscribeReport(
     emit();
   });
 
+  const notesUnsubscribe = onSnapshot(ryanNotesCollection(reportId), (snapshot) => {
+    notes.length = 0;
+    snapshot.docs.forEach((noteSnapshot) => {
+      notes.push({
+        id: noteSnapshot.id,
+        ...(noteSnapshot.data() as RyanNote),
+      });
+    });
+    emit();
+  });
+
   return () => {
     reportUnsubscribe();
     sectionsUnsubscribe();
     questionsUnsubscribe();
+    notesUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }

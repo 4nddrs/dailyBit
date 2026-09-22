@@ -66,6 +66,13 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 
 ## Evidence log
 
+### Task 2 — DeveloperView UI — DONE
+- Commit: `ed1fe35` (feature/dailybit-mvp)
+- Writer: gentle-ai-worker (components/hooks/App wiring); parent inline fix (subscribeReport questions subscription); worker fix (upload rejection handling)
+- Checks observed: typecheck exit 0, build exit 0 (post-fix, by worker); earlier verify pass caught missing QuestionWithId import (parent defect) + unhandled upload rejection (fixed)
+- Known minor: dynamic question-option inputs use index keys (low risk, accepted)
+- Service gap found and closed: subscribeReport now subscribes questions subcollection
+
 ### Task 1 — Scaffold + core services — DONE
 - Commit: `af8c81c` (feature/dailybit-mvp) — 20 files, 4709 insertions
 - Writer: gentle-ai-worker (scaffold + services + auth gate)

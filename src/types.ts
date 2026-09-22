@@ -74,10 +74,15 @@ export interface QuestionWithId extends Question {
   id: string;
 }
 
+export interface RyanNoteWithId extends RyanNote {
+  id: string;
+}
+
 export interface ReportTree extends Report {
   id: string;
   sections: SectionWithTasks[];
   questions?: QuestionWithId[];
+  notes?: RyanNoteWithId[];
 }
 
 export interface ReportSummary extends Report {
