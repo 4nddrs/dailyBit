@@ -94,12 +94,13 @@ users/{uid}
 reports/{userId}_{date}
   sections/{sectionId}
     tasks/{taskId}
+      images/{imageId}
   questions/{questionId}
   ryanNotes/{noteId}
 teamQuestions/{questionId}
 ```
 
-Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include a compressed Base64 image data URL and links; questions are developer-to-Ryan multiple-choice decisions; `ryanNotes` are Ryan's report-level or task-level notes; `teamQuestions` are Ryan's multiple-choice questions to the team.
+Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-Ryan multiple-choice decisions; `ryanNotes` are Ryan's report-level or task-level notes; `teamQuestions` are Ryan's multiple-choice questions to the team.
 
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
@@ -160,6 +161,11 @@ service cloud.firestore {
         match /tasks/{taskId} {
           allow read: if ownsExistingReport(reportId) || isLead();
           allow write: if ownsExistingReport(reportId);
+
+          match /images/{imageId} {
+            allow read: if ownsExistingReport(reportId) || isLead();
+            allow write: if ownsExistingReport(reportId);
+          }
         }
       }
 
@@ -199,7 +205,7 @@ Security intent:
 - Only users with `role: 'lead'` can write `ryanNotes`.
 - Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`.
 - Only users with `role: 'lead'` can write `teamQuestions`.
-- Firestore documents are limited to 1 MB; DailyBit compresses task images client-side before saving them to stay under that limit.
+- Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
 
 ## Usage
 
@@ -224,7 +230,8 @@ Security intent:
 | `users/{uid}` | User profile and role: `{ name, role: 'dev' | 'lead' }`. |
 | `reports/{userId}_{date}` | One report per user per day; stores `userId`, `date`, `createdAt`, and `updatedAt`. |
 | `reports/{reportId}/sections/{sectionId}` | Ordered group headings for a daily report. |
-| `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `imageBase64` data URL, optional `links`, and `order`. |
+| `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `links` and `order`. |
+| `reports/{reportId}/sections/{sectionId}/tasks/{taskId}/images/{imageId}` | Task image document with `imageBase64` data URL and `createdAt`; one doc per image, so the 1 MB limit applies per image doc. |
 | `reports/{reportId}/questions/{questionId}` | Developer-to-Ryan multiple-choice questions and Ryan's selected answer. |
 | `reports/{reportId}/ryanNotes/{noteId}` | Ryan's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
 | `teamQuestions/{questionId}` | Ryan-to-team multiple-choice prompts. |

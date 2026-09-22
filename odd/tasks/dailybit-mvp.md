@@ -62,6 +62,22 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 - Commit `88103a0`: Firestore profile subscription errors now surface as a readable panel instead of infinite "Loading DailyBit...". Native review lineage `review-f46967940747d5c3` APPROVED; 3 advisory follow-ups: error-lockout without retry (App.tsx 167-181), raw error exposure (172), untested failure path (useAuth 42-45).
 - Root causes on user side (resolved in console): missing .env.local (blank page), Email/Password provider disabled (auth/configuration-not-found), Firestore/rules (infinite loading).
 
+### Task 8 — Multiple images per task (images subcollection) — IN PROGRESS
+- User decision (2026-09-22): unlimited images per task via subcollection `tasks/{taskId}/images`
+  (each image its own doc, so the 1MB limit applies per image, not per task). Chosen over
+  a capped in-doc array to avoid aggressive recompression.
+- Model: `images/{imageId}` = { imageBase64: string (data URL), createdAt: timestamp };
+  task-level `imageBase64` field removed from the TypeScript model (clean break — only
+  seeded test data used it; seed script updated to write image docs).
+- Services: addTaskImage / removeTaskImage; subscribeReport gains per-task image
+  listeners (same managed-unsubscribe pattern as per-section task listeners).
+- UI: DeveloperView thumbnail grid with per-image Remove + always-available Attach;
+  RyanView thumbnail row (each opens the full data URL in a new tab).
+- Rules: images match nested under tasks (read: owner or lead; write: owner) — deployed
+  BEFORE code so listeners never hit permission-denied. README rules updated to match.
+- Cascade fix: removeTask/removeSection now delete each task's images subcollection first
+  (Firestore never cascades), chunked under the 500-op batch limit. Checks: tsc + vite build OK.
+
 ### Task 5 (original entry)
 5. **Base64 image storage** — user decision: replace Firebase Storage uploads with client-side compress + Base64 data URL stored in the task document field `imageBase64`; render via <img src={imageBase64} />. Guard the Firestore 1MB doc limit (compress to max 1024px / JPEG 0.75, reject >900KB). Remove storage service. Keep key.json out of git.
 

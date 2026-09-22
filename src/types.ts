@@ -26,9 +26,18 @@ export interface TaskLink {
 
 export interface Task {
   description: string;
-  imageBase64?: string;
   links?: TaskLink[];
   order: number;
+}
+
+export interface TaskImage {
+  imageBase64: string;
+  createdAt: Timestamp;
+}
+
+export interface TaskImageWithId {
+  id: string;
+  imageBase64: string;
 }
 
 export interface Question {
@@ -63,6 +72,7 @@ export type TeamQuestionData = TeamQuestion;
 
 export interface TaskWithId extends Task {
   id: string;
+  images: TaskImageWithId[];
 }
 
 export interface SectionWithTasks extends Section {

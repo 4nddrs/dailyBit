@@ -3,9 +3,11 @@ import {
   addQuestion,
   addSection,
   addTask,
+  addTaskImage,
   removeQuestion,
   removeSection,
   removeTask,
+  removeTaskImage,
   renameSection,
   updateTask,
 } from '../../services/firestore';
@@ -374,7 +376,7 @@ function TaskCard({
     setUploadError(null);
     try {
       const imageBase64 = await compressTaskImage(file);
-      await updateTask(reportId, sectionId, task.id, { imageBase64 });
+      await addTaskImage(reportId, sectionId, task.id, imageBase64);
     } catch (error) {
       console.error('Image processing failed', error);
       setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
@@ -386,9 +388,9 @@ function TaskCard({
     }
   }
 
-  function removeImage() {
+  function handleRemoveImage(imageId: string) {
     setUploadError(null);
-    runSafely(updateTask(reportId, sectionId, task.id, { imageBase64: '' }), 'Image remove failed');
+    runSafely(removeTaskImage(reportId, sectionId, task.id, imageId), 'Image remove failed');
   }
 
   function updateLinks(links: TaskLink[]) {
@@ -430,12 +432,28 @@ function TaskCard({
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[10rem_1fr]">
         <div>
-          {task.imageBase64 ? (
-            <img
-              className="h-28 w-full rounded-xl border border-slate-200 object-cover"
-              src={task.imageBase64}
-              alt="Task attachment preview"
-            />
+          {task.images.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
+              {task.images.map((image) => (
+                <div className="relative" key={image.id}>
+                  <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
+                    <img
+                      className="h-24 w-full rounded-xl border border-slate-200 object-cover transition hover:opacity-90"
+                      src={image.imageBase64}
+                      alt="Task attachment preview"
+                    />
+                  </a>
+                  <button
+                    className="absolute right-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-rose-50 hover:text-rose-600"
+                    type="button"
+                    onClick={() => handleRemoveImage(image.id)}
+                    aria-label="Remove image"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
               No image
@@ -455,18 +473,8 @@ function TaskCard({
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
             >
-              {uploading ? 'Processing...' : task.imageBase64 ? 'Replace image' : 'Attach image'}
+              {uploading ? 'Processing...' : 'Attach image'}
             </button>
-            {task.imageBase64 ? (
-              <button
-                className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-wait disabled:opacity-60"
-                type="button"
-                disabled={uploading}
-                onClick={removeImage}
-              >
-                Remove
-              </button>
-            ) : null}
           </div>
           {uploadError && (
             <p className="mt-1 text-xs font-medium text-rose-600" role="alert">{uploadError}</p>

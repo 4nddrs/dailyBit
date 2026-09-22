@@ -82,8 +82,6 @@ def build_report(uid: str, date: str, sections: list[dict[str, Any]]) -> list[di
             task_data = {"description": task["description"], "order": task["order"]}
             if "links" in task:
                 task_data["links"] = task["links"]
-            if "imageBase64" in task:
-                task_data["imageBase64"] = task["imageBase64"]
             ops.append(
                 {
                     "path": f"reports/{report_id(uid, date)}/sections/{section_id}/tasks/{task['id']}",
@@ -165,13 +163,32 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                             "id": "cost-review-base64-storage",
                             "description": "Cost review of Base64 storage",
                             "order": 1,
-                            "imageBase64": solid_png_data_url(),
                         },
                     ],
                 }
             ],
         )
     )
+    lena_today = report_id("test-dev-lena", today)
+    ops.extend(
+        [
+            {
+                "path": f"reports/{lena_today}/sections/infra/tasks/cost-review-base64-storage/images/image-1",
+                "data": {
+                    "imageBase64": solid_png_data_url(rgb=(59, 130, 246)),
+                    "createdAt": SERVER_TIMESTAMP,
+                },
+            },
+            {
+                "path": f"reports/{lena_today}/sections/infra/tasks/cost-review-base64-storage/images/image-2",
+                "data": {
+                    "imageBase64": solid_png_data_url(rgb=(16, 185, 129)),
+                    "createdAt": SERVER_TIMESTAMP,
+                },
+            },
+        ]
+    )
+
     ops.extend(
         build_report(
             "test-dev-sofia",
@@ -266,6 +283,7 @@ def read_back(db: firestore.Client, today: str) -> dict[str, int]:
         "reports_today": len(list(db.collection("reports").where("date", "==", today).stream())),
         "questions": len(list(db.collection_group("questions").stream())),
         "ryanNotes": len(list(db.collection_group("ryanNotes").stream())),
+        "images": len(list(db.collection_group("images").stream())),
         "teamQuestions": len(list(db.collection("teamQuestions").stream())),
     }
 

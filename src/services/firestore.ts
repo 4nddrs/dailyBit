@@ -29,6 +29,8 @@ import type {
   Section,
   SectionWithTasks,
   Task,
+  TaskImage,
+  TaskImageWithId,
   TaskWithId,
   TeamQuestion,
   UserProfile,
@@ -44,6 +46,7 @@ const collections = {
   reports: 'reports',
   sections: 'sections',
   tasks: 'tasks',
+  images: 'images',
   questions: 'questions',
   ryanNotes: 'ryanNotes',
   teamQuestions: 'teamQuestions',
@@ -75,6 +78,14 @@ function tasksCollection(reportId: string, sectionId: string) {
 
 function taskDoc(reportId: string, sectionId: string, taskId: string) {
   return doc(tasksCollection(reportId, sectionId), taskId);
+}
+
+function imagesCollection(reportId: string, sectionId: string, taskId: string) {
+  return collection(taskDoc(reportId, sectionId, taskId), collections.images);
+}
+
+function taskImageDoc(reportId: string, sectionId: string, taskId: string, imageId: string) {
+  return doc(imagesCollection(reportId, sectionId, taskId), imageId);
 }
 
 function questionsCollection(reportId: string) {
@@ -174,10 +185,12 @@ export function subscribeReport(
 ): Unsubscribe {
   let report: Report | null = null;
   const sections = new Map<string, Section>();
-  const tasks = new Map<string, TaskWithId[]>();
+  const tasks = new Map<string, Array<Task & { id: string }>>();
+  const taskImages = new Map<string, TaskImageWithId[]>();
   const questions: QuestionWithId[] = [];
   const notes: RyanNoteWithId[] = [];
   const taskUnsubscribes = new Map<string, Unsubscribe>();
+  const imageUnsubscribes = new Map<string, Unsubscribe>();
 
   const emit = () => {
     if (!report) {
@@ -189,7 +202,12 @@ export function subscribeReport(
       .map(([id, section]) => ({
         id,
         ...section,
-        tasks: [...(tasks.get(id) ?? [])].sort((a, b) => a.order - b.order),
+        tasks: [...(tasks.get(id) ?? [])]
+          .map((task) => ({
+            ...task,
+            images: [...(taskImages.get(`${id}/${task.id}`) ?? [])],
+          }))
+          .sort((a, b) => a.order - b.order),
       }))
       .sort((a, b) => a.order - b.order);
 
@@ -219,13 +237,50 @@ export function subscribeReport(
       if (!taskUnsubscribes.has(sectionId)) {
         const tasksQuery = query(tasksCollection(reportId, sectionId), orderBy('order', 'asc'));
         const unsubscribeTasks = onSnapshot(tasksQuery, (taskSnapshot) => {
-          tasks.set(
-            sectionId,
-            taskSnapshot.docs.map((taskDocument) => ({
+          const nextTaskKeys = new Set<string>();
+          const nextTasks = taskSnapshot.docs.map((taskDocument) => {
+            const taskId = taskDocument.id;
+            const taskKey = `${sectionId}/${taskId}`;
+            nextTaskKeys.add(taskKey);
+
+            if (!imageUnsubscribes.has(taskKey)) {
+              const imagesQuery = query(
+                imagesCollection(reportId, sectionId, taskId),
+                orderBy('createdAt', 'asc'),
+              );
+              const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+                taskImages.set(
+                  taskKey,
+                  imageSnapshot.docs.map((imageDocument) => {
+                    const image = imageDocument.data() as TaskImage;
+                    return {
+                      id: imageDocument.id,
+                      imageBase64: image.imageBase64,
+                    };
+                  }),
+                );
+                emit();
+              });
+
+              imageUnsubscribes.set(taskKey, unsubscribeImages);
+            }
+
+            return {
               id: taskDocument.id,
               ...(taskDocument.data() as Task),
-            })),
-          );
+            };
+          });
+
+          tasks.set(sectionId, nextTasks);
+
+          Array.from(imageUnsubscribes.keys()).forEach((taskKey) => {
+            if (taskKey.startsWith(`${sectionId}/`) && !nextTaskKeys.has(taskKey)) {
+              taskImages.delete(taskKey);
+              imageUnsubscribes.get(taskKey)?.();
+              imageUnsubscribes.delete(taskKey);
+            }
+          });
+
           emit();
         });
 
@@ -239,6 +294,13 @@ export function subscribeReport(
         tasks.delete(sectionId);
         taskUnsubscribes.get(sectionId)?.();
         taskUnsubscribes.delete(sectionId);
+        Array.from(imageUnsubscribes.keys()).forEach((taskKey) => {
+          if (taskKey.startsWith(`${sectionId}/`)) {
+            taskImages.delete(taskKey);
+            imageUnsubscribes.get(taskKey)?.();
+            imageUnsubscribes.delete(taskKey);
+          }
+        });
       }
     });
 
@@ -273,6 +335,7 @@ export function subscribeReport(
     questionsUnsubscribe();
     notesUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
 
@@ -291,8 +354,31 @@ export async function renameSection(
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
 }
 
+// Firestore write batches accept at most 500 operations.
+const MAX_BATCH_DELETES = 450;
+
+// Firestore never cascades deletes into subcollections, so image docs must be
+// removed explicitly. They are deleted before their parent task so a partial
+// failure never leaves orphaned images behind an already-deleted task.
+async function deleteTaskImages(reportId: string, sectionId: string, taskId: string) {
+  const imageSnapshots = await getDocs(imagesCollection(reportId, sectionId, taskId));
+
+  for (let start = 0; start < imageSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    imageSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((imageSnapshot) => batch.delete(imageSnapshot.ref));
+    await batch.commit();
+  }
+}
+
 export async function removeSection(reportId: string, sectionId: string): Promise<void> {
   const taskSnapshots = await getDocs(tasksCollection(reportId, sectionId));
+  await Promise.all(
+    taskSnapshots.docs.map((taskSnapshot) =>
+      deleteTaskImages(reportId, sectionId, taskSnapshot.id),
+    ),
+  );
   const batch = writeBatch(db);
 
   taskSnapshots.docs.forEach((taskSnapshot) => batch.delete(taskSnapshot.ref));
@@ -327,8 +413,31 @@ export async function removeTask(
   sectionId: string,
   taskId: string,
 ): Promise<void> {
+  await deleteTaskImages(reportId, sectionId, taskId);
   await deleteDoc(taskDoc(reportId, sectionId, taskId));
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
+}
+
+export async function addTaskImage(
+  reportId: string,
+  sectionId: string,
+  taskId: string,
+  imageBase64: string,
+): Promise<string> {
+  const ref = await addDoc(imagesCollection(reportId, sectionId, taskId), {
+    imageBase64,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export function removeTaskImage(
+  reportId: string,
+  sectionId: string,
+  taskId: string,
+  imageId: string,
+): Promise<void> {
+  return deleteDoc(taskImageDoc(reportId, sectionId, taskId, imageId));
 }
 
 export async function addQuestion(

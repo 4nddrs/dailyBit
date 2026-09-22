@@ -241,14 +241,24 @@ function TaskCard({
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="grid gap-4 md:grid-cols-[7rem_1fr]">
-        {task.imageBase64 ? (
-          <a href={task.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
-            <img
-              className="h-24 w-full rounded-xl border border-slate-200 object-cover transition hover:opacity-90"
-              src={task.imageBase64}
-              alt="Task attachment thumbnail"
-            />
-          </a>
+        {task.images.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {task.images.map((image) => (
+              <a
+                href={image.imageBase64}
+                key={image.id}
+                rel="noreferrer"
+                target="_blank"
+                aria-label="Open task image"
+              >
+                <img
+                  className="h-24 w-24 rounded-xl border border-slate-200 object-cover transition hover:opacity-90"
+                  src={image.imageBase64}
+                  alt="Task attachment thumbnail"
+                />
+              </a>
+            ))}
+          </div>
         ) : (
           <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
             No image
