@@ -349,7 +349,6 @@ export async function answerQuestion(
     answeredBy,
     answeredAt: serverTimestamp(),
   });
-  await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
 }
 
 export async function addRyanNote(
@@ -360,7 +359,6 @@ export async function addRyanNote(
     ...note,
     createdAt: serverTimestamp(),
   });
-  await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
   return ref.id;
 }
 

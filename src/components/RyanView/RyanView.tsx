@@ -30,12 +30,31 @@ interface RyanViewProps {
 
 type TeamQuestionWithId = TeamQuestion & { id: string };
 
+function normalizeDateString(dateString: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return todayDateString();
+  }
+
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return todayDateString();
+  }
+
+  return dateString;
+}
+
 function formatDisplayDate(dateString: string): string {
   return new Intl.DateTimeFormat(undefined, {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
-  }).format(new Date(`${dateString}T00:00:00`));
+  }).format(new Date(`${normalizeDateString(dateString)}T00:00:00`));
 }
 
 function getOptionLabel(index: number): string {
@@ -295,11 +314,16 @@ function QuestionCard({
   leadUserId: string;
 }) {
   const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
 
   async function handleAnswer(optionIndex: number) {
     setSubmittingIndex(optionIndex);
+    setAnswerError(null);
     try {
       await answerQuestion(reportId, question.id, optionIndex, leadUserId);
+    } catch (caughtError) {
+      console.error('Question answer failed', caughtError);
+      setAnswerError('Answer could not be saved. Please try again.');
     } finally {
       setSubmittingIndex(null);
     }
@@ -328,6 +352,7 @@ function QuestionCard({
           );
         })}
       </div>
+      {answerError ? <p className="mt-2 text-xs font-medium text-rose-600" role="alert">{answerError}</p> : null}
     </article>
   );
 }
@@ -584,7 +609,8 @@ function TeamQuestionCard({ question }: { question: TeamQuestionWithId }) {
 
 export function RyanView({ leadUserId }: RyanViewProps) {
   const [selectedDate, setSelectedDate] = useState(() => todayDateString());
-  const { reportTrees, loading } = useReportsByDate(selectedDate);
+  const normalizedSelectedDate = normalizeDateString(selectedDate);
+  const { reportTrees, loading } = useReportsByDate(normalizedSelectedDate);
   const { profiles } = useUserProfiles();
   const totalDeveloperCount = profiles.filter((profile) => profile.role === 'dev').length;
   const [developerNames, setDeveloperNames] = useState<Record<string, string>>({});
@@ -618,8 +644,8 @@ export function RyanView({ leadUserId }: RyanViewProps) {
   return (
     <div className="space-y-6">
       <RyanHeader
-        date={selectedDate}
-        onDateChange={setSelectedDate}
+        date={normalizedSelectedDate}
+        onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
         reportedCount={reportTrees.length}
         totalDeveloperCount={totalDeveloperCount}
       />

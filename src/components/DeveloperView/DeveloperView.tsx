@@ -52,6 +52,12 @@ function isValidUrl(value: string): boolean {
   }
 }
 
+function runSafely(operation: Promise<unknown>, message: string): void {
+  operation.catch((error) => {
+    console.error(message, error);
+  });
+}
+
 function Header({ date, developerName }: { date?: string; developerName: string }) {
   return (
     <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -97,7 +103,7 @@ function SectionTitle({
   function persistTitle() {
     const nextTitle = title.trim() || 'Untitled section';
     if (nextTitle !== section.title) {
-      void renameSection(reportId, section.id, nextTitle);
+      runSafely(renameSection(reportId, section.id, nextTitle), 'Section rename failed');
     }
     setTitle(nextTitle);
   }
@@ -129,10 +135,13 @@ function AddSectionForm({ reportId, sections }: { reportId: string; sections: Se
       return;
     }
 
-    void addSection(reportId, {
-      title: trimmedTitle,
-      order: getNextOrder(sections),
-    });
+    runSafely(
+      addSection(reportId, {
+        title: trimmedTitle,
+        order: getNextOrder(sections),
+      }),
+      'Section add failed',
+    );
     setTitle('');
   }
 
@@ -173,11 +182,14 @@ function AddTaskForm({
       return;
     }
 
-    void addTask(reportId, section.id, {
-      description: trimmedDescription,
-      links: [],
-      order: getNextOrder(section.tasks),
-    });
+    runSafely(
+      addTask(reportId, section.id, {
+        description: trimmedDescription,
+        links: [],
+        order: getNextOrder(section.tasks),
+      }),
+      'Task add failed',
+    );
     setDescription('');
   }
 
@@ -306,7 +318,7 @@ function TaskCard({
   function persistDescription() {
     const nextDescription = description.trim();
     if (nextDescription && nextDescription !== task.description) {
-      void updateTask(reportId, sectionId, task.id, { description: nextDescription });
+      runSafely(updateTask(reportId, sectionId, task.id, { description: nextDescription }), 'Task update failed');
       setDescription(nextDescription);
     }
   }
@@ -333,7 +345,7 @@ function TaskCard({
   }
 
   function updateLinks(links: TaskLink[]) {
-    void updateTask(reportId, sectionId, task.id, { links });
+    runSafely(updateTask(reportId, sectionId, task.id, { links }), 'Task links update failed');
   }
 
   return (
@@ -362,7 +374,7 @@ function TaskCard({
         <button
           className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
           type="button"
-          onClick={() => void removeTask(reportId, sectionId, task.id)}
+          onClick={() => runSafely(removeTask(reportId, sectionId, task.id), 'Task remove failed')}
           aria-label="Remove task"
         >
           Remove
@@ -387,7 +399,7 @@ function TaskCard({
             className="sr-only"
             type="file"
             accept="image/*"
-            onChange={(event) => void handleImageSelected(event.target.files?.[0])}
+            onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
           />
           <button
             className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
@@ -426,7 +438,7 @@ function SectionCard({
         <button
           className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
           type="button"
-          onClick={() => void removeSection(reportId, section.id)}
+          onClick={() => runSafely(removeSection(reportId, section.id), 'Section remove failed')}
         >
           Remove
         </button>
@@ -533,10 +545,13 @@ function QuestionComposer({ reportId }: { reportId: string }) {
       return;
     }
 
-    void addQuestion(reportId, {
-      questionText: trimmedQuestion,
-      options: trimmedOptions,
-    });
+    runSafely(
+      addQuestion(reportId, {
+        questionText: trimmedQuestion,
+        options: trimmedOptions,
+      }),
+      'Question add failed',
+    );
     setQuestionText('');
     setOptions(['', '']);
   }
@@ -614,7 +629,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
         <button
           className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
           type="button"
-          onClick={() => void removeQuestion(reportId, question.id)}
+          onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
         >
           Remove
         </button>

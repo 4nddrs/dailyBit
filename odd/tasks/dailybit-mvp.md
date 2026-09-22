@@ -73,6 +73,13 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 - Known minor: dynamic question-option inputs use index keys (low risk, accepted)
 - Service gap found and closed: subscribeReport now subscribes questions subcollection
 
+### Task 3 — RyanView UI — DONE
+- Commit: `3dbbbf3` (feature/dailybit-mvp)
+- Writers: gentle-ai-worker x2 (dashboard + gap closure)
+- Checks observed: typecheck exit 0, build exit 0 (both runs)
+- Service gaps found and closed: subscribeReport now also emits ryanNotes (RyanNoteWithId); new subscribeUserProfiles for 'X of Y developers reported'
+- Notes flow: addRyanNote -> realtime subscription -> report-level (targetTaskId '') and per-task rendering with remove
+
 ### Task 1 — Scaffold + core services — DONE
 - Commit: `af8c81c` (feature/dailybit-mvp) — 20 files, 4709 insertions
 - Writer: gentle-ai-worker (scaffold + services + auth gate)
