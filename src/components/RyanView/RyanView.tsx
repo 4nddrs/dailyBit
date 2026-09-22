@@ -380,7 +380,9 @@ function ReportCard({
   }
 
   function handleRemoveNote(noteId: string) {
-    void removeRyanNote(report.id, noteId);
+    removeRyanNote(report.id, noteId).catch((error: unknown) => {
+      console.error('Failed to remove note', error);
+    });
   }
 
   return (
@@ -626,14 +628,18 @@ export function RyanView({ leadUserId }: RyanViewProps) {
     }
 
     missingUserIds.forEach((userId) => {
-      getUserProfile(userId).then((profile) => {
-        if (!cancelled) {
-          setDeveloperNames((currentNames) => ({
-            ...currentNames,
-            [userId]: profile?.name ?? userId,
-          }));
-        }
-      });
+      getUserProfile(userId)
+        .then((profile) => {
+          if (!cancelled) {
+            setDeveloperNames((currentNames) => ({
+              ...currentNames,
+              [userId]: profile?.name ?? userId,
+            }));
+          }
+        })
+        .catch((error: unknown) => {
+          console.error(`Failed to load profile for ${userId}`, error);
+        });
     });
 
     return () => {
