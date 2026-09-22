@@ -123,12 +123,10 @@ service cloud.firestore {
       return signedIn() && userProfile(request.auth.uid).role == 'lead';
     }
 
-    function reportOwner(reportId) {
-      return get(/databases/$(database)/documents/reports/$(reportId)).data.userId;
-    }
-
     function ownsExistingReport(reportId) {
-      return signedIn() && reportOwner(reportId) == request.auth.uid;
+      return signedIn() &&
+        get(/databases/$(database)/documents/reports/$(reportId)).data.userId
+          == request.auth.uid;
     }
 
     function isOwnReportCreate() {
@@ -137,11 +135,21 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn();
-      allow write: if false; // Seed users outside the client app.
+      // A brand-new user may create their own profile, but only as 'dev';
+      // role changes stay in the admin console / seed script.
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'dev';
+      allow update, delete: if false;
     }
 
     match /reports/{reportId} {
-      allow read: if ownsExistingReport(reportId) || isLead();
+      // Allow reading a nonexistent report so the get-or-create flow works:
+      // a rule that dereferences get(...).data on a missing doc fails closed
+      // and blocks report creation.
+      allow get: if isLead()
+        || (signedIn()
+            && (resource == null || resource.data.userId == request.auth.uid));
+      allow list: if isLead();
       allow create: if isOwnReportCreate();
       allow update, delete: if ownsExistingReport(reportId);
 
@@ -186,6 +194,8 @@ service cloud.firestore {
 Security intent:
 
 - Authenticated developers can read and write their own report tree.
+- Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
+- A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
 - Only users with `role: 'lead'` can write `ryanNotes`.
 - Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`.
 - Only users with `role: 'lead'` can write `teamQuestions`.
