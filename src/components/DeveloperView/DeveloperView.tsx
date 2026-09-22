@@ -518,7 +518,7 @@ function SectionCard({
             />
           ))
         ) : (
-          <EmptyState title="No tasks yet" description="Add one crisp update. Keep it short so Ryan can scan it quickly." />
+          <EmptyState title="No tasks yet" description="Add one crisp update. Keep it short so the lead can scan it quickly." />
         )}
       </div>
 
@@ -614,12 +614,12 @@ function QuestionComposer({ reportId }: { reportId: string }) {
   return (
     <form className="rounded-2xl border border-done-emphasis/40 bg-done-muted p-4" onSubmit={handleSubmit}>
       <label className="block text-sm font-medium text-done-fg">
-        Question for Ryan
+        Question for the lead
         <input
           className="mt-2 w-full rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
-          placeholder="What should Ryan decide?"
+          placeholder="What should the lead decide?"
         />
       </label>
 
@@ -678,7 +678,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
         <div>
           <p className="text-sm font-semibold text-fg">{question.questionText}</p>
           <p className={`mt-2 text-xs font-semibold ${isAnswered ? 'text-success-fg' : 'text-attention-fg'}`}>
-            {isAnswered ? `Answered: ${answerText}` : 'Pending Ryan’s answer'}
+            {isAnswered ? `Answered: ${answerText}` : 'Pending the lead’s answer'}
           </p>
         </div>
         <button
@@ -711,7 +711,7 @@ function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questi
   return (
     <section className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5">
       <div>
-        <h2 className="text-xl font-semibold text-fg">Questions to Ryan</h2>
+        <h2 className="text-xl font-semibold text-fg">Questions to the lead</h2>
         <p className="mt-1 text-sm text-fg-muted">Use multiple choice when you need a fast answer.</p>
       </div>
 
@@ -725,7 +725,7 @@ function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questi
         ) : (
           <EmptyState
             title="No questions yet"
-            description="Add a decision Ryan can answer quickly. His selected answer will show here in realtime once question subscription is available."
+            description="Add a decision the lead can answer quickly. Their selected answer will show here in realtime once question subscription is available."
           />
         )}
       </div>

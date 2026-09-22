@@ -1,18 +1,18 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
-  addRyanNote,
+  addLeadNote,
   addTeamQuestion,
   answerQuestion,
   getUserProfile,
-  removeRyanNote,
+  removeLeadNote,
   subscribeTeamQuestions,
 } from '../../services/firestore';
 import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import type {
+  LeadNoteWithId,
   QuestionWithId,
   ReportTree,
-  RyanNoteWithId,
   SectionWithTasks,
   TaskLink,
   TaskWithId,
@@ -24,7 +24,7 @@ const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 const QUESTION_OPTION_MINIMUM = 2;
 const QUESTION_OPTION_LIMIT = 6;
 
-interface RyanViewProps {
+interface LeadViewProps {
   leadUserId: string;
 }
 
@@ -70,7 +70,7 @@ function EmptyState({ title, description }: { title: string; description: string
   );
 }
 
-function RyanHeader({
+function LeadHeader({
   date,
   onDateChange,
   reportedCount,
@@ -85,7 +85,7 @@ function RyanHeader({
     <header className="rounded-3xl border border-line bg-canvas p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-fg">RyanView</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-fg">Lead View</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-fg">
             {formatDisplayDate(date)}
           </h1>
@@ -136,11 +136,11 @@ function LinkChips({ links = [] }: { links?: TaskLink[] }) {
   );
 }
 
-function RyanNoteBlock({
+function LeadNoteBlock({
   notes,
   onRemove,
 }: {
-  notes: RyanNoteWithId[];
+  notes: LeadNoteWithId[];
   onRemove: (noteId: string) => void;
 }) {
   if (notes.length === 0) {
@@ -193,7 +193,7 @@ function NoteComposer({
       await onAdd(trimmedNote);
       setNoteText('');
     } catch (caughtError) {
-      console.error('Ryan note failed', caughtError);
+      console.error('Lead note failed', caughtError);
       setError('Note could not be saved. Please try again.');
     } finally {
       setSubmitting(false);
@@ -208,7 +208,7 @@ function NoteComposer({
           className="mt-2 min-h-20 w-full resize-y rounded-xl border border-attention-emphasis/60 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-attention-emphasis focus:ring-2 focus:ring-attention-muted"
           value={noteText}
           onChange={(event) => setNoteText(event.target.value)}
-          placeholder="Add a private Ryan note"
+          placeholder="Add a private lead note"
         />
       </label>
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
@@ -234,7 +234,7 @@ function TaskCard({
 }: {
   reportId: string;
   task: TaskWithId;
-  notes: RyanNoteWithId[];
+  notes: LeadNoteWithId[];
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
 }) {
@@ -271,8 +271,8 @@ function TaskCard({
         </div>
       </div>
 
-      <RyanNoteBlock notes={notes} onRemove={onRemoveNote} />
-      <NoteComposer label="Ryan task note" onAdd={(noteText) => onAddNote(task.id, noteText)} />
+      <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
+      <NoteComposer label="Lead task note" onAdd={(noteText) => onAddNote(task.id, noteText)} />
       <span className="sr-only">Report {reportId}</span>
     </article>
   );
@@ -287,7 +287,7 @@ function SectionCard({
 }: {
   reportId: string;
   section: SectionWithTasks;
-  notesByTarget: Map<string, RyanNoteWithId[]>;
+  notesByTarget: Map<string, LeadNoteWithId[]>;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
 }) {
@@ -378,7 +378,7 @@ function ReportCard({
 }) {
   const notes = report.notes ?? [];
   const notesByTarget = useMemo(() => {
-    const groupedNotes = new Map<string, RyanNoteWithId[]>();
+    const groupedNotes = new Map<string, LeadNoteWithId[]>();
     notes.forEach((note) => {
       groupedNotes.set(note.targetTaskId, [...(groupedNotes.get(note.targetTaskId) ?? []), note]);
     });
@@ -386,11 +386,11 @@ function ReportCard({
   }, [notes]);
 
   async function handleAddNote(targetTaskId: string, noteText: string) {
-    await addRyanNote(report.id, { targetTaskId, noteText });
+    await addLeadNote(report.id, { targetTaskId, noteText });
   }
 
   function handleRemoveNote(noteId: string) {
-    removeRyanNote(report.id, noteId).catch((error: unknown) => {
+    removeLeadNote(report.id, noteId).catch((error: unknown) => {
       console.error('Failed to remove note', error);
     });
   }
@@ -408,8 +408,8 @@ function ReportCard({
       </div>
 
       <div className="mt-4">
-        <RyanNoteBlock notes={notesByTarget.get('') ?? []} onRemove={handleRemoveNote} />
-        <NoteComposer label="Ryan report note" onAdd={(noteText) => handleAddNote('', noteText)} />
+        <LeadNoteBlock notes={notesByTarget.get('') ?? []} onRemove={handleRemoveNote} />
+        <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
       </div>
 
       <div className="mt-5 space-y-4">
@@ -619,7 +619,7 @@ function TeamQuestionCard({ question }: { question: TeamQuestionWithId }) {
   );
 }
 
-export function RyanView({ leadUserId }: RyanViewProps) {
+export function LeadView({ leadUserId }: LeadViewProps) {
   const [selectedDate, setSelectedDate] = useState(() => todayDateString());
   const normalizedSelectedDate = normalizeDateString(selectedDate);
   const { reportTrees, loading } = useReportsByDate(normalizedSelectedDate);
@@ -659,7 +659,7 @@ export function RyanView({ leadUserId }: RyanViewProps) {
 
   return (
     <div className="space-y-6">
-      <RyanHeader
+      <LeadHeader
         date={normalizedSelectedDate}
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
         reportedCount={reportTrees.length}

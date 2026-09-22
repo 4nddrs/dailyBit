@@ -19,13 +19,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
+  LeadNote,
+  LeadNoteWithId,
   Question,
   QuestionWithId,
   Report,
   ReportSummary,
   ReportTree,
-  RyanNote,
-  RyanNoteWithId,
   Section,
   SectionWithTasks,
   Task,
@@ -38,7 +38,7 @@ import type {
 } from '../types';
 
 export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'>;
-export type CreateRyanNoteInput = Pick<RyanNote, 'noteText' | 'targetTaskId'>;
+export type CreateLeadNoteInput = Pick<LeadNote, 'noteText' | 'targetTaskId'>;
 export type CreateTeamQuestionInput = Pick<TeamQuestion, 'questionText' | 'options'>;
 
 const collections = {
@@ -48,7 +48,7 @@ const collections = {
   tasks: 'tasks',
   images: 'images',
   questions: 'questions',
-  ryanNotes: 'ryanNotes',
+  leadNotes: 'leadNotes',
   teamQuestions: 'teamQuestions',
 } as const;
 
@@ -96,12 +96,12 @@ function questionDoc(reportId: string, questionId: string) {
   return doc(questionsCollection(reportId), questionId);
 }
 
-function ryanNotesCollection(reportId: string) {
-  return collection(reportDoc(reportId), collections.ryanNotes);
+function leadNotesCollection(reportId: string) {
+  return collection(reportDoc(reportId), collections.leadNotes);
 }
 
-function ryanNoteDoc(reportId: string, noteId: string) {
-  return doc(ryanNotesCollection(reportId), noteId);
+function leadNoteDoc(reportId: string, noteId: string) {
+  return doc(leadNotesCollection(reportId), noteId);
 }
 
 function teamQuestionsCollection() {
@@ -188,7 +188,7 @@ export function subscribeReport(
   const tasks = new Map<string, Array<Task & { id: string }>>();
   const taskImages = new Map<string, TaskImageWithId[]>();
   const questions: QuestionWithId[] = [];
-  const notes: RyanNoteWithId[] = [];
+  const notes: LeadNoteWithId[] = [];
   const taskUnsubscribes = new Map<string, Unsubscribe>();
   const imageUnsubscribes = new Map<string, Unsubscribe>();
 
@@ -318,12 +318,12 @@ export function subscribeReport(
     emit();
   });
 
-  const notesUnsubscribe = onSnapshot(ryanNotesCollection(reportId), (snapshot) => {
+  const notesUnsubscribe = onSnapshot(leadNotesCollection(reportId), (snapshot) => {
     notes.length = 0;
     snapshot.docs.forEach((noteSnapshot) => {
       notes.push({
         id: noteSnapshot.id,
-        ...(noteSnapshot.data() as RyanNote),
+        ...(noteSnapshot.data() as LeadNote),
       });
     });
     emit();
@@ -466,19 +466,19 @@ export async function answerQuestion(
   });
 }
 
-export async function addRyanNote(
+export async function addLeadNote(
   reportId: string,
-  note: CreateRyanNoteInput,
+  note: CreateLeadNoteInput,
 ): Promise<string> {
-  const ref = await addDoc(ryanNotesCollection(reportId), {
+  const ref = await addDoc(leadNotesCollection(reportId), {
     ...note,
     createdAt: serverTimestamp(),
   });
   return ref.id;
 }
 
-export function removeRyanNote(reportId: string, noteId: string): Promise<void> {
-  return deleteDoc(ryanNoteDoc(reportId, noteId));
+export function removeLeadNote(reportId: string, noteId: string): Promise<void> {
+  return deleteDoc(leadNoteDoc(reportId, noteId));
 }
 
 export async function addTeamQuestion(question: CreateTeamQuestionInput): Promise<string> {

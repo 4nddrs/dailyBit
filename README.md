@@ -1,15 +1,15 @@
 # DailyBit
 
-DailyBit replaces the shared Word document used for daily stand-up updates: developers submit grouped daily updates, and Ryan gets a consolidated realtime dashboard for the team.
+DailyBit replaces the shared Word document used for daily stand-up updates: developers submit grouped daily updates, and the lead gets a consolidated realtime dashboard for the team.
 
 ## What it does
 
 DailyBit has two role-based views:
 
 - **DeveloperView**: each developer maintains their own daily report.
-- **RyanView**: Ryan sees the team's reports for a selected date and can respond in place.
+- **LeadView**: the lead sees the team's reports for a selected date and can respond in place.
 
-The app routes users by `users/{uid}.role`: `dev` users see DeveloperView; `lead` users see RyanView.
+The app routes users by `users/{uid}.role`: `dev` users see DeveloperView; `lead` users see LeadView.
 
 ## Quick start
 
@@ -83,7 +83,7 @@ users/{uid} = {
 }
 ```
 
-Ryan must have `role: 'lead'`. The app uses this role to choose RyanView instead of DeveloperView.
+The lead must have `role: 'lead'`. The app uses this role to choose LeadView instead of DeveloperView.
 
 ### 3. Firestore structure
 
@@ -96,11 +96,11 @@ reports/{userId}_{date}
     tasks/{taskId}
       images/{imageId}
   questions/{questionId}
-  ryanNotes/{noteId}
+  leadNotes/{noteId}
 teamQuestions/{questionId}
 ```
 
-Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-Ryan multiple-choice decisions; `ryanNotes` are Ryan's report-level or task-level notes; `teamQuestions` are Ryan's multiple-choice questions to the team.
+Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions; `leadNotes` are the lead's report-level or task-level notes; `teamQuestions` are the lead's multiple-choice questions to the team.
 
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
@@ -183,7 +183,7 @@ service cloud.firestore {
         );
       }
 
-      match /ryanNotes/{noteId} {
+      match /leadNotes/{noteId} {
         allow read: if ownsExistingReport(reportId) || isLead();
         allow write: if isLead();
       }
@@ -202,10 +202,12 @@ Security intent:
 - Authenticated developers can read and write their own report tree.
 - Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
-- Only users with `role: 'lead'` can write `ryanNotes`.
+- Only users with `role: 'lead'` can write `leadNotes`.
 - Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`.
 - Only users with `role: 'lead'` can write `teamQuestions`.
 - Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
+
+> **Note:** the lead's private-notes collection was renamed to `leadNotes`. If your Firestore security rules were already deployed with the previous collection name, redeploy the rules above before using this build, or the lead's notes will be rejected.
 
 ## Usage
 
@@ -214,14 +216,14 @@ Security intent:
 - Creates today's report automatically after sign-in.
 - Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
 - Keeps task descriptions short with a 140-character limit.
-- Lets developers attach compressed images directly in Firestore, add supporting links, and send multiple-choice questions to Ryan.
+- Lets developers attach compressed images directly in Firestore, add supporting links, and send multiple-choice questions to the lead.
 
-### RyanView
+### LeadView
 
 - Shows a date-based rollup of submitted reports, including reported count for the team.
 - Displays each developer's sections, tasks, links, Firestore-stored images, and questions in realtime.
-- Lets Ryan add report-level or task-level notes.
-- Lets Ryan answer developer questions and post multiple-choice questions to the team.
+- Lets the lead add report-level or task-level notes.
+- Lets the lead answer developer questions and post multiple-choice questions to the team.
 
 ## Data model
 
@@ -232,16 +234,16 @@ Security intent:
 | `reports/{reportId}/sections/{sectionId}` | Ordered group headings for a daily report. |
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `links` and `order`. |
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}/images/{imageId}` | Task image document with `imageBase64` data URL and `createdAt`; one doc per image, so the 1 MB limit applies per image doc. |
-| `reports/{reportId}/questions/{questionId}` | Developer-to-Ryan multiple-choice questions and Ryan's selected answer. |
-| `reports/{reportId}/ryanNotes/{noteId}` | Ryan's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
-| `teamQuestions/{questionId}` | Ryan-to-team multiple-choice prompts. |
+| `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. |
+| `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
+| `teamQuestions/{questionId}` | Lead-to-team multiple-choice prompts. |
 
 ## Roles
 
 | Role | User | View | Permissions in the app |
 | --- | --- | --- | --- |
-| `dev` | Engineers | DeveloperView | Create and edit their own daily report; add tasks, images, links, and questions to Ryan. |
-| `lead` | Ryan | RyanView | Read team reports; add notes; answer developer questions; post team questions. |
+| `dev` | Engineers | DeveloperView | Create and edit their own daily report; add tasks, images, links, and questions to the lead. |
+| `lead` | Team lead | LeadView | Read team reports; add notes; answer developer questions; post team questions. |
 
 ## Development
 

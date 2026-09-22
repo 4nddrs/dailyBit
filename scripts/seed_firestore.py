@@ -228,7 +228,7 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                 },
             },
             {
-                "path": f"reports/{sofia_today}/ryanNotes/report-login-polish",
+                "path": f"reports/{sofia_today}/leadNotes/report-login-polish",
                 "data": {
                     "noteText": "Great progress on the login polish.",
                     "targetTaskId": "",
@@ -236,7 +236,7 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                 },
             },
             {
-                "path": f"reports/{sofia_today}/ryanNotes/date-picker-edge-case",
+                "path": f"reports/{sofia_today}/leadNotes/date-picker-edge-case",
                 "data": {
                     "noteText": "Nice catch on the empty date edge case.",
                     "targetTaskId": SOFIA_DATE_PICKER_TASK_ID,
@@ -282,7 +282,7 @@ def read_back(db: firestore.Client, today: str) -> dict[str, int]:
         "users": len(list(db.collection("users").stream())),
         "reports_today": len(list(db.collection("reports").where("date", "==", today).stream())),
         "questions": len(list(db.collection_group("questions").stream())),
-        "ryanNotes": len(list(db.collection_group("ryanNotes").stream())),
+        "leadNotes": len(list(db.collection_group("leadNotes").stream())),
         "images": len(list(db.collection_group("images").stream())),
         "teamQuestions": len(list(db.collection("teamQuestions").stream())),
     }

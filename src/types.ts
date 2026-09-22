@@ -48,7 +48,7 @@ export interface Question {
   answeredAt?: Timestamp;
 }
 
-export interface RyanNote {
+export interface LeadNote {
   noteText: string;
   targetTaskId: string;
   createdAt: Timestamp;
@@ -67,7 +67,7 @@ export type SectionData = Section;
 export type TaskData = Task;
 export type TaskLinkData = TaskLink;
 export type QuestionData = Question;
-export type RyanNoteData = RyanNote;
+export type LeadNoteData = LeadNote;
 export type TeamQuestionData = TeamQuestion;
 
 export interface TaskWithId extends Task {
@@ -84,7 +84,7 @@ export interface QuestionWithId extends Question {
   id: string;
 }
 
-export interface RyanNoteWithId extends RyanNote {
+export interface LeadNoteWithId extends LeadNote {
   id: string;
 }
 
@@ -92,7 +92,7 @@ export interface ReportTree extends Report {
   id: string;
   sections: SectionWithTasks[];
   questions?: QuestionWithId[];
-  notes?: RyanNoteWithId[];
+  notes?: LeadNoteWithId[];
 }
 
 export interface ReportSummary extends Report {

@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { DeveloperView } from './components/DeveloperView';
-import { RyanView } from './components/RyanView';
+import { LeadView } from './components/LeadView';
 import { signIn, signUp } from './services/auth';
 import { useAuth } from './hooks/useAuth';
 
@@ -143,7 +143,7 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
 
         <div className="mt-6">
           {profile?.role === 'lead' ? (
-            <RyanView leadUserId={user.uid} />
+            <LeadView leadUserId={user.uid} />
           ) : (
             <DeveloperView userId={user.uid} developerName={profile?.name ?? user.email ?? 'Developer'} />
           )}
