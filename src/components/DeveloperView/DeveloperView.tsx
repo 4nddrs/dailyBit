@@ -454,11 +454,7 @@ function TaskCard({
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-line bg-canvas-inset text-xs text-fg-muted">
-              No image
-            </div>
-          )}
+          ) : null}
           <input
             ref={fileInputRef}
             className="sr-only"

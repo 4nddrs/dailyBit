@@ -240,7 +240,7 @@ function TaskCard({
 }) {
   return (
     <article className="rounded-2xl border border-line bg-canvas-subtle p-4">
-      <div className="grid gap-4 md:grid-cols-[7rem_1fr]">
+      <div className={`grid gap-4 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {task.images.map((image) => (
@@ -259,11 +259,7 @@ function TaskCard({
               </a>
             ))}
           </div>
-        ) : (
-          <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-line bg-canvas-inset text-xs text-fg-muted">
-            No image
-          </div>
-        )}
+        ) : null}
 
         <div className="min-w-0">
           <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>

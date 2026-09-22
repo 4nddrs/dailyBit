@@ -40,10 +40,10 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
   will be asked before any PR is opened. Work-unit commits on feature/dailybit-mvp.
 
 ## Tasks
-- [ ] T1 — Rename Ryan → Lead everywhere (folders, components, identifiers, UI copy,
+- [x] T1 — Rename Ryan → Lead everywhere (folders, components, identifiers, UI copy,
       `ryanNotes` → `leadNotes`, types, seed, README rules). Route: delegated (writer
       trigger: 5+ files).
-- [ ] T2 — Remove "No image" placeholders in both views. Route: delegated with T3 writer
+- [x] T2 — Remove "No image" placeholders in both views. Route: delegated with T3 writer
       or inline (1–2 files).
 - [ ] T3 — Per-task lead questions (text/options) + hover Question/Note bar in Lead View,
       answering in Developer View, remove `teamQuestions`. Route: delegated (writer
@@ -58,7 +58,8 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
 - tsc + build pass.
 
 ## Progress
-- (none yet)
+- T1: commit `2d82944`; review `review-76ced42d772140d9` APPROVED (4 lenses, no findings). tsc/build/py_compile OK; `grep -rni ryan` empty.
+- T2: done inline (2 files, mechanical). Lead View drops the image column when a task has no images. tsc OK.
 
 ## Next step
-- T1.
+- T3.
