@@ -61,7 +61,7 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
 - T1: commit `2d82944`; review `review-76ced42d772140d9` APPROVED (4 lenses, no findings). tsc/build/py_compile OK; `grep -rni ryan` empty.
 - T2: done inline (2 files, mechanical). Lead View drops the image column when a task has no images. tsc OK.
 
-- T3: delegated writer (4+ files). `leadQuestions` subcollection (kind text|options), hover Question/Note bar, dev answers/re-answers, cascade delete of lead questions/notes with task/section, teamQuestions removed, README rules + seed updated. tsc/build/py_compile OK; grep teamQuestion/ryan empty. Composers stay open after submit (flagged).
+- T3: delegated writer (4+ files). `leadQuestions` subcollection (kind text|options), hover Question/Note bar, dev answers/re-answers, cascade delete of lead questions/notes with task/section, teamQuestions removed, README rules + seed updated. tsc/build/py_compile OK; grep teamQuestion/ryan empty. Composers stay open after submit (flagged). First review `review-084c9903cfc06b93` escalated: options: undefined rejected by Firestore for text questions; dev task delete denied by lead-only delete rules. Fixed (conditional options payload; owner may delete leadNotes/leadQuestions). Re-review `review-5a11a140c56ed8a9` APPROVED. Commit `33a98f6`.
 
 ## Next step
 - User deploys updated Firestore rules (leadNotes, leadQuestions) before using the build.
