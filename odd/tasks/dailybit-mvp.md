@@ -83,6 +83,12 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 - Accepted low-risk minors: index-derived keys on dynamic option/link lists
 - Not verified: live browser/Firebase runtime; deployed rules (README rules are a starting point)
 
+### Close-out — independent fix verification — DONE
+- Commit: `b3a6cea` (feature/dailybit-mvp)
+- Native review: consent declined for both candidates (scaffold+UI range, RyanView fix) — candidate-scoped, no lineage created
+- ASSESS plan followed: writer self-verification + independent verifier (gentle-ai-verify) on the fix candidate — all 5 checks PASS, typecheck/build exit 0
+- Untracked `key.json` at repo root excluded from review candidate; flagged to user (possible credentials)
+
 ### Task 1 — Scaffold + core services — DONE
 - Commit: `af8c81c` (feature/dailybit-mvp) — 20 files, 4709 insertions
 - Writer: gentle-ai-worker (scaffold + services + auth gate)
