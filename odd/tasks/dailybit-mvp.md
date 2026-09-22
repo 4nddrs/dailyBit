@@ -62,7 +62,8 @@ teamQuestions/{questionId}         # Ryan -> team (global, not per-report)
 - Commit `88103a0`: Firestore profile subscription errors now surface as a readable panel instead of infinite "Loading DailyBit...". Native review lineage `review-f46967940747d5c3` APPROVED; 3 advisory follow-ups: error-lockout without retry (App.tsx 167-181), raw error exposure (172), untested failure path (useAuth 42-45).
 - Root causes on user side (resolved in console): missing .env.local (blank page), Email/Password provider disabled (auth/configuration-not-found), Firestore/rules (infinite loading).
 
-### Task 8 — Multiple images per task (images subcollection) — IN PROGRESS
+### Task 8 — Multiple images per task (images subcollection) — DONE
+- Commit: `a475a1f`; native review `review-4c598345aad90947` APPROVED (4 lenses, no findings), acknowledged.
 - User decision (2026-09-22): unlimited images per task via subcollection `tasks/{taskId}/images`
   (each image its own doc, so the 1MB limit applies per image, not per task). Chosen over
   a capped in-doc array to avoid aggressive recompression.
