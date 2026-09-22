@@ -34,24 +34,24 @@ function AuthForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
-      <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <section className="w-full max-w-md rounded-2xl border border-line bg-canvas p-8">
         <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">DailyBit</p>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-950">
+          <p className="text-sm font-semibold uppercase tracking-wide text-accent-fg">DailyBit</p>
+          <h1 className="mt-2 text-3xl font-semibold text-fg">
             {isSignUp ? 'Create your account' : 'Welcome back'}
           </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
+          <p className="mt-3 text-sm leading-6 text-fg-muted">
             Sign in to manage daily reports and team questions.
           </p>
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           {isSignUp ? (
-            <label className="block text-sm font-medium text-slate-700">
+            <label className="block text-sm font-medium text-fg">
               Name
               <input
-                className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-950 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
                 type="text"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -61,10 +61,10 @@ function AuthForm() {
             </label>
           ) : null}
 
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-fg">
             Email
             <input
-              className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-950 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -73,10 +73,10 @@ function AuthForm() {
             />
           </label>
 
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-fg">
             Password
             <input
-              className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-950 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -87,11 +87,11 @@ function AuthForm() {
           </label>
 
           {error ? (
-            <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
+            <p className="rounded-lg bg-danger-muted px-3 py-2 text-sm text-danger-fg">{error}</p>
           ) : null}
 
           <button
-            className="w-full rounded-lg bg-sky-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg border border-white/15 bg-success-emphasis px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-60"
             type="submit"
             disabled={submitting}
           >
@@ -100,7 +100,7 @@ function AuthForm() {
         </form>
 
         <button
-          className="mt-5 w-full text-sm font-medium text-sky-700 hover:text-sky-900"
+          className="mt-5 w-full text-sm font-medium text-accent-fg hover:underline"
           type="button"
           onClick={() => {
             setError(null);
@@ -122,18 +122,18 @@ interface AppShellProps {
 
 function AppShell({ user, profile, signOut }: AppShellProps) {
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8">
+    <main className="min-h-screen bg-canvas px-6 py-8">
       <div className="mx-auto max-w-6xl">
-        <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <header className="flex flex-col gap-4 rounded-2xl border border-line bg-canvas p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-sky-700">DailyBit</p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-950">
+            <p className="text-sm font-semibold uppercase tracking-wide text-accent-fg">DailyBit</p>
+            <h1 className="mt-2 text-3xl font-semibold text-fg">
               {profile?.name ?? 'DailyBit user'}
             </h1>
-            <p className="mt-2 text-sm text-slate-600">Role: {profile?.role ?? 'loading...'}</p>
+            <p className="mt-2 text-sm text-fg-muted">Role: {profile?.role ?? 'loading...'}</p>
           </div>
           <button
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+            className="rounded-lg border border-line bg-control px-4 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover"
             type="button"
             onClick={() => void signOut()}
           >
@@ -158,7 +158,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
+      <main className="flex min-h-screen items-center justify-center bg-canvas text-fg-muted">
         Loading DailyBit...
       </main>
     );
@@ -166,11 +166,11 @@ export default function App() {
 
   if (profileError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10">
-        <section className="w-full max-w-lg rounded-2xl border border-rose-200 bg-rose-50 p-8 shadow-sm">
-          <h1 className="text-2xl font-semibold text-rose-950">Could not load your profile</h1>
-          <p className="mt-4 text-sm leading-6 text-rose-800">{profileError}</p>
-          <p className="mt-3 text-sm leading-6 text-rose-700">
+      <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+        <section className="w-full max-w-lg rounded-2xl border border-danger-emphasis/50 bg-danger-muted p-8">
+          <h1 className="text-2xl font-semibold text-danger-fg">Could not load your profile</h1>
+          <p className="mt-4 text-sm leading-6 text-fg">{profileError}</p>
+          <p className="mt-3 text-sm leading-6 text-fg-muted">
             Check that the Firestore database exists and its rules allow authenticated reads of the
             users collection, then reload.
           </p>

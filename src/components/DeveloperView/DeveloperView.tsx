@@ -108,17 +108,17 @@ async function compressTaskImage(file: File): Promise<string> {
 
 function Header({ date, developerName }: { date?: string; developerName: string }) {
   return (
-    <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <header className="rounded-3xl border border-line bg-canvas p-6">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">DailyBit</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-fg">DailyBit</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-fg">
             {formatDisplayDate(date)}
           </h1>
-          <p className="mt-2 text-sm text-slate-500">{developerName}</p>
+          <p className="mt-2 text-sm text-fg-muted">{developerName}</p>
         </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-3 py-1.5 text-sm font-medium text-success-fg">
+          <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
           Everything saves automatically
         </div>
       </div>
@@ -128,9 +128,9 @@ function Header({ date, developerName }: { date?: string; developerName: string 
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 px-5 py-8 text-center">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
+    <div className="rounded-2xl border border-dashed border-line bg-canvas-inset px-5 py-8 text-center">
+      <h3 className="text-sm font-semibold text-fg">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-fg-muted">{description}</p>
     </div>
   );
 }
@@ -158,7 +158,7 @@ function SectionTitle({
 
   return (
     <input
-      className="w-full rounded-xl border border-transparent bg-transparent px-2 py-1 text-lg font-semibold text-slate-950 outline-none transition hover:border-slate-200 focus:border-sky-300 focus:bg-white focus:ring-2 focus:ring-sky-100"
+      className="w-full rounded-xl border border-transparent bg-transparent px-2 py-1 text-lg font-semibold text-fg outline-none transition hover:border-line focus:border-accent-emphasis focus:bg-canvas-subtle focus:ring-2 focus:ring-accent-emphasis"
       value={title}
       onChange={(event) => setTitle(event.target.value)}
       onBlur={persistTitle}
@@ -196,14 +196,14 @@ function AddSectionForm({ reportId, sections }: { reportId: string; sections: Se
   return (
     <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSubmit}>
       <input
-        className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+        className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         placeholder="Add main title"
         aria-label="Add main title"
       />
       <button
-        className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-xl border border-white/15 bg-success-emphasis px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
         type="submit"
         disabled={!title.trim()}
       >
@@ -244,7 +244,7 @@ function AddTaskForm({
   return (
     <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
       <input
-        className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+        className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         placeholder="Add a short task, then press Enter"
@@ -252,7 +252,7 @@ function AddTaskForm({
         aria-label="New task description"
       />
       <button
-        className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
         type="submit"
         disabled={!description.trim()}
       >
@@ -292,14 +292,14 @@ function TaskLinks({
         <div className="flex flex-wrap gap-2">
           {links.map((link, index) => (
             <span
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700"
+              className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted"
               key={`${link.url}-${index}`}
             >
-              <a className="max-w-[12rem] truncate hover:text-sky-700" href={link.url} target="_blank" rel="noreferrer">
+              <a className="max-w-[12rem] truncate hover:text-accent-fg" href={link.url} target="_blank" rel="noreferrer">
                 {link.label || link.url}
               </a>
               <button
-                className="text-slate-400 transition hover:text-rose-600"
+                className="text-danger-fg transition hover:text-danger-fg"
                 type="button"
                 onClick={() => onChange(links.filter((_, linkIndex) => linkIndex !== index))}
                 aria-label={`Remove link ${link.label || link.url}`}
@@ -313,21 +313,21 @@ function TaskLinks({
 
       <form className="grid gap-2 md:grid-cols-[1fr_9rem_auto]" onSubmit={handleSubmit}>
         <input
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+          className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://..."
           aria-label="Link URL"
         />
         <input
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+          className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
           value={label}
           onChange={(event) => setLabel(event.target.value)}
           placeholder="Label"
           aria-label="Link label"
         />
         <button
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!isValidUrl(url.trim())}
         >
@@ -357,7 +357,7 @@ function TaskCard({
   }, [task.description]);
 
   const charactersRemaining = TASK_DESCRIPTION_LIMIT - description.length;
-  const counterColor = charactersRemaining <= 10 ? 'text-rose-600' : charactersRemaining <= 25 ? 'text-amber-600' : 'text-slate-400';
+  const counterColor = charactersRemaining <= 10 ? 'text-danger-fg' : charactersRemaining <= 25 ? 'text-attention-fg' : 'text-fg-muted';
 
   function persistDescription() {
     const nextDescription = description.trim();
@@ -398,13 +398,13 @@ function TaskCard({
   }
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-2xl border border-line bg-canvas-subtle p-4">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
             Task
             <input
-              className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              className="mt-2 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               onBlur={persistDescription}
@@ -421,7 +421,7 @@ function TaskCard({
           </p>
         </div>
         <button
-          className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+          className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
           type="button"
           onClick={() => runSafely(removeTask(reportId, sectionId, task.id), 'Task remove failed')}
           aria-label="Remove task"
@@ -438,13 +438,13 @@ function TaskCard({
                 <div className="relative" key={image.id}>
                   <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
                     <img
-                      className="h-24 w-full rounded-xl border border-slate-200 object-cover transition hover:opacity-90"
+                      className="h-24 w-full rounded-xl border border-line object-cover transition hover:opacity-90"
                       src={image.imageBase64}
                       alt="Task attachment preview"
                     />
                   </a>
                   <button
-                    className="absolute right-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-rose-50 hover:text-rose-600"
+                    className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
                     type="button"
                     onClick={() => handleRemoveImage(image.id)}
                     aria-label="Remove image"
@@ -455,7 +455,7 @@ function TaskCard({
               ))}
             </div>
           ) : (
-            <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
+            <div className="flex h-28 items-center justify-center rounded-xl border border-dashed border-line bg-canvas-inset text-xs text-fg-muted">
               No image
             </div>
           )}
@@ -468,7 +468,7 @@ function TaskCard({
           />
           <div className="mt-2 flex gap-2">
             <button
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex flex-1 items-center justify-center rounded-xl border border-line bg-control px-3 py-2 text-xs font-semibold text-fg transition hover:bg-control-hover disabled:cursor-wait disabled:opacity-60"
               type="button"
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
@@ -477,7 +477,7 @@ function TaskCard({
             </button>
           </div>
           {uploadError && (
-            <p className="mt-1 text-xs font-medium text-rose-600" role="alert">{uploadError}</p>
+            <p className="mt-1 text-xs font-medium text-danger-fg" role="alert">{uploadError}</p>
           )}
         </div>
 
@@ -495,11 +495,11 @@ function SectionCard({
   section: SectionWithTasks;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+    <section className="rounded-3xl border border-line bg-canvas-subtle p-4">
       <div className="flex items-center gap-3">
         <SectionTitle reportId={reportId} section={section} />
         <button
-          className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+          className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
           type="button"
           onClick={() => runSafely(removeSection(reportId, section.id), 'Section remove failed')}
         >
@@ -542,11 +542,11 @@ function SectionsList({
   );
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-3xl border border-line bg-canvas p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-950">Today’s work</h2>
-          <p className="mt-1 text-sm text-slate-500">Group related work under clear main titles.</p>
+          <h2 className="text-xl font-semibold text-fg">Today’s work</h2>
+          <p className="mt-1 text-sm text-fg-muted">Group related work under clear main titles.</p>
         </div>
       </div>
 
@@ -612,11 +612,11 @@ function QuestionComposer({ reportId }: { reportId: string }) {
   }
 
   return (
-    <form className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4" onSubmit={handleSubmit}>
-      <label className="block text-sm font-medium text-slate-700">
+    <form className="rounded-2xl border border-done-emphasis/40 bg-done-muted p-4" onSubmit={handleSubmit}>
+      <label className="block text-sm font-medium text-done-fg">
         Question for Ryan
         <input
-          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+          className="mt-2 w-full rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
           placeholder="What should Ryan decide?"
@@ -626,17 +626,17 @@ function QuestionComposer({ reportId }: { reportId: string }) {
       <div className="mt-4 space-y-2">
         {options.map((option, index) => (
           <div className="flex items-center gap-2" key={index}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
               {optionLabels[index]}
             </span>
             <input
-              className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              className="min-w-0 flex-1 rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
               value={option}
               onChange={(event) => updateOption(index, event.target.value)}
               placeholder={`Option ${optionLabels[index]}`}
             />
             <button
-              className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
               type="button"
               disabled={options.length <= QUESTION_OPTION_MINIMUM}
               onClick={() => removeOption(index)}
@@ -649,7 +649,7 @@ function QuestionComposer({ reportId }: { reportId: string }) {
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
         <button
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           disabled={options.length >= QUESTION_OPTION_LIMIT}
           onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
@@ -657,7 +657,7 @@ function QuestionComposer({ reportId }: { reportId: string }) {
           Add option
         </button>
         <button
-          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-white/15 bg-success-emphasis px-4 py-2 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!questionText.trim() || options.filter((option) => option.trim()).length < QUESTION_OPTION_MINIMUM}
         >
@@ -673,16 +673,16 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
   const answerText = isAnswered ? question.options[question.selectedAnswer ?? 0] : undefined;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-950">{question.questionText}</p>
-          <p className={`mt-2 text-xs font-semibold ${isAnswered ? 'text-emerald-700' : 'text-amber-700'}`}>
+          <p className="text-sm font-semibold text-fg">{question.questionText}</p>
+          <p className={`mt-2 text-xs font-semibold ${isAnswered ? 'text-success-fg' : 'text-attention-fg'}`}>
             {isAnswered ? `Answered: ${answerText}` : 'Pending Ryan’s answer'}
           </p>
         </div>
         <button
-          className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+          className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
           type="button"
           onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
         >
@@ -694,8 +694,8 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
           <span
             className={`rounded-full border px-3 py-1 text-xs font-medium ${
               question.selectedAnswer === index
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-slate-200 bg-slate-50 text-slate-600'
+                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                : 'border-line bg-canvas-subtle text-fg-muted'
             }`}
             key={`${option}-${index}`}
           >
@@ -709,10 +709,10 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
 
 function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questions?: QuestionWithId[] }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5">
       <div>
-        <h2 className="text-xl font-semibold text-slate-950">Questions to Ryan</h2>
-        <p className="mt-1 text-sm text-slate-500">Use multiple choice when you need a fast answer.</p>
+        <h2 className="text-xl font-semibold text-fg">Questions to Ryan</h2>
+        <p className="mt-1 text-sm text-fg-muted">Use multiple choice when you need a fast answer.</p>
       </div>
 
       <div className="mt-5">
@@ -740,7 +740,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
     return (
       <div className="space-y-6">
         <Header developerName={developerName} />
-        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+        <div className="rounded-3xl border border-line bg-canvas p-8 text-sm text-fg-muted">
           Preparing today’s report...
         </div>
       </div>
@@ -751,7 +751,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
     return (
       <div className="space-y-6">
         <Header developerName={developerName} />
-        <div className="rounded-3xl border border-rose-200 bg-rose-50 p-8 text-sm text-rose-700">
+        <div className="rounded-3xl border border-danger-emphasis/40 bg-danger-muted p-8 text-sm text-danger-fg">
           Today’s report could not be loaded. Please refresh and try again.
         </div>
       </div>

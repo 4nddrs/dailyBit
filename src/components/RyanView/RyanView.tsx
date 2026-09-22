@@ -63,9 +63,9 @@ function getOptionLabel(index: number): string {
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-5 py-8 text-center">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">{description}</p>
+    <div className="rounded-2xl border border-dashed border-line bg-canvas-inset px-5 py-8 text-center">
+      <h3 className="text-sm font-semibold text-fg">{title}</h3>
+      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-fg-muted">{description}</p>
     </div>
   );
 }
@@ -82,30 +82,30 @@ function RyanHeader({
   totalDeveloperCount: number;
 }) {
   return (
-    <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+    <header className="rounded-3xl border border-line bg-canvas p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">RyanView</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-fg">RyanView</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-fg">
             {formatDisplayDate(date)}
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-fg-muted">
             {reportedCount} of {totalDeveloperCount} developers reported
           </p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-fg">
             Report date
             <input
-              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100 sm:w-44"
+              className="mt-2 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis sm:w-44"
               type="date"
               value={date}
               onChange={(event) => onDateChange(event.target.value)}
             />
           </label>
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-3 py-1.5 text-sm font-medium text-success-fg">
+            <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
             Live
           </div>
         </div>
@@ -123,7 +123,7 @@ function LinkChips({ links = [] }: { links?: TaskLink[] }) {
     <div className="mt-3 flex flex-wrap gap-2">
       {links.map((link, index) => (
         <a
-          className="max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+          className="max-w-full truncate rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted transition hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg"
           href={link.url}
           key={`${link.url}-${index}`}
           rel="noreferrer"
@@ -151,12 +151,12 @@ function RyanNoteBlock({
     <div className="mt-3 space-y-2">
       {notes.map((note) => (
         <div
-          className="flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-sm text-amber-950"
+          className="flex items-start justify-between gap-3 rounded-xl border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
           key={note.id}
         >
-          <p className="border-l-4 border-amber-400 pl-3 leading-6">{note.noteText}</p>
+          <p className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</p>
           <button
-            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 hover:text-rose-700"
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
             type="button"
             onClick={() => onRemove(note.id)}
           >
@@ -201,20 +201,20 @@ function NoteComposer({
   }
 
   return (
-    <form className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/50 p-3" onSubmit={handleSubmit}>
-      <label className="block text-xs font-semibold uppercase tracking-wide text-amber-700">
+    <form className="mt-3 rounded-2xl border border-attention-emphasis/60 bg-attention-muted p-3" onSubmit={handleSubmit}>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-attention-fg">
         {label}
         <textarea
-          className="mt-2 min-h-20 w-full resize-y rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+          className="mt-2 min-h-20 w-full resize-y rounded-xl border border-attention-emphasis/60 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-attention-emphasis focus:ring-2 focus:ring-attention-muted"
           value={noteText}
           onChange={(event) => setNoteText(event.target.value)}
           placeholder="Add a private Ryan note"
         />
       </label>
-      {error ? <p className="mt-2 text-xs font-medium text-rose-600">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
       <div className="mt-2 flex justify-end">
         <button
-          className="rounded-xl bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl bg-attention-emphasis px-3 py-2 text-sm font-semibold text-white transition hover:bg-attention-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!noteText.trim() || submitting}
         >
@@ -239,7 +239,7 @@ function TaskCard({
   onRemoveNote: (noteId: string) => void;
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-2xl border border-line bg-canvas-subtle p-4">
       <div className="grid gap-4 md:grid-cols-[7rem_1fr]">
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -252,7 +252,7 @@ function TaskCard({
                 aria-label="Open task image"
               >
                 <img
-                  className="h-24 w-24 rounded-xl border border-slate-200 object-cover transition hover:opacity-90"
+                  className="h-24 w-24 rounded-xl border border-line object-cover transition hover:opacity-90"
                   src={image.imageBase64}
                   alt="Task attachment thumbnail"
                 />
@@ -260,13 +260,13 @@ function TaskCard({
             ))}
           </div>
         ) : (
-          <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">
+          <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-line bg-canvas-inset text-xs text-fg-muted">
             No image
           </div>
         )}
 
         <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-slate-950">{task.description}</p>
+          <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>
           <LinkChips links={task.links} />
         </div>
       </div>
@@ -292,8 +292,8 @@ function SectionCard({
   onRemoveNote: (noteId: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-      <h3 className="text-base font-semibold text-slate-950">{section.title}</h3>
+    <section className="rounded-2xl border border-line bg-canvas-subtle p-4">
+      <h3 className="text-base font-semibold text-fg">{section.title}</h3>
       <div className="mt-4 space-y-3">
         {section.tasks.length > 0 ? (
           section.tasks.map((task) => (
@@ -340,8 +340,8 @@ function QuestionCard({
   }
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm font-semibold leading-6 text-slate-950">{question.questionText}</p>
+    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
+      <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {question.options.map((option, index) => {
           const selected = question.selectedAnswer === index;
@@ -349,8 +349,8 @@ function QuestionCard({
             <button
               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
                 selected
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700'
+                  ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                  : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
               }`}
               key={`${option}-${index}`}
               type="button"
@@ -362,7 +362,7 @@ function QuestionCard({
           );
         })}
       </div>
-      {answerError ? <p className="mt-2 text-xs font-medium text-rose-600" role="alert">{answerError}</p> : null}
+      {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
     </article>
   );
 }
@@ -396,13 +396,13 @@ function ReportCard({
   }
 
   return (
-    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+    <article className="rounded-3xl border border-line bg-canvas p-5">
+      <div className="flex flex-col gap-3 border-b border-line-muted pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-950">{developerName}</h2>
-          <p className="mt-1 text-sm text-slate-500">{report.sections.length} sections · {report.questions?.length ?? 0} questions</p>
+          <h2 className="text-xl font-semibold text-fg">{developerName}</h2>
+          <p className="mt-1 text-sm text-fg-muted">{report.sections.length} sections · {report.questions?.length ?? 0} questions</p>
         </div>
-        <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+        <span className="w-fit rounded-full bg-neutral-muted px-3 py-1 text-xs font-semibold text-fg">
           {report.userId}
         </span>
       </div>
@@ -429,8 +429,8 @@ function ReportCard({
         )}
       </div>
 
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-        <h3 className="text-base font-semibold text-slate-950">Questions from {developerName}</h3>
+      <section className="mt-5 rounded-2xl border border-line bg-canvas-subtle p-4">
+        <h3 className="text-base font-semibold text-fg">Questions from {developerName}</h3>
         <div className="mt-4 space-y-3">
           {report.questions && report.questions.length > 0 ? (
             report.questions.map((question) => (
@@ -488,16 +488,16 @@ function AskTeamComposer() {
   }
 
   return (
-    <form className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" onSubmit={handleSubmit}>
+    <form className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5" onSubmit={handleSubmit}>
       <div>
-        <h2 className="text-xl font-semibold text-slate-950">Ask the team</h2>
-        <p className="mt-1 text-sm text-slate-500">Post a multiple-choice question for quick team input.</p>
+        <h2 className="text-xl font-semibold text-fg">Ask the team</h2>
+        <p className="mt-1 text-sm text-fg-muted">Post a multiple-choice question for quick team input.</p>
       </div>
 
-      <label className="mt-5 block text-sm font-medium text-slate-700">
+      <label className="mt-5 block text-sm font-medium text-done-fg">
         Question
         <input
-          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+          className="mt-2 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
           placeholder="What should the team decide?"
@@ -507,17 +507,17 @@ function AskTeamComposer() {
       <div className="mt-4 space-y-2">
         {options.map((option, index) => (
           <div className="flex items-center gap-2" key={index}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
               {getOptionLabel(index)}
             </span>
             <input
-              className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
+              className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
               value={option}
               onChange={(event) => updateOption(index, event.target.value)}
               placeholder={`Option ${getOptionLabel(index)}`}
             />
             <button
-              className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
               type="button"
               disabled={options.length <= QUESTION_OPTION_MINIMUM}
               onClick={() => removeOption(index)}
@@ -528,11 +528,11 @@ function AskTeamComposer() {
         ))}
       </div>
 
-      {error ? <p className="mt-3 text-sm font-medium text-rose-600">{error}</p> : null}
+      {error ? <p className="mt-3 text-sm font-medium text-danger-fg">{error}</p> : null}
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
         <button
-          className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           disabled={options.length >= QUESTION_OPTION_LIMIT}
           onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
@@ -540,7 +540,7 @@ function AskTeamComposer() {
           Add option
         </button>
         <button
-          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-white/15 bg-success-emphasis px-4 py-2 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={submitting || !questionText.trim() || options.filter((option) => option.trim()).length < QUESTION_OPTION_MINIMUM}
         >
@@ -565,15 +565,15 @@ function TeamQuestionsPanel() {
   }, []);
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5">
       <div>
-        <h2 className="text-xl font-semibold text-slate-950">Team questions</h2>
-        <p className="mt-1 text-sm text-slate-500">Selection counts update as developers answer.</p>
+        <h2 className="text-xl font-semibold text-fg">Team questions</h2>
+        <p className="mt-1 text-sm text-fg-muted">Selection counts update as developers answer.</p>
       </div>
 
       <div className="mt-5 space-y-3">
         {loading ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+          <div className="rounded-2xl border border-line bg-canvas-subtle p-4 text-sm text-fg-muted">
             Loading team questions...
           </div>
         ) : teamQuestions.length > 0 ? (
@@ -592,10 +592,10 @@ function TeamQuestionCard({ question }: { question: TeamQuestionWithId }) {
   const totalSelections = selectedAnswerValues.length;
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <p className="text-sm font-semibold leading-6 text-slate-950">{question.questionText}</p>
-        <span className="w-fit rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <span className="w-fit rounded-full bg-neutral-muted px-3 py-1 text-xs font-semibold text-fg">
           {totalSelections} selections
         </span>
       </div>
@@ -604,12 +604,12 @@ function TeamQuestionCard({ question }: { question: TeamQuestionWithId }) {
           const count = selectedAnswerValues.filter((answerIndex) => answerIndex === index).length;
           return (
             <div
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+              className="rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg"
               key={`${option}-${index}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="font-medium">{getOptionLabel(index)}. {option}</span>
-                <span className="text-xs font-semibold text-slate-500">{count}</span>
+                <span className="text-xs font-semibold text-fg-muted">{count}</span>
               </div>
             </div>
           );
@@ -669,7 +669,7 @@ export function RyanView({ leadUserId }: RyanViewProps) {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <section className="space-y-4">
           {loading ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500 shadow-sm">
+            <div className="rounded-3xl border border-line bg-canvas p-8 text-sm text-fg-muted">
               Loading reports...
             </div>
           ) : reportTrees.length > 0 ? (
