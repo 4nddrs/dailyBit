@@ -139,17 +139,17 @@ function Header({
   onDateChange: (date: string) => void;
 }) {
   return (
-    <header className="rounded-md border border-line bg-canvas-subtle px-4 py-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <header className="rounded-md border border-line bg-canvas shadow-sm">
+      <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-fg">{formatDisplayDate(date)}</h1>
+          <h1 className="text-base font-semibold text-fg">{formatDisplayDate(date)}</h1>
           <p className="mt-1 text-sm text-fg-muted">{developerName}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-medium text-fg">
           Report date
           <input
-            className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            className="rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             type="date"
             value={date}
             max={todayDateString()}
@@ -172,7 +172,7 @@ function Header({
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <p className="px-4 py-3 text-sm text-fg-muted">
+    <p className="px-4 py-6 text-center text-sm text-fg-muted">
       <span className="font-medium text-fg">{title}.</span> {description}
     </p>
   );
@@ -245,7 +245,7 @@ function AddSectionForm({
   return (
     <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
       <input
-        className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         placeholder="Add main title"
@@ -293,7 +293,7 @@ function AddTaskForm({
   return (
     <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
       <input
-        className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         placeholder="Add a short task, then press Enter"
@@ -349,7 +349,7 @@ function IconButton({
 }) {
   return (
     <button
-      className={`rounded-md p-1.5 text-fg-muted transition ${
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition ${
         danger ? 'hover:bg-danger-muted hover:text-danger-fg' : 'hover:bg-control-hover hover:text-fg'
       }`}
       type="button"
@@ -494,7 +494,7 @@ function LinkForm({
       }}
     >
       <input
-        className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        className="rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={url}
         onChange={(event) => setUrl(event.target.value)}
         placeholder="https://..."
@@ -502,21 +502,21 @@ function LinkForm({
         autoFocus
       />
       <input
-        className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        className="rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={label}
         onChange={(event) => setLabel(event.target.value)}
         placeholder="Label"
         aria-label="Link label"
       />
       <button
-        className="rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
         type="submit"
         disabled={!isValidUrl(url.trim())}
       >
         Add link
       </button>
       <button
-        className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg"
+        className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg"
         type="button"
         onClick={onClose}
       >
@@ -638,7 +638,7 @@ function AssignmentUpdateEditor({
         <label className="block min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide text-fg">
           Your update
           <input
-            className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             value={text}
             onChange={(event) => setText(event.target.value)}
             onBlur={persistText}
@@ -714,7 +714,7 @@ function AssignmentRow({
   );
 
   return (
-    <article className="group/task rounded-md border border-accent-emphasis/40 bg-control p-3">
+    <div className="group/task border-l-2 border-accent-emphasis px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-fg">{assignment.description}</p>
         <span
@@ -730,7 +730,7 @@ function AssignmentRow({
       <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
 
       <AssignmentUpdateEditor assignmentId={assignment.id} assigneeId={assigneeId} date={date} update={update} />
-    </article>
+    </div>
   );
 }
 
@@ -748,14 +748,14 @@ function AssignmentsBox({
   }
 
   return (
-    <section className="rounded-md border border-accent-emphasis/60 bg-accent-muted">
-      <div className="flex items-center gap-2 border-b border-accent-emphasis/40 bg-accent-muted px-4 py-2">
-        <h2 className="text-sm font-semibold text-accent-fg">Assigned by lead</h2>
-        <span className="rounded-full border border-accent-emphasis/40 bg-canvas px-2 py-0.5 text-xs font-medium text-accent-fg">
+    <section className="rounded-md border border-line bg-canvas shadow-sm">
+      <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+        <h2 className="text-sm font-semibold text-fg">Assigned by lead</h2>
+        <span className="rounded-full border border-accent-emphasis/40 bg-accent-muted px-2 py-0.5 text-xs font-medium text-accent-fg">
           {assignments.length}
         </span>
       </div>
-      <div className="space-y-3 p-3">
+      <div className="divide-y divide-line">
         {assignments.map((assignment) => (
           <AssignmentRow key={assignment.id} assignment={assignment} assigneeId={userId} date={date} />
         ))}
@@ -770,13 +770,13 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
   }
 
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-3 space-y-2">
       {notes.map((note) => (
         <p
-          className="rounded-md border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
+          className="rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm leading-6 text-attention-fg"
           key={note.id}
         >
-          <span className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</span>
+          {note.noteText}
         </p>
       ))}
     </div>
@@ -835,7 +835,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
   }
 
   return (
-    <article className="rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
+    <article className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
       <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
 
       {!editing && isAnswered ? (
@@ -871,7 +871,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
       ) : question.kind === 'text' ? (
         <form className="mt-2" onSubmit={handleTextSubmit}>
           <textarea
-            className="min-h-16 w-full resize-y rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            className="min-h-16 w-full resize-y rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             value={answerText}
             onChange={(event) => setAnswerText(event.target.value)}
             placeholder="Type your answer"
@@ -977,13 +977,13 @@ function TaskCard({
   const links = task.links ?? [];
 
   return (
-    <article className="group/task rounded-md border border-line bg-control p-3">
+    <article className="group/task px-4 py-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
             Task
             <input
-              className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+              className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               onBlur={persistDescription}
@@ -1062,8 +1062,8 @@ function SectionCard({
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
   return (
-    <section className="rounded-md border border-line bg-canvas-subtle">
-      <div className="group/section flex items-center gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
+    <section className="rounded-md border border-line bg-canvas shadow-sm">
+      <div className="group/section flex items-center gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
         <SectionTitle reportId={reportId} section={section} />
         <button
           className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100"
@@ -1074,7 +1074,7 @@ function SectionCard({
         </button>
       </div>
 
-      <div className="space-y-3 p-3">
+      <div className="divide-y divide-line">
         {section.tasks.length > 0 ? (
           section.tasks.map((task) => (
             <TaskCard
@@ -1091,7 +1091,7 @@ function SectionCard({
         )}
       </div>
 
-      <div className="border-t border-line-muted px-4 py-3">
+      <div className="border-t border-line px-4 py-3">
         <AddTaskForm reportId={reportId} section={section} />
       </div>
     </section>
@@ -1129,7 +1129,7 @@ function SectionsList({
         <AddSectionForm sections={sortedSections} onAddSection={onAddSection} />
       </div>
 
-      <div className="mt-3 space-y-3">
+      <div className="mt-4 space-y-6">
         {sortedSections.length > 0 ? (
           sortedSections.map((section) => (
             <SectionCard
@@ -1193,11 +1193,11 @@ function QuestionComposer({
   }
 
   return (
-    <form className="rounded-md border border-done-emphasis/40 bg-done-muted p-3" onSubmit={handleSubmit}>
+    <form className="rounded-md border-l-2 border-done-emphasis bg-done-muted p-4" onSubmit={handleSubmit}>
       <label className="block text-sm font-medium text-done-fg">
         Question for the lead
         <input
-          className="mt-2 w-full rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
           placeholder="What should the lead decide?"
@@ -1211,7 +1211,7 @@ function QuestionComposer({
               {optionLabels[index]}
             </span>
             <input
-              className="min-w-0 flex-1 rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+              className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               value={option}
               onChange={(event) => updateOption(index, event.target.value)}
               placeholder={`Option ${optionLabels[index]}`}
@@ -1254,7 +1254,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
   const answerText = isAnswered ? question.options[question.selectedAnswer ?? 0] : undefined;
 
   return (
-    <article className="group/question rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
+    <article className="group/question rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-fg">{question.questionText}</p>
@@ -1298,8 +1298,8 @@ function QuestionsPanel({
   onAddQuestion: (question: CreateQuestionInput) => Promise<unknown>;
 }) {
   return (
-    <section className="rounded-md border border-line bg-canvas-subtle">
-      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
+    <section className="rounded-md border border-line bg-canvas shadow-sm">
+      <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
         <h2 className="text-sm font-semibold text-fg">Questions to the lead</h2>
         <span className="rounded-full border border-done-emphasis/40 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
           multiple choice
@@ -1313,7 +1313,7 @@ function QuestionsPanel({
           <QuestionComposer onAddQuestion={onAddQuestion} />
         </div>
 
-        <div className="mt-3 space-y-3">
+        <div className="mt-4 space-y-3">
           {questions.length > 0 ? (
             questions.map((question) => <QuestionCard key={question.id} reportId={reportId} question={question} />)
           ) : (
@@ -1384,9 +1384,9 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   if (loading || !reportId) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
-        <div className="rounded-md border border-line bg-canvas-subtle p-4 text-sm text-fg-muted">
+        <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted shadow-sm">
           Preparing the report...
         </div>
       </div>
@@ -1395,9 +1395,9 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   if (!reportTree) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
-        <div className="rounded-md border border-danger-emphasis/40 bg-danger-muted p-4 text-sm text-danger-fg">
+        <div className="rounded-md border border-danger-emphasis/40 bg-danger-muted p-4 text-sm text-danger-fg shadow-sm">
           Today’s report could not be loaded. Please refresh and try again.
         </div>
       </div>
@@ -1405,12 +1405,12 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
       <AssignmentsBox assignments={assignments} userId={userId} date={date} />
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
-        <section className="rounded-md border border-line bg-canvas-subtle">
-          <div className="border-b border-line bg-canvas-subtle px-4 py-2">
+        <section className="rounded-md border border-line bg-canvas shadow-sm">
+          <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
             <h2 className="text-sm font-semibold text-fg">From the lead</h2>
           </div>
           <div className="p-4">

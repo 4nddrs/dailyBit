@@ -58,7 +58,7 @@ function AuthForm() {
           </p>
         </div>
 
-        <section className="rounded-md border border-line bg-canvas-subtle p-4">
+        <section className="rounded-md border border-line bg-canvas p-4 shadow-sm">
           <form className="space-y-3" onSubmit={handleSubmit}>
             {isSignUp ? (
               <label className="block text-sm font-medium text-fg">
@@ -113,7 +113,7 @@ function AuthForm() {
           </form>
         </section>
 
-        <div className="mt-3 rounded-md border border-line bg-canvas-subtle p-3 text-center">
+        <div className="mt-4 rounded-md border border-line bg-canvas p-3 text-center">
           <button
             className="text-sm font-medium text-accent-fg hover:underline"
             type="button"
@@ -141,8 +141,8 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-canvas-inset">
-      <header className="border-b border-line bg-canvas-subtle">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="sticky top-0 z-10 border-b border-line bg-canvas-subtle">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6">
           <div className="flex items-center gap-2 text-sm">
             <Wordmark size="sm" />
             <span className="font-semibold text-fg">DailyBit</span>
@@ -165,7 +165,7 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-4">
+      <main className="mx-auto max-w-6xl px-4 py-6 md:px-6">
         {profile?.role === 'lead' ? (
           <LeadView leadUserId={user.uid} />
         ) : (
@@ -190,7 +190,7 @@ export default function App() {
   if (profileError) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-canvas-inset px-4 py-10">
-        <section className="w-full max-w-lg rounded-md border border-danger-emphasis/50 bg-danger-muted p-4">
+        <section className="w-full max-w-lg rounded-md border border-danger-emphasis/50 bg-danger-muted p-4 shadow-sm">
           <h1 className="text-lg font-semibold text-danger-fg">Could not load your profile</h1>
           <p className="mt-4 text-sm leading-6 text-fg">{profileError}</p>
           <p className="mt-3 text-sm leading-6 text-fg-muted">
