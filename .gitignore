@@ -12,3 +12,7 @@ dist/
 .atl/
 .venv/
 key.json
+
+# Python bytecode
+__pycache__/
+*.pyc
