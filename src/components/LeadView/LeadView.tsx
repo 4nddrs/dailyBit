@@ -678,7 +678,7 @@ function LeadAssignmentRow({
   const images = update?.images ?? [];
 
   return (
-    <article id={`assignment-${assignment.id}-${assigneeId}`} className="group/assignmentRow scroll-mt-4 px-4 py-3">
+    <article id={`assignment-${assignment.id}-${assigneeId}`} className="group/assignmentRow scroll-mt-4 rounded-md border border-accent-emphasis/40 bg-control p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium leading-6 text-fg">{assignment.description}</p>
@@ -786,7 +786,7 @@ function LeadAssignmentsBox({
           {assignments.length}
         </span>
       </div>
-      <div className="divide-y divide-accent-emphasis/20">
+      <div className="space-y-3 p-3">
         {assignments.map((assignment) => (
           <LeadAssignmentRow
             key={assignment.id}
@@ -835,7 +835,7 @@ function TaskCard({
   }
 
   return (
-    <article className="group px-4 py-3">
+    <article className="group rounded-md border border-line bg-control p-3">
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -927,10 +927,10 @@ function SectionCard({
 }) {
   return (
     <section className="rounded-md border border-line bg-canvas-subtle">
-      <div className="border-b border-line bg-control px-4 py-2">
+      <div className="border-b border-line bg-canvas-subtle px-4 py-2">
         <h3 className="text-sm font-semibold text-fg">{section.title}</h3>
       </div>
-      <div className="divide-y divide-line-muted">
+      <div className="space-y-3 p-3">
         {section.tasks.length > 0 ? (
           section.tasks.map((task) => (
             <TaskCard
@@ -1099,7 +1099,7 @@ function ReportCard({
 
   return (
     <article className="rounded-md border border-line bg-canvas-subtle" id={`report-${report.userId}`}>
-      <div className="flex flex-col gap-3 border-b border-line bg-control px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-line bg-canvas-subtle px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
@@ -1232,7 +1232,7 @@ function AssignmentOnlyCard({
 
   return (
     <article className="rounded-md border border-line bg-canvas-subtle" id={`report-${userId}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-line bg-control px-4 py-2">
+      <div className="flex items-center justify-between gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
         <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
         <button
           className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
@@ -1287,7 +1287,7 @@ function TeamBox({
 
   return (
     <section className="rounded-md border border-line bg-canvas-subtle">
-      <div className="flex items-center justify-between border-b border-line bg-control px-3 py-2">
+      <div className="flex items-center justify-between border-b border-line bg-canvas-subtle px-3 py-2">
         <h2 className="text-sm font-semibold text-fg">Team</h2>
         <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
           {devs.length}

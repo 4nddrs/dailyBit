@@ -509,7 +509,7 @@ function LinkForm({
         aria-label="Link label"
       />
       <button
-        className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
         type="submit"
         disabled={!isValidUrl(url.trim())}
       >
@@ -714,7 +714,7 @@ function AssignmentRow({
   );
 
   return (
-    <article className="group/task px-4 py-3">
+    <article className="group/task rounded-md border border-accent-emphasis/40 bg-control p-3">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-fg">{assignment.description}</p>
         <span
@@ -755,7 +755,7 @@ function AssignmentsBox({
           {assignments.length}
         </span>
       </div>
-      <div className="divide-y divide-accent-emphasis/20">
+      <div className="space-y-3 p-3">
         {assignments.map((assignment) => (
           <AssignmentRow key={assignment.id} assignment={assignment} assigneeId={userId} date={date} />
         ))}
@@ -977,7 +977,7 @@ function TaskCard({
   const links = task.links ?? [];
 
   return (
-    <article className="group/task px-4 py-3">
+    <article className="group/task rounded-md border border-line bg-control p-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
@@ -1063,7 +1063,7 @@ function SectionCard({
 }) {
   return (
     <section className="rounded-md border border-line bg-canvas-subtle">
-      <div className="group/section flex items-center gap-3 border-b border-line bg-control px-4 py-2">
+      <div className="group/section flex items-center gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
         <SectionTitle reportId={reportId} section={section} />
         <button
           className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100"
@@ -1074,7 +1074,7 @@ function SectionCard({
         </button>
       </div>
 
-      <div className="divide-y divide-line-muted">
+      <div className="space-y-3 p-3">
         {section.tasks.length > 0 ? (
           section.tasks.map((task) => (
             <TaskCard
@@ -1299,7 +1299,7 @@ function QuestionsPanel({
 }) {
   return (
     <section className="rounded-md border border-line bg-canvas-subtle">
-      <div className="flex items-center gap-2 border-b border-line bg-control px-4 py-2">
+      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
         <h2 className="text-sm font-semibold text-fg">Questions to the lead</h2>
         <span className="rounded-full border border-done-emphasis/40 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
           multiple choice
@@ -1410,7 +1410,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
       <AssignmentsBox assignments={assignments} userId={userId} date={date} />
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas-subtle">
-          <div className="border-b border-line bg-control px-4 py-2">
+          <div className="border-b border-line bg-canvas-subtle px-4 py-2">
             <h2 className="text-sm font-semibold text-fg">From the lead</h2>
           </div>
           <div className="p-4">
