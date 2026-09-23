@@ -309,8 +309,8 @@ def read_back(db: firestore.Client, today: str) -> dict[str, int]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed DailyBit Firestore demo data.")
     parser.add_argument("--key-path", default="key.json", help="Path to the Firebase service account JSON file.")
-    parser.add_argument("--email", default="4nddrs.dev@gmail.com", help="Lead user's Firebase Auth email.")
-    parser.add_argument("--name", default="andres", help="Lead user's display name.")
+    parser.add_argument("--email", required=True, help="Lead user's Firebase Auth email.")
+    parser.add_argument("--name", default="Lead", help="Lead user's display name.")
     parser.add_argument("--dry-run", action="store_true", help="Build and print the seed plan without writing to Firestore.")
     return parser.parse_args()
 

@@ -3,16 +3,47 @@ node_modules/
 
 # Build output
 dist/
+*.tsbuildinfo
 
-# Environment files
-.env.local
-.env*.local
-
-# Local Pi runtime state
-.atl/
-.venv/
+# Environment files and secrets
+.env
+.env.*
+!.env.example
 key.json
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+*.pem
+*.key
 
-# Python bytecode
+# Firebase CLI local state
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Deploy platform local state
+.vercel/
+.netlify/
+
+# Python
+.venv/
+venv/
 __pycache__/
 *.pyc
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local tooling / agent workflow state
+.atl/
+.codegraph/
+.claude/
+odd/
