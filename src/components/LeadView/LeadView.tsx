@@ -24,6 +24,7 @@ import { todayDateString } from '../../types';
 const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 const QUESTION_OPTION_MINIMUM = 2;
 const QUESTION_OPTION_LIMIT = 6;
+const UNKNOWN_DEVELOPER_NAME = 'Unknown developer';
 
 interface LeadViewProps {
   leadUserId: string;
@@ -705,9 +706,6 @@ function ReportCard({
           <h2 className="text-xl font-semibold text-fg">{developerName}</h2>
           <p className="mt-1 text-sm text-fg-muted">{report.sections.length} sections · {report.questions?.length ?? 0} questions</p>
         </div>
-        <span className="w-fit rounded-full bg-neutral-muted px-3 py-1 text-xs font-semibold text-fg">
-          {report.userId}
-        </span>
       </div>
 
       <ReadOnlyLeadNoteBlock notes={notesByTarget.get('') ?? []} />
@@ -772,12 +770,18 @@ export function LeadView({ leadUserId }: LeadViewProps) {
           if (!cancelled) {
             setDeveloperNames((currentNames) => ({
               ...currentNames,
-              [userId]: profile?.name ?? userId,
+              [userId]: profile?.name ?? UNKNOWN_DEVELOPER_NAME,
             }));
           }
         })
         .catch((error: unknown) => {
           console.error(`Failed to load profile for ${userId}`, error);
+          if (!cancelled) {
+            setDeveloperNames((currentNames) => ({
+              ...currentNames,
+              [userId]: UNKNOWN_DEVELOPER_NAME,
+            }));
+          }
         });
     });
 
@@ -805,7 +809,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
             <ReportCard
               key={report.id}
               report={report}
-              developerName={developerNames[report.userId] ?? report.userId}
+              developerName={developerNames[report.userId] ?? 'Loading…'}
               leadUserId={leadUserId}
             />
           ))
