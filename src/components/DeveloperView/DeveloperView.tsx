@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addAssignmentUpdateImage,
   addQuestion,
@@ -310,12 +310,144 @@ function AddTaskForm({
   );
 }
 
-function TaskLinks({
+function LinkIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+      <path d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Zm-4.69 9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0Z" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+      <path d="M1.5 1h13a1.25 1.25 0 0 1 1.25 1.25v11.5A1.25 1.25 0 0 1 14.5 15h-13A1.25 1.25 0 0 1 .25 13.75V2.25A1.25 1.25 0 0 1 1.5 1Zm-.25 1.25v9.19l2.293-2.293a.75.75 0 0 1 .945-.093l2.109 1.406 3.383-3.383a.75.75 0 0 1 1.06 0l2.71 2.71V2.25a.25.25 0 0 0-.25-.25h-13a.25.25 0 0 0-.25.25Zm.25 11.25h11.638l-4.879-4.879-3.339 3.34a.75.75 0 0 1-.945.093L2.5 10.291l-1.25 1.25v1.71a.25.25 0 0 0 .25.25Z" />
+      <path d="M5.25 6.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+      <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.75 1.75 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+    </svg>
+  );
+}
+
+function IconButton({
+  icon,
+  label,
+  onClick,
+  danger = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      className={`rounded-md p-1.5 text-fg-muted transition ${
+        danger ? 'hover:bg-danger-muted hover:text-danger-fg' : 'hover:bg-control-hover hover:text-fg'
+      }`}
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function CardToolbar({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex shrink-0 items-center gap-0.5 md:opacity-0 md:group-hover/task:opacity-100 md:group-focus-within/task:opacity-100">
+      {children}
+    </div>
+  );
+}
+
+function AttachmentImages({
+  images,
+  onRemove,
+  altText,
+}: {
+  images: Array<{ id: string; imageBase64: string }>;
+  onRemove: (imageId: string) => void;
+  altText: string;
+}) {
+  if (images.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+      {images.map((image) => (
+        <div className="group/media relative" key={image.id}>
+          <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open attachment image">
+            <img
+              className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
+              src={image.imageBase64}
+              alt={altText}
+            />
+          </a>
+          <button
+            className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/media:opacity-100 md:group-focus-within/media:opacity-100"
+            type="button"
+            onClick={() => onRemove(image.id)}
+            aria-label="Remove image"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LinkChips({
   links,
-  onChange,
+  onRemove,
 }: {
   links: TaskLink[];
-  onChange: (links: TaskLink[]) => void;
+  onRemove: (index: number) => void;
+}) {
+  if (links.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.map((link, index) => (
+        <span
+          className="group/link inline-flex items-center gap-2 rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted"
+          key={`${link.url}-${index}`}
+        >
+          <a className="max-w-[12rem] truncate hover:text-accent-fg" href={link.url} target="_blank" rel="noreferrer">
+            {link.label || link.url}
+          </a>
+          <button
+            className="text-danger-fg transition hover:text-danger-fg md:opacity-0 md:group-hover/link:opacity-100 md:group-focus-within/link:opacity-100"
+            type="button"
+            onClick={() => onRemove(index)}
+            aria-label={`Remove link ${link.label || link.url}`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LinkForm({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (link: TaskLink) => void;
+  onClose: () => void;
 }) {
   const [url, setUrl] = useState('');
   const [label, setLabel] = useState('');
@@ -329,59 +461,84 @@ function TaskLinks({
       return;
     }
 
-    onChange([...links, { url: trimmedUrl, label: trimmedLabel || undefined }]);
+    onAdd({ url: trimmedUrl, label: trimmedLabel || undefined });
     setUrl('');
     setLabel('');
+    onClose();
   }
 
   return (
-    <div className="space-y-3">
-      {links.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {links.map((link, index) => (
-            <span
-              className="group/link inline-flex items-center gap-2 rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted"
-              key={`${link.url}-${index}`}
-            >
-              <a className="max-w-[12rem] truncate hover:text-accent-fg" href={link.url} target="_blank" rel="noreferrer">
-                {link.label || link.url}
-              </a>
-              <button
-                className="text-danger-fg transition hover:text-danger-fg md:opacity-0 md:group-hover/link:opacity-100 md:group-focus-within/link:opacity-100"
-                type="button"
-                onClick={() => onChange(links.filter((_, linkIndex) => linkIndex !== index))}
-                aria-label={`Remove link ${link.label || link.url}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
+    <form
+      className="grid gap-2 md:grid-cols-[1fr_9rem_auto_auto]"
+      onSubmit={handleSubmit}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+      <input
+        className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        value={url}
+        onChange={(event) => setUrl(event.target.value)}
+        placeholder="https://..."
+        aria-label="Link URL"
+        autoFocus
+      />
+      <input
+        className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        value={label}
+        onChange={(event) => setLabel(event.target.value)}
+        placeholder="Label"
+        aria-label="Link label"
+      />
+      <button
+        className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+        type="submit"
+        disabled={!isValidUrl(url.trim())}
+      >
+        Add link
+      </button>
+      <button
+        className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg"
+        type="button"
+        onClick={onClose}
+      >
+        Cancel
+      </button>
+    </form>
+  );
+}
 
-      <form className="grid gap-2 md:grid-cols-[1fr_9rem_auto]" onSubmit={handleSubmit}>
-        <input
-          className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-          value={url}
-          onChange={(event) => setUrl(event.target.value)}
-          placeholder="https://..."
-          aria-label="Link URL"
-        />
-        <input
-          className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-          placeholder="Label"
-          aria-label="Link label"
-        />
-        <button
-          className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
-          type="submit"
-          disabled={!isValidUrl(url.trim())}
-        >
-          Add link
-        </button>
-      </form>
+function TaskAttachments({
+  images,
+  onRemoveImage,
+  imageAlt,
+  links,
+  onRemoveLink,
+  error,
+}: {
+  images: Array<{ id: string; imageBase64: string }>;
+  onRemoveImage: (imageId: string) => void;
+  imageAlt: string;
+  links: TaskLink[];
+  onRemoveLink: (index: number) => void;
+  error: string | null;
+}) {
+  if (images.length === 0 && links.length === 0 && !error) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <AttachmentImages images={images} onRemove={onRemoveImage} altText={imageAlt} />
+      <LinkChips links={links} onRemove={onRemoveLink} />
+      {error ? (
+        <p className="text-xs font-medium text-danger-fg" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -400,6 +557,7 @@ function AssignmentUpdateEditor({
   const [text, setText] = useState(update?.text ?? '');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showLinkForm, setShowLinkForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -457,78 +615,62 @@ function AssignmentUpdateEditor({
   }
 
   const images = update?.images ?? [];
+  const links = update?.links ?? [];
 
   return (
     <div className="mt-3">
-      <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
-        Your update
-        <input
-          className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onBlur={persistText}
-          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-            if (event.key === 'Enter') {
-              event.currentTarget.blur();
-            }
-          }}
-          maxLength={TASK_DESCRIPTION_LIMIT}
-          placeholder="What did you do on this assignment today?"
-        />
-      </label>
+      <div className="flex items-start gap-3">
+        <label className="block min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide text-fg">
+          Your update
+          <input
+            className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onBlur={persistText}
+            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+              if (event.key === 'Enter') {
+                event.currentTarget.blur();
+              }
+            }}
+            maxLength={TASK_DESCRIPTION_LIMIT}
+            placeholder="What did you do on this assignment today?"
+          />
+        </label>
+        <CardToolbar>
+          <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />
+          <IconButton
+            icon={<ImageIcon />}
+            label={uploading ? 'Processing image' : 'Add image'}
+            onClick={() => fileInputRef.current?.click()}
+          />
+        </CardToolbar>
+      </div>
       <p className={`mt-1 text-right text-xs font-medium ${counterColor}`}>
         {text.length}/{TASK_DESCRIPTION_LIMIT}
       </p>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[10rem_1fr]">
-        <div>
-          {images.length > 0 ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
-              {images.map((image) => (
-                <div className="group/assignmentImage relative" key={image.id}>
-                  <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open update image">
-                    <img
-                      className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
-                      src={image.imageBase64}
-                      alt="Assignment update attachment preview"
-                    />
-                  </a>
-                  <button
-                    className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/assignmentImage:opacity-100 md:group-focus-within/assignmentImage:opacity-100"
-                    type="button"
-                    onClick={() => handleRemoveImage(image.id)}
-                    aria-label="Remove image"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <input
-            ref={fileInputRef}
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
-          />
-          <div className="mt-2 flex gap-2">
-            <button
-              className="inline-flex flex-1 items-center justify-center rounded-md border border-line bg-control px-3 py-1.5 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-wait disabled:opacity-60"
-              type="button"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploading ? 'Processing...' : 'Attach image'}
-            </button>
-          </div>
-          {uploadError && (
-            <p className="mt-1 text-xs font-medium text-danger-fg" role="alert">{uploadError}</p>
-          )}
-        </div>
+      <input
+        ref={fileInputRef}
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
+      />
 
-        <TaskLinks links={update?.links ?? []} onChange={updateLinks} />
-      </div>
+      {showLinkForm ? (
+        <div className="mt-3">
+          <LinkForm onAdd={(link) => updateLinks([...links, link])} onClose={() => setShowLinkForm(false)} />
+        </div>
+      ) : null}
+
+      <TaskAttachments
+        images={images}
+        onRemoveImage={handleRemoveImage}
+        imageAlt="Assignment update attachment preview"
+        links={links}
+        onRemoveLink={(index) => updateLinks(links.filter((_, linkIndex) => linkIndex !== index))}
+        error={uploadError}
+      />
     </div>
   );
 }
@@ -557,7 +699,7 @@ function AssignmentRow({
   );
 
   return (
-    <article className="px-4 py-3">
+    <article className="group/task px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-fg">{assignment.description}</p>
         <span
@@ -769,6 +911,7 @@ function TaskCard({
   const [description, setDescription] = useState(task.description);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showLinkForm, setShowLinkForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -816,6 +959,8 @@ function TaskCard({
     runSafely(updateTask(reportId, sectionId, task.id, { links }), 'Task links update failed');
   }
 
+  const links = task.links ?? [];
+
   return (
     <article className="group/task px-4 py-3">
       <div className="flex items-start gap-3">
@@ -839,65 +984,44 @@ function TaskCard({
             {description.length}/{TASK_DESCRIPTION_LIMIT}
           </p>
         </div>
-        <button
-          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/task:opacity-100 md:group-focus-within/task:opacity-100"
-          type="button"
-          onClick={() => runSafely(removeTask(reportId, sectionId, task.id), 'Task remove failed')}
-          aria-label="Remove task"
-        >
-          Remove
-        </button>
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-[10rem_1fr]">
-        <div>
-          {task.images.length > 0 ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
-              {task.images.map((image) => (
-                <div className="group/image relative" key={image.id}>
-                  <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
-                    <img
-                      className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
-                      src={image.imageBase64}
-                      alt="Task attachment preview"
-                    />
-                  </a>
-                  <button
-                    className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/image:opacity-100 md:group-focus-within/image:opacity-100"
-                    type="button"
-                    onClick={() => handleRemoveImage(image.id)}
-                    aria-label="Remove image"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <input
-            ref={fileInputRef}
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
+        <CardToolbar>
+          <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />
+          <IconButton
+            icon={<ImageIcon />}
+            label={uploading ? 'Processing image' : 'Add image'}
+            onClick={() => fileInputRef.current?.click()}
           />
-          <div className="mt-2 flex gap-2">
-            <button
-              className="inline-flex flex-1 items-center justify-center rounded-md border border-line bg-control px-3 py-1.5 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-wait disabled:opacity-60"
-              type="button"
-              disabled={uploading}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploading ? 'Processing...' : 'Attach image'}
-            </button>
-          </div>
-          {uploadError && (
-            <p className="mt-1 text-xs font-medium text-danger-fg" role="alert">{uploadError}</p>
-          )}
-        </div>
-
-        <TaskLinks links={task.links ?? []} onChange={updateLinks} />
+          <IconButton
+            icon={<TrashIcon />}
+            label="Remove task"
+            danger
+            onClick={() => runSafely(removeTask(reportId, sectionId, task.id), 'Task remove failed')}
+          />
+        </CardToolbar>
       </div>
+
+      <input
+        ref={fileInputRef}
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
+      />
+
+      {showLinkForm ? (
+        <div className="mt-3">
+          <LinkForm onAdd={(link) => updateLinks([...links, link])} onClose={() => setShowLinkForm(false)} />
+        </div>
+      ) : null}
+
+      <TaskAttachments
+        images={task.images}
+        onRemoveImage={handleRemoveImage}
+        imageAlt="Task attachment preview"
+        links={links}
+        onRemoveLink={(index) => updateLinks(links.filter((_, linkIndex) => linkIndex !== index))}
+        error={uploadError}
+      />
 
       <LeadNotesReadOnly notes={leadNotes} />
       {leadQuestions.length > 0 ? (
