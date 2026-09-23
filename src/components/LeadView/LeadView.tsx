@@ -957,10 +957,21 @@ function TaskCard({
       </div>
 
       {openComposer === 'question' ? (
-        <LeadQuestionComposer onAdd={(input) => onAddQuestion(task.id, sectionId, input)} />
+        <LeadQuestionComposer
+          onAdd={async (input) => {
+            await onAddQuestion(task.id, sectionId, input);
+            setOpenComposer(null);
+          }}
+        />
       ) : null}
       {openComposer === 'note' ? (
-        <NoteComposer label="Lead task note" onAdd={(noteText) => onAddNote(task.id, noteText)} />
+        <NoteComposer
+          label="Lead task note"
+          onAdd={async (noteText) => {
+            await onAddNote(task.id, noteText);
+            setOpenComposer(null);
+          }}
+        />
       ) : null}
       {openComposer === 'task' ? (
         <AssignmentComposer
@@ -1243,10 +1254,21 @@ function ReportCard({
 
       <div className="p-4">
         {openComposer === 'question' ? (
-          <LeadQuestionComposer onAdd={(input) => handleAddQuestion('', '', input)} />
+          <LeadQuestionComposer
+            onAdd={async (input) => {
+              await handleAddQuestion('', '', input);
+              setOpenComposer(null);
+            }}
+          />
         ) : null}
         {openComposer === 'note' ? (
-          <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
+          <NoteComposer
+            label="Lead report note"
+            onAdd={async (noteText) => {
+              await handleAddNote('', noteText);
+              setOpenComposer(null);
+            }}
+          />
         ) : null}
         {openComposer === 'task' ? (
           <AssignmentComposer
