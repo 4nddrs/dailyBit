@@ -32,7 +32,7 @@ import type {
 } from '../../types';
 import { todayDateString } from '../../types';
 
-const TASK_DESCRIPTION_LIMIT = 140;
+import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 const QUESTION_OPTION_LIMIT = 6;
 const QUESTION_OPTION_MINIMUM = 2;
 const MAX_IMAGE_SIDE = 1024;

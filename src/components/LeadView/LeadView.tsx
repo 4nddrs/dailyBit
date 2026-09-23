@@ -3,17 +3,26 @@ import {
   addLeadNote,
   addLeadQuestion,
   answerQuestion,
+  closeAssignment,
+  createAssignment,
   getUserProfile,
+  removeAssignment,
   removeLeadNote,
   removeLeadQuestion,
   saveTeamOrder,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
+import { TASK_DESCRIPTION_LIMIT } from '../../constants';
+import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
+import { useAssignmentUpdates } from '../../hooks/useAssignmentUpdates';
+import type { AssignmentUpdatesByAssignment } from '../../hooks/useAssignmentUpdates';
 import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import { orderDevelopers, orderReportsByTeam } from '../../utils/team';
 import type {
+  AssignmentUpdateWithImages,
+  AssignmentWithId,
   LeadNoteWithId,
   LeadQuestionKind,
   LeadQuestionWithId,
@@ -30,9 +39,34 @@ const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 const QUESTION_OPTION_MINIMUM = 2;
 const QUESTION_OPTION_LIMIT = 6;
 const UNKNOWN_DEVELOPER_NAME = 'Unknown developer';
+const ONLY_MINE_STORAGE_KEY = 'leadView.onlyMineFilter';
+
+function loadOnlyMineFilter(): boolean {
+  try {
+    return window.localStorage.getItem(ONLY_MINE_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function persistOnlyMineFilter(value: boolean): void {
+  try {
+    window.localStorage.setItem(ONLY_MINE_STORAGE_KEY, String(value));
+  } catch {
+    // Best-effort only: an unavailable/blocked storage never blocks the toggle.
+  }
+}
 
 interface LeadViewProps {
   leadUserId: string;
+}
+
+// One card entry per developer shown in the reports area: `report` is null
+// for a developer who has no report on this date but does have at least one
+// visible assignment.
+interface CardEntry {
+  userId: string;
+  report: ReportTree | null;
 }
 
 function normalizeDateString(dateString: string): string {
@@ -74,23 +108,57 @@ function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
 }
 
+function OnlyMineToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-fg-muted">
+      Only my questions &amp; tasks
+      <button
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition ${
+          checked ? 'border-accent-emphasis bg-accent-emphasis' : 'border-line bg-neutral-muted'
+        }`}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition ${
+            checked ? 'translate-x-4' : 'translate-x-1'
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+    </label>
+  );
+}
+
 function LeadHeader({
   date,
   onDateChange,
   reportedCount,
   totalDeveloperCount,
+  onlyMineFilter,
+  onOnlyMineFilterChange,
 }: {
   date: string;
   onDateChange: (date: string) => void;
   reportedCount: number;
   totalDeveloperCount: number;
+  onlyMineFilter: boolean;
+  onOnlyMineFilterChange: (checked: boolean) => void;
 }) {
   return (
     <header className="rounded-md border border-line bg-canvas-subtle px-4 py-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h1 className="text-lg font-semibold tracking-tight text-fg">{formatDisplayDate(date)}</h1>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-fg-muted">
             Report date
             <input
@@ -100,6 +168,7 @@ function LeadHeader({
               onChange={(event) => onDateChange(event.target.value)}
             />
           </label>
+          <OnlyMineToggle checked={onlyMineFilter} onChange={onOnlyMineFilterChange} />
           <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
             {reportedCount}/{totalDeveloperCount} reported
           </span>
@@ -167,6 +236,58 @@ function LeadNoteBlock({
   );
 }
 
+function LeadQuestionItem({
+  question,
+  onRemove,
+  context,
+}: {
+  question: LeadQuestionWithId;
+  onRemove: (questionId: string) => void;
+  context?: string;
+}) {
+  const isAnswered =
+    question.kind === 'text' ? Boolean(question.answerText) : question.selectedAnswer !== undefined;
+
+  return (
+    <div className="rounded-md border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm">
+      {context ? <p className="mb-1 text-xs font-medium text-fg-muted">{context}</p> : null}
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-semibold leading-6 text-done-fg">{question.questionText}</p>
+        <button
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          type="button"
+          onClick={() => onRemove(question.id)}
+        >
+          Remove
+        </button>
+      </div>
+
+      {!isAnswered ? (
+        <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
+      ) : question.kind === 'text' ? (
+        <p className="mt-2 rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+          {question.answerText}
+        </p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(question.options ?? []).map((option, index) => (
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                question.selectedAnswer === index
+                  ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                  : 'border-line bg-canvas-subtle text-fg-muted'
+              }`}
+              key={`${option}-${index}`}
+            >
+              {getOptionLabel(index)}. {option}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeadQuestionBlock({
   questions,
   onRemove,
@@ -180,51 +301,40 @@ function LeadQuestionBlock({
 
   return (
     <div className="mt-3 space-y-2">
-      {questions.map((question) => {
-        const isAnswered =
-          question.kind === 'text' ? Boolean(question.answerText) : question.selectedAnswer !== undefined;
+      {questions.map((question) => (
+        <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} />
+      ))}
+    </div>
+  );
+}
 
-        return (
-          <div
-            className="rounded-md border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm"
-            key={question.id}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-semibold leading-6 text-done-fg">{question.questionText}</p>
-              <button
-                className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
-                type="button"
-                onClick={() => onRemove(question.id)}
-              >
-                Remove
-              </button>
-            </div>
+// "Only my questions & tasks" mode hides section/task cards entirely, so
+// per-task lead questions are flattened here with the task's own description
+// shown as context instead of being nested under a task card.
+function LeadTaskQuestionsOnly({
+  sections,
+  questionsByTarget,
+  onRemove,
+}: {
+  sections: SectionWithTasks[];
+  questionsByTarget: Map<string, LeadQuestionWithId[]>;
+  onRemove: (questionId: string) => void;
+}) {
+  const items = sections.flatMap((section) =>
+    section.tasks.flatMap((task) =>
+      (questionsByTarget.get(task.id) ?? []).map((question) => ({ task, question })),
+    ),
+  );
 
-            {!isAnswered ? (
-              <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
-            ) : question.kind === 'text' ? (
-              <p className="mt-2 rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
-                {question.answerText}
-              </p>
-            ) : (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(question.options ?? []).map((option, index) => (
-                  <span
-                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                      question.selectedAnswer === index
-                        ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                        : 'border-line bg-canvas-subtle text-fg-muted'
-                    }`}
-                    key={`${option}-${index}`}
-                  >
-                    {getOptionLabel(index)}. {option}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {items.map(({ task, question }) => (
+        <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} context={task.description} />
+      ))}
     </div>
   );
 }
@@ -426,6 +536,252 @@ function LeadQuestionComposer({
         </button>
       </div>
     </form>
+  );
+}
+
+function AssignmentComposer({
+  devs,
+  preselectedDevId,
+  onAssign,
+}: {
+  devs: UserProfileWithId[];
+  preselectedDevId: string;
+  onAssign: (input: { description: string; assigneeIds: string[] }) => Promise<void>;
+}) {
+  const [description, setDescription] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(
+    preselectedDevId ? [preselectedDevId] : [],
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggleAssignee(devId: string) {
+    setAssigneeIds((current) =>
+      current.includes(devId) ? current.filter((id) => id !== devId) : [...current, devId],
+    );
+  }
+
+  const trimmedDescription = description.trim();
+  const canSubmit = trimmedDescription.length > 0 && assigneeIds.length > 0;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canSubmit) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onAssign({ description: trimmedDescription, assigneeIds });
+      setDescription('');
+      setAssigneeIds(preselectedDevId ? [preselectedDevId] : []);
+    } catch (caughtError) {
+      console.error('Assignment create failed', caughtError);
+      setError('Task could not be assigned. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="mt-3 rounded-md border border-accent-emphasis/40 bg-canvas-subtle p-3" onSubmit={handleSubmit}>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
+        Task description
+        <textarea
+          className="mt-2 min-h-16 w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          maxLength={TASK_DESCRIPTION_LIMIT}
+          placeholder="What should they work on?"
+          autoFocus
+        />
+      </label>
+      <p className="mt-1 text-right text-xs font-medium text-fg-muted">
+        {description.length}/{TASK_DESCRIPTION_LIMIT}
+      </p>
+
+      <div className="mt-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-fg">Assign to</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {devs.map((dev) => (
+            <label
+              className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas px-3 py-1 text-xs font-medium text-fg"
+              key={dev.id}
+            >
+              <input
+                type="checkbox"
+                checked={assigneeIds.includes(dev.id)}
+                onChange={() => toggleAssignee(dev.id)}
+              />
+              {dev.name}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
+
+      <div className="mt-3 flex justify-end">
+        <button
+          className="rounded-md bg-accent-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          disabled={!canSubmit || submitting}
+        >
+          {submitting ? 'Assigning...' : 'Assign task'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function LeadAssignmentRow({
+  assignment,
+  assigneeId,
+  update,
+  onClose,
+  onRemove,
+}: {
+  assignment: AssignmentWithId;
+  assigneeId: string;
+  update: AssignmentUpdateWithImages | null;
+  onClose: (assignmentId: string) => void;
+  onRemove: (assignmentId: string) => void;
+}) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const hasUpdateContent = Boolean(
+    (update?.text && update.text.trim().length > 0) ||
+      (update?.links && update.links.length > 0) ||
+      (update?.images && update.images.length > 0),
+  );
+  const isClosed = assignment.status === 'closed';
+  const otherAssigneeCount = assignment.assigneeIds.filter((id) => id !== assigneeId).length;
+  const images = update?.images ?? [];
+
+  return (
+    <article className="group/assignmentRow px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium leading-6 text-fg">{assignment.description}</p>
+          <p className="mt-1 text-xs text-fg-muted">
+            Assigned {assignment.startDate}
+            {otherAssigneeCount > 0
+              ? ` · Shared with ${otherAssigneeCount} other ${pluralize(otherAssigneeCount, 'developer', 'developers')}`
+              : ''}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {isClosed ? (
+            <span className="rounded-full border border-line bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
+              Closed
+            </span>
+          ) : null}
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+              hasUpdateContent
+                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                : 'border-line bg-neutral-muted text-fg-muted'
+            }`}
+          >
+            {hasUpdateContent ? 'Updated' : 'No updates'}
+          </span>
+          <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover/assignmentRow:opacity-100 md:group-focus-within/assignmentRow:opacity-100">
+            <button
+              className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+              disabled={isClosed}
+              onClick={() => onClose(assignment.id)}
+            >
+              Close
+            </button>
+            <button
+              className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+              type="button"
+              onClick={() => onRemove(assignment.id)}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2">
+        {hasUpdateContent ? (
+          <>
+            {update?.text ? <p className="text-sm text-fg">{update.text}</p> : null}
+            <LinkChips links={update?.links} />
+            {images.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {images.map((image, imageIndex) => (
+                  <button
+                    className="cursor-zoom-in rounded-md focus:outline-none focus:ring-1 focus:ring-accent-emphasis"
+                    key={image.id}
+                    type="button"
+                    aria-label="Open update image"
+                    onClick={() => setLightboxIndex(imageIndex)}
+                  >
+                    <img
+                      className="h-16 w-16 rounded-md border border-line object-cover transition hover:opacity-90"
+                      src={image.imageBase64}
+                      alt="Assignment update attachment thumbnail"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <p className="text-sm text-fg-muted">No updates</p>
+        )}
+      </div>
+
+      {lightboxIndex !== null ? (
+        <ImageLightbox images={images} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      ) : null}
+    </article>
+  );
+}
+
+function LeadAssignmentsBox({
+  assignments,
+  assigneeId,
+  updatesByAssignment,
+  onClose,
+  onRemove,
+}: {
+  assignments: AssignmentWithId[];
+  assigneeId: string;
+  updatesByAssignment: AssignmentUpdatesByAssignment;
+  onClose: (assignmentId: string) => void;
+  onRemove: (assignmentId: string) => void;
+}) {
+  if (assignments.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-3 rounded-md border border-line bg-canvas">
+      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
+        <h3 className="text-sm font-semibold text-fg">Assigned by lead</h3>
+        <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs font-medium text-fg-muted">
+          {assignments.length}
+        </span>
+      </div>
+      <div className="divide-y divide-line-muted">
+        {assignments.map((assignment) => (
+          <LeadAssignmentRow
+            key={assignment.id}
+            assignment={assignment}
+            assigneeId={assigneeId}
+            update={updatesByAssignment.get(assignment.id)?.get(assigneeId) ?? null}
+            onClose={onClose}
+            onRemove={onRemove}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -640,17 +996,31 @@ function ReportCard({
   report,
   developerName,
   leadUserId,
+  allDevs,
+  assignments,
+  updatesByAssignment,
+  onCreateAssignment,
+  onCloseAssignment,
+  onRemoveAssignment,
+  onlyMineFilter,
 }: {
   report: ReportTree;
   developerName: string;
   leadUserId: string;
+  allDevs: UserProfileWithId[];
+  assignments: AssignmentWithId[];
+  updatesByAssignment: AssignmentUpdatesByAssignment;
+  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<void>;
+  onCloseAssignment: (assignmentId: string) => void;
+  onRemoveAssignment: (assignmentId: string) => void;
+  onlyMineFilter: boolean;
 }) {
-  const [openComposer, setOpenComposer] = useState<'question' | 'note' | null>(null);
+  const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | null>(null);
 
   const notes = report.notes ?? [];
   const leadQuestions = report.leadQuestions ?? [];
 
-  function toggleComposer(composer: 'question' | 'note') {
+  function toggleComposer(composer: 'question' | 'note' | 'task') {
     setOpenComposer((current) => (current === composer ? null : composer));
   }
 
@@ -734,6 +1104,13 @@ function ReportCard({
           >
             Note
           </button>
+          <button
+            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={() => toggleComposer('task')}
+          >
+            Task
+          </button>
         </div>
       </div>
 
@@ -744,40 +1121,115 @@ function ReportCard({
         {openComposer === 'note' ? (
           <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
         ) : null}
-
-        <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
-        <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
-
-        <div className="mt-3 space-y-3">
-          {report.sections.length > 0 ? (
-            report.sections.map((section) => (
-              <SectionCard
-                key={section.id}
-                reportId={report.id}
-                section={section}
-                notesByTarget={notesByTarget}
-                questionsByTarget={questionsByTarget}
-                onAddNote={handleAddNote}
-                onRemoveNote={handleRemoveNote}
-                onAddQuestion={handleAddQuestion}
-                onRemoveQuestion={handleRemoveQuestion}
-              />
-            ))
-          ) : (
-            <CompactEmptyState text="No tasks reported yet." />
-          )}
-        </div>
-
-        {report.questions && report.questions.length > 0 ? (
-          <section className="mt-3 rounded-md border border-line bg-canvas-subtle p-3">
-            <h3 className="text-sm font-semibold text-fg">Questions from {developerName}</h3>
-            <div className="mt-3 space-y-3">
-              {report.questions.map((question) => (
-                <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
-              ))}
-            </div>
-          </section>
+        {openComposer === 'task' ? (
+          <AssignmentComposer devs={allDevs} preselectedDevId={report.userId} onAssign={onCreateAssignment} />
         ) : null}
+
+        {onlyMineFilter ? (
+          <>
+            <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+            <LeadTaskQuestionsOnly
+              sections={report.sections}
+              questionsByTarget={questionsByTarget}
+              onRemove={handleRemoveQuestion}
+            />
+          </>
+        ) : (
+          <>
+            <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+            <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
+
+            <div className="mt-3 space-y-3">
+              {report.sections.length > 0 ? (
+                report.sections.map((section) => (
+                  <SectionCard
+                    key={section.id}
+                    reportId={report.id}
+                    section={section}
+                    notesByTarget={notesByTarget}
+                    questionsByTarget={questionsByTarget}
+                    onAddNote={handleAddNote}
+                    onRemoveNote={handleRemoveNote}
+                    onAddQuestion={handleAddQuestion}
+                    onRemoveQuestion={handleRemoveQuestion}
+                  />
+                ))
+              ) : (
+                <CompactEmptyState text="No tasks reported yet." />
+              )}
+            </div>
+
+            {report.questions && report.questions.length > 0 ? (
+              <section className="mt-3 rounded-md border border-line bg-canvas-subtle p-3">
+                <h3 className="text-sm font-semibold text-fg">Questions from {developerName}</h3>
+                <div className="mt-3 space-y-3">
+                  {report.questions.map((question) => (
+                    <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </>
+        )}
+
+        <LeadAssignmentsBox
+          assignments={assignments}
+          assigneeId={report.userId}
+          updatesByAssignment={updatesByAssignment}
+          onClose={onCloseAssignment}
+          onRemove={onRemoveAssignment}
+        />
+      </div>
+    </article>
+  );
+}
+
+function AssignmentOnlyCard({
+  userId,
+  developerName,
+  allDevs,
+  assignments,
+  updatesByAssignment,
+  onCreateAssignment,
+  onCloseAssignment,
+  onRemoveAssignment,
+}: {
+  userId: string;
+  developerName: string;
+  allDevs: UserProfileWithId[];
+  assignments: AssignmentWithId[];
+  updatesByAssignment: AssignmentUpdatesByAssignment;
+  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<void>;
+  onCloseAssignment: (assignmentId: string) => void;
+  onRemoveAssignment: (assignmentId: string) => void;
+}) {
+  const [composerOpen, setComposerOpen] = useState(false);
+
+  return (
+    <article className="rounded-md border border-line bg-canvas" id={`report-${userId}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
+        <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
+        <button
+          className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+          type="button"
+          onClick={() => setComposerOpen((current) => !current)}
+        >
+          Task
+        </button>
+      </div>
+
+      <div className="p-4">
+        {composerOpen ? (
+          <AssignmentComposer devs={allDevs} preselectedDevId={userId} onAssign={onCreateAssignment} />
+        ) : null}
+
+        <LeadAssignmentsBox
+          assignments={assignments}
+          assigneeId={userId}
+          updatesByAssignment={updatesByAssignment}
+          onClose={onCloseAssignment}
+          onRemove={onRemoveAssignment}
+        />
       </div>
     </article>
   );
@@ -896,11 +1348,51 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   const [selectedDate, setSelectedDate] = useState(() => todayDateString());
   const normalizedSelectedDate = normalizeDateString(selectedDate);
   const { reportTrees, loading } = useReportsByDate(normalizedSelectedDate);
+  const { assignments } = useAssignmentsForDate(normalizedSelectedDate);
+  const assignmentIds = useMemo(() => assignments.map((assignment) => assignment.id), [assignments]);
+  const updatesByAssignment = useAssignmentUpdates(assignmentIds, normalizedSelectedDate);
   const { profiles } = useUserProfiles();
   const { memberOrder } = useTeamOrder();
   const devs = useMemo(() => profiles.filter((profile) => profile.role === 'dev'), [profiles]);
   const totalDeveloperCount = devs.length;
   const [developerNames, setDeveloperNames] = useState<Record<string, string>>({});
+  const [onlyMineFilter, setOnlyMineFilter] = useState(() => loadOnlyMineFilter());
+
+  function handleOnlyMineFilterChange(next: boolean) {
+    setOnlyMineFilter(next);
+    persistOnlyMineFilter(next);
+  }
+
+  const assignmentsByAssignee = useMemo(() => {
+    const grouped = new Map<string, AssignmentWithId[]>();
+    assignments.forEach((assignment) => {
+      assignment.assigneeIds.forEach((assigneeId) => {
+        grouped.set(assigneeId, [...(grouped.get(assigneeId) ?? []), assignment]);
+      });
+    });
+    return grouped;
+  }, [assignments]);
+
+  async function handleCreateAssignment(input: { description: string; assigneeIds: string[] }) {
+    await createAssignment({
+      description: input.description,
+      assigneeIds: input.assigneeIds,
+      createdBy: leadUserId,
+      startDate: normalizedSelectedDate,
+    });
+  }
+
+  function handleCloseAssignment(assignmentId: string) {
+    closeAssignment(assignmentId, normalizedSelectedDate).catch((error: unknown) => {
+      console.error('Failed to close assignment', error);
+    });
+  }
+
+  function handleRemoveAssignment(assignmentId: string) {
+    removeAssignment(assignmentId).catch((error: unknown) => {
+      console.error('Failed to remove assignment', error);
+    });
+  }
 
   const persistedOrderedDevs = useMemo(() => orderDevelopers(devs, memberOrder), [devs, memberOrder]);
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
@@ -934,10 +1426,39 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     [reportTrees],
   );
 
-  const orderedReportTrees = useMemo(
-    () => orderReportsByTeam(reportTrees, displayedDevs.map((dev) => dev.id)),
-    [reportTrees, displayedDevs],
+  // A card shows for every developer who has a report on this date, or who
+  // has at least one visible assignment on it — even without a report.
+  const assignmentOnlyUserIds = useMemo(() => {
+    const reportUserIds = reportedUserIds;
+    return Array.from(assignmentsByAssignee.keys()).filter((userId) => !reportUserIds.has(userId));
+  }, [assignmentsByAssignee, reportedUserIds]);
+
+  const cardEntries = useMemo<CardEntry[]>(
+    () => [
+      ...reportTrees.map((report) => ({ userId: report.userId, report })),
+      ...assignmentOnlyUserIds.map((userId) => ({ userId, report: null })),
+    ],
+    [reportTrees, assignmentOnlyUserIds],
   );
+
+  const orderedCardEntries = useMemo(
+    () => orderReportsByTeam(cardEntries, displayedDevs.map((dev) => dev.id)),
+    [cardEntries, displayedDevs],
+  );
+
+  // "Only my questions & tasks" hides a card entirely once it has neither a
+  // lead question (report- or task-level) nor a visible assignment.
+  const visibleCardEntries = useMemo(() => {
+    if (!onlyMineFilter) {
+      return orderedCardEntries;
+    }
+
+    return orderedCardEntries.filter((entry) => {
+      const assignmentCount = assignmentsByAssignee.get(entry.userId)?.length ?? 0;
+      const leadQuestionCount = entry.report?.leadQuestions?.length ?? 0;
+      return leadQuestionCount > 0 || assignmentCount > 0;
+    });
+  }, [orderedCardEntries, onlyMineFilter, assignmentsByAssignee]);
 
   async function persistOrder(nextIds: string[]) {
     const previousIds = displayedDevs.map((dev) => dev.id);
@@ -988,7 +1509,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   useEffect(() => {
     let cancelled = false;
     const missingUserIds = Array.from(
-      new Set(reportTrees.map((report) => report.userId).filter((userId) => !developerNames[userId])),
+      new Set(cardEntries.map((entry) => entry.userId).filter((userId) => !developerNames[userId])),
     );
 
     if (missingUserIds.length === 0) {
@@ -1019,7 +1540,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [developerNames, reportTrees]);
+  }, [developerNames, cardEntries]);
 
   return (
     <div className="space-y-4">
@@ -1028,6 +1549,8 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
         reportedCount={reportTrees.length}
         totalDeveloperCount={totalDeveloperCount}
+        onlyMineFilter={onlyMineFilter}
+        onOnlyMineFilterChange={handleOnlyMineFilterChange}
       />
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -1047,15 +1570,38 @@ export function LeadView({ leadUserId }: LeadViewProps) {
             <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
               Loading reports...
             </div>
-          ) : orderedReportTrees.length > 0 ? (
-            orderedReportTrees.map((report) => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                developerName={developerNames[report.userId] ?? 'Loading…'}
-                leadUserId={leadUserId}
-              />
-            ))
+          ) : visibleCardEntries.length > 0 ? (
+            visibleCardEntries.map((entry) =>
+              entry.report ? (
+                <ReportCard
+                  key={entry.userId}
+                  report={entry.report}
+                  developerName={developerNames[entry.userId] ?? 'Loading…'}
+                  leadUserId={leadUserId}
+                  allDevs={displayedDevs}
+                  assignments={assignmentsByAssignee.get(entry.userId) ?? []}
+                  updatesByAssignment={updatesByAssignment}
+                  onCreateAssignment={handleCreateAssignment}
+                  onCloseAssignment={handleCloseAssignment}
+                  onRemoveAssignment={handleRemoveAssignment}
+                  onlyMineFilter={onlyMineFilter}
+                />
+              ) : (
+                <AssignmentOnlyCard
+                  key={entry.userId}
+                  userId={entry.userId}
+                  developerName={developerNames[entry.userId] ?? 'Loading…'}
+                  allDevs={displayedDevs}
+                  assignments={assignmentsByAssignee.get(entry.userId) ?? []}
+                  updatesByAssignment={updatesByAssignment}
+                  onCreateAssignment={handleCreateAssignment}
+                  onCloseAssignment={handleCloseAssignment}
+                  onRemoveAssignment={handleRemoveAssignment}
+                />
+              ),
+            )
+          ) : onlyMineFilter ? (
+            <p className="px-1 py-2 text-sm text-fg-muted">Nothing assigned or asked for this date.</p>
           ) : (
             <p className="px-1 py-2 text-sm text-fg-muted">
               No reports yet today. Try a different date if you are reviewing past work.
