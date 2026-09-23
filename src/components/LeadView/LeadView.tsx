@@ -862,14 +862,14 @@ function TaskCard({
             <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>
             <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <button
-                className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+                className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
                 type="button"
                 onClick={() => toggleComposer('question')}
               >
                 Question
               </button>
               <button
-                className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+                className="rounded-md border border-attention-emphasis/60 bg-attention-muted px-2 py-1 text-xs font-medium text-attention-fg transition hover:border-attention-emphasis hover:bg-attention-emphasis/25"
                 type="button"
                 onClick={() => toggleComposer('note')}
               >
@@ -1108,21 +1108,21 @@ function ReportCard({
         </div>
         <div className="flex shrink-0 gap-2">
           <button
-            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+            className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
             type="button"
             onClick={() => toggleComposer('question')}
           >
             Question
           </button>
           <button
-            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+            className="rounded-md border border-attention-emphasis/60 bg-attention-muted px-2 py-1 text-xs font-medium text-attention-fg transition hover:border-attention-emphasis hover:bg-attention-emphasis/25"
             type="button"
             onClick={() => toggleComposer('note')}
           >
             Note
           </button>
           <button
-            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+            className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
             type="button"
             onClick={() => toggleComposer('task')}
           >
@@ -1235,7 +1235,7 @@ function AssignmentOnlyCard({
       <div className="flex items-center justify-between gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
         <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
         <button
-          className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+          className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
           type="button"
           onClick={() => setComposerOpen((current) => !current)}
         >
