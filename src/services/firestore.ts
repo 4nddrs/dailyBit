@@ -56,7 +56,7 @@ const collections = {
   leadQuestions: 'leadQuestions',
 } as const;
 
-function reportDocId(userId: string, date: string): string {
+export function reportIdFor(userId: string, date: string): string {
   return `${userId}_${date}`;
 }
 
@@ -160,16 +160,16 @@ export function subscribeUserProfiles(
   });
 }
 
-export async function getOrCreateTodayReport(
-  userId: string,
-  date: string,
-): Promise<ReportSummary> {
-  const id = reportDocId(userId, date);
+// Idempotent create-if-missing: only called from a write entry point (the
+// developer actually adding content), never just from opening/viewing a
+// date. Viewing a date must never create a `reports/{userId}_{date}` doc.
+export async function ensureReport(userId: string, date: string): Promise<string> {
+  const id = reportIdFor(userId, date);
   const ref = reportDoc(id);
   const existing = await getDoc(ref);
 
   if (existing.exists()) {
-    return toReportSummary(existing.id, existing.data() as Report);
+    return id;
   }
 
   await setDoc(ref, {
@@ -179,8 +179,26 @@ export async function getOrCreateTodayReport(
     updatedAt: serverTimestamp(),
   });
 
-  const created = await getDoc(ref);
-  return toReportSummary(created.id, created.data() as Report);
+  return id;
+}
+
+// Watches only the report document's existence, never its subcollections.
+// Firestore rules allow `get` on a missing report for a signed-in user (see
+// README's `ownsExistingReport`/get-or-create note), but subcollection rules
+// require an existing report, so callers must not subscribe to them while
+// `exists` is false.
+export function subscribeReportDoc(
+  reportId: string,
+  callback: (exists: boolean) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  return onSnapshot(
+    reportDoc(reportId),
+    (snapshot) => {
+      callback(snapshot.exists());
+    },
+    onError,
+  );
 }
 
 export function subscribeReport(

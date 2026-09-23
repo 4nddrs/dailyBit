@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addQuestion,
   addSection,
@@ -13,10 +13,12 @@ import {
   updateTask,
 } from '../../services/firestore';
 import { useMyReport } from '../../hooks/useMyReport';
+import type { CreateQuestionInput } from '../../services/firestore';
 import type {
   LeadNoteWithId,
   LeadQuestionWithId,
   QuestionWithId,
+  Section,
   SectionWithTasks,
   TaskLink,
   TaskWithId,
@@ -205,7 +207,13 @@ function SectionTitle({
   );
 }
 
-function AddSectionForm({ reportId, sections }: { reportId: string; sections: SectionWithTasks[] }) {
+function AddSectionForm({
+  sections,
+  onAddSection,
+}: {
+  sections: SectionWithTasks[];
+  onAddSection: (section: Section) => Promise<unknown>;
+}) {
   const [title, setTitle] = useState('');
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -217,7 +225,7 @@ function AddSectionForm({ reportId, sections }: { reportId: string; sections: Se
     }
 
     runSafely(
-      addSection(reportId, {
+      onAddSection({
         title: trimmedTitle,
         order: getNextOrder(sections),
       }),
@@ -728,11 +736,13 @@ function SectionsList({
   sections,
   leadNotesByTask,
   leadQuestionsByTask,
+  onAddSection,
 }: {
   reportId: string;
   sections: SectionWithTasks[];
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
+  onAddSection: (section: Section) => Promise<unknown>;
 }) {
   const sortedSections = useMemo(
     () => [...sections].sort((a, b) => a.order - b.order),
@@ -749,7 +759,7 @@ function SectionsList({
       </div>
 
       <div className="mt-3">
-        <AddSectionForm reportId={reportId} sections={sortedSections} />
+        <AddSectionForm sections={sortedSections} onAddSection={onAddSection} />
       </div>
 
       <div className="mt-3 space-y-3">
@@ -774,7 +784,11 @@ function SectionsList({
   );
 }
 
-function QuestionComposer({ reportId }: { reportId: string }) {
+function QuestionComposer({
+  onAddQuestion,
+}: {
+  onAddQuestion: (question: CreateQuestionInput) => Promise<unknown>;
+}) {
   const [questionText, setQuestionText] = useState('');
   const [options, setOptions] = useState(['', '']);
 
@@ -801,7 +815,7 @@ function QuestionComposer({ reportId }: { reportId: string }) {
     }
 
     runSafely(
-      addQuestion(reportId, {
+      onAddQuestion({
         questionText: trimmedQuestion,
         options: trimmedOptions,
       }),
@@ -907,7 +921,15 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
   );
 }
 
-function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questions?: QuestionWithId[] }) {
+function QuestionsPanel({
+  reportId,
+  questions = [],
+  onAddQuestion,
+}: {
+  reportId: string;
+  questions?: QuestionWithId[];
+  onAddQuestion: (question: CreateQuestionInput) => Promise<unknown>;
+}) {
   return (
     <section className="rounded-md border border-line bg-canvas">
       <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
@@ -921,7 +943,7 @@ function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questi
         <p className="text-sm text-fg-muted">Use multiple choice when you need a fast answer.</p>
 
         <div className="mt-3">
-          <QuestionComposer reportId={reportId} />
+          <QuestionComposer onAddQuestion={onAddQuestion} />
         </div>
 
         <div className="mt-3 space-y-3">
@@ -942,9 +964,30 @@ function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questi
 export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   // null means "follow today"; picking today's date again returns to that mode.
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const { reportTree, reportId, loading, date } = useMyReport(userId, selectedDate);
+  const { reportTree, reportId, loading, date, ensureReportExists } = useMyReport(userId, selectedDate);
   const handleDateChange = (nextDate: string) =>
     setSelectedDate(nextDate === todayDateString() ? null : nextDate);
+
+  // The report document only exists once the developer actually adds
+  // content, so every write that could be the first one on an empty report
+  // (adding a section, or a dev question when there are none yet) creates it
+  // first. Adding a task/image/link/answer already requires an existing
+  // section or question, so the report is guaranteed to exist by then.
+  const handleAddSection = useCallback(
+    async (section: Section) => {
+      const id = await ensureReportExists();
+      return addSection(id, section);
+    },
+    [ensureReportExists],
+  );
+
+  const handleAddQuestion = useCallback(
+    async (question: CreateQuestionInput) => {
+      const id = await ensureReportExists();
+      return addQuestion(id, question);
+    },
+    [ensureReportExists],
+  );
 
   const leadNotesByTask = useMemo(() => {
     const grouped = new Map<string, LeadNoteWithId[]>();
@@ -1018,8 +1061,9 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
         sections={reportTree.sections}
         leadNotesByTask={leadNotesByTask}
         leadQuestionsByTask={leadQuestionsByTask}
+        onAddSection={handleAddSection}
       />
-      <QuestionsPanel reportId={reportId} questions={reportTree.questions} />
+      <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
     </div>
   );
 }

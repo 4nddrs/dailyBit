@@ -222,7 +222,7 @@ Security intent:
 
 ### DeveloperView
 
-- Creates today's report automatically after sign-in.
+- Creates the report document for the selected date on the developer's first write (adding a main title, or a question to the lead when there are none yet) — opening or viewing a date never creates a report.
 - Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
 - Keeps task descriptions short with a 140-character limit.
 - Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text or by picking an option).
