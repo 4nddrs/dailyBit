@@ -33,7 +33,9 @@ import type {
   TaskImage,
   TaskImageWithId,
   TaskWithId,
+  TeamOrder,
   UserProfile,
+  UserProfileWithId,
   UserRole,
 } from '../types';
 
@@ -54,7 +56,10 @@ const collections = {
   questions: 'questions',
   leadNotes: 'leadNotes',
   leadQuestions: 'leadQuestions',
+  settings: 'settings',
 } as const;
+
+const TEAM_SETTINGS_DOC_ID = 'team';
 
 export function reportIdFor(userId: string, date: string): string {
   return `${userId}_${date}`;
@@ -62,6 +67,10 @@ export function reportIdFor(userId: string, date: string): string {
 
 function userDoc(uid: string) {
   return doc(db, collections.users, uid);
+}
+
+function teamSettingsDoc() {
+  return doc(db, collections.settings, TEAM_SETTINGS_DOC_ID);
 }
 
 function reportDoc(reportId: string) {
@@ -153,11 +162,40 @@ export function subscribeUserProfile(
 }
 
 export function subscribeUserProfiles(
-  callback: (profiles: UserProfile[]) => void,
+  callback: (profiles: UserProfileWithId[]) => void,
 ): Unsubscribe {
   return onSnapshot(collection(db, collections.users), (snapshot) => {
-    callback(snapshot.docs.map((userSnapshot) => userSnapshot.data() as UserProfile));
+    callback(
+      snapshot.docs.map((userSnapshot) => ({
+        id: userSnapshot.id,
+        ...(userSnapshot.data() as UserProfile),
+      })),
+    );
   });
+}
+
+// Missing doc means no order has been saved yet, so callers get an empty
+// order and fall back to their own default (e.g. alphabetical by name).
+export function subscribeTeamOrder(
+  callback: (memberOrder: string[]) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  return onSnapshot(
+    teamSettingsDoc(),
+    (snapshot) => {
+      const data = snapshot.exists() ? (snapshot.data() as TeamOrder) : null;
+      callback(data?.memberOrder ?? []);
+    },
+    onError,
+  );
+}
+
+export async function saveTeamOrder(uids: string[]): Promise<void> {
+  await setDoc(
+    teamSettingsDoc(),
+    { memberOrder: uids, updatedAt: serverTimestamp() },
+    { merge: true },
+  );
 }
 
 // Idempotent create-if-missing: only called from a write entry point (the

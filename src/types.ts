@@ -7,6 +7,15 @@ export interface UserProfile {
   role: UserRole;
 }
 
+export interface UserProfileWithId extends UserProfile {
+  id: string;
+}
+
+export interface TeamOrder {
+  memberOrder: string[];
+  updatedAt: Timestamp;
+}
+
 export interface Report {
   userId: string;
   date: string;

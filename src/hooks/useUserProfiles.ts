@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { subscribeUserProfiles } from '../services/firestore';
-import type { UserProfile } from '../types';
+import type { UserProfileWithId } from '../types';
 
 interface UseUserProfilesResult {
-  profiles: UserProfile[];
+  profiles: UserProfileWithId[];
   loading: boolean;
 }
 
 export function useUserProfiles(): UseUserProfilesResult {
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [profiles, setProfiles] = useState<UserProfileWithId[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

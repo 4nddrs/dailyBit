@@ -6,10 +6,13 @@ import {
   getUserProfile,
   removeLeadNote,
   removeLeadQuestion,
+  saveTeamOrder,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
 import { useReportsByDate } from '../../hooks/useReportsByDate';
+import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
+import { orderDevelopers, orderReportsByTeam } from '../../utils/team';
 import type {
   LeadNoteWithId,
   LeadQuestionKind,
@@ -19,6 +22,7 @@ import type {
   SectionWithTasks,
   TaskLink,
   TaskWithId,
+  UserProfileWithId,
 } from '../../types';
 import { todayDateString } from '../../types';
 
@@ -513,7 +517,6 @@ function TaskCard({
 
       <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
-      <span className="sr-only">Report {reportId}</span>
 
       {lightboxIndex !== null ? (
         <ImageLightbox
@@ -708,7 +711,7 @@ function ReportCard({
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <article className="rounded-md border border-line bg-canvas">
+    <article className="rounded-md border border-line bg-canvas" id={`report-${report.userId}`}>
       <div className="flex flex-col gap-3 border-b border-line bg-canvas-subtle px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
@@ -780,13 +783,207 @@ function ReportCard({
   );
 }
 
+function TeamBox({
+  devs,
+  reportedUserIds,
+  onMoveDev,
+  onReorderDrag,
+  onSelectDev,
+  error,
+}: {
+  devs: UserProfileWithId[];
+  reportedUserIds: Set<string>;
+  onMoveDev: (devId: string, direction: 'up' | 'down') => void;
+  onReorderDrag: (draggedId: string, targetId: string) => void;
+  onSelectDev: (devId: string) => void;
+  error: string | null;
+}) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  return (
+    <section className="rounded-md border border-line bg-canvas">
+      <div className="flex items-center justify-between border-b border-line bg-canvas-subtle px-3 py-2">
+        <h2 className="text-sm font-semibold text-fg">Team</h2>
+        <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
+          {devs.length}
+        </span>
+      </div>
+
+      {error ? (
+        <p className="px-3 py-2 text-xs font-medium text-danger-fg" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {devs.length > 0 ? (
+        <ul className="divide-y divide-line-muted">
+          {devs.map((dev, index) => (
+            <li
+              className={`flex items-center gap-2 px-3 py-2 transition ${
+                draggingId === dev.id ? 'opacity-50' : ''
+              }`}
+              key={dev.id}
+              draggable
+              onDragStart={() => setDraggingId(dev.id)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                if (draggingId && draggingId !== dev.id) {
+                  onReorderDrag(draggingId, dev.id);
+                }
+                setDraggingId(null);
+              }}
+              onDragEnd={() => setDraggingId(null)}
+            >
+              <span
+                className="shrink-0 cursor-grab select-none text-fg-muted"
+                aria-hidden="true"
+                title="Drag to reorder"
+              >
+                ⋮⋮
+              </span>
+              <button
+                className="min-w-0 flex-1 truncate text-left text-sm font-medium text-fg transition hover:text-accent-fg"
+                type="button"
+                onClick={() => onSelectDev(dev.id)}
+              >
+                {dev.name}
+              </button>
+              <span title={reportedUserIds.has(dev.id) ? 'Reported' : 'No report'}>
+                <span
+                  className={`block h-2 w-2 shrink-0 rounded-full ${
+                    reportedUserIds.has(dev.id) ? 'bg-success-fg' : 'bg-fg-muted'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="sr-only">
+                  {reportedUserIds.has(dev.id) ? 'Reported' : 'No report'}
+                </span>
+              </span>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  className="rounded-md border border-line bg-control px-1.5 py-0.5 text-xs text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-40"
+                  type="button"
+                  disabled={index === 0}
+                  aria-label={`Move ${dev.name} up`}
+                  onClick={() => onMoveDev(dev.id, 'up')}
+                >
+                  ↑
+                </button>
+                <button
+                  className="rounded-md border border-line bg-control px-1.5 py-0.5 text-xs text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-40"
+                  type="button"
+                  disabled={index === devs.length - 1}
+                  aria-label={`Move ${dev.name} down`}
+                  onClick={() => onMoveDev(dev.id, 'down')}
+                >
+                  ↓
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="px-3 py-2">
+          <CompactEmptyState text="No developers yet." />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function LeadView({ leadUserId }: LeadViewProps) {
   const [selectedDate, setSelectedDate] = useState(() => todayDateString());
   const normalizedSelectedDate = normalizeDateString(selectedDate);
   const { reportTrees, loading } = useReportsByDate(normalizedSelectedDate);
   const { profiles } = useUserProfiles();
-  const totalDeveloperCount = profiles.filter((profile) => profile.role === 'dev').length;
+  const { memberOrder } = useTeamOrder();
+  const devs = useMemo(() => profiles.filter((profile) => profile.role === 'dev'), [profiles]);
+  const totalDeveloperCount = devs.length;
   const [developerNames, setDeveloperNames] = useState<Record<string, string>>({});
+
+  const persistedOrderedDevs = useMemo(() => orderDevelopers(devs, memberOrder), [devs, memberOrder]);
+  const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
+  const [teamOrderError, setTeamOrderError] = useState<string | null>(null);
+
+  // Reset any optimistic override once the source data it was derived from
+  // (the dev list or the saved order) actually changes underneath it.
+  const devIdsKey = devs.map((dev) => dev.id).join(',');
+  const memberOrderKey = memberOrder.join(',');
+  useEffect(() => {
+    setOrderOverride(null);
+  }, [devIdsKey, memberOrderKey]);
+
+  const displayedDevs = useMemo(() => {
+    if (!orderOverride) {
+      return persistedOrderedDevs;
+    }
+
+    const devById = new Map(persistedOrderedDevs.map((dev) => [dev.id, dev]));
+    const overridden = orderOverride
+      .map((id) => devById.get(id))
+      .filter((dev): dev is UserProfileWithId => Boolean(dev));
+    const overriddenIds = new Set(overridden.map((dev) => dev.id));
+    const missing = persistedOrderedDevs.filter((dev) => !overriddenIds.has(dev.id));
+
+    return [...overridden, ...missing];
+  }, [orderOverride, persistedOrderedDevs]);
+
+  const reportedUserIds = useMemo(
+    () => new Set(reportTrees.map((report) => report.userId)),
+    [reportTrees],
+  );
+
+  const orderedReportTrees = useMemo(
+    () => orderReportsByTeam(reportTrees, displayedDevs.map((dev) => dev.id)),
+    [reportTrees, displayedDevs],
+  );
+
+  async function persistOrder(nextIds: string[]) {
+    const previousIds = displayedDevs.map((dev) => dev.id);
+    setOrderOverride(nextIds);
+    setTeamOrderError(null);
+    try {
+      await saveTeamOrder(nextIds);
+    } catch (error) {
+      console.error('Failed to save team order', error);
+      setOrderOverride(previousIds);
+      setTeamOrderError('Order could not be saved. Please try again.');
+    }
+  }
+
+  function handleMoveDev(devId: string, direction: 'up' | 'down') {
+    const ids = displayedDevs.map((dev) => dev.id);
+    const index = ids.indexOf(devId);
+    const swapWith = direction === 'up' ? index - 1 : index + 1;
+
+    if (index === -1 || swapWith < 0 || swapWith >= ids.length) {
+      return;
+    }
+
+    const nextIds = [...ids];
+    [nextIds[index], nextIds[swapWith]] = [nextIds[swapWith], nextIds[index]];
+    void persistOrder(nextIds);
+  }
+
+  function handleReorderDrag(draggedId: string, targetId: string) {
+    const ids = displayedDevs.map((dev) => dev.id);
+    const fromIndex = ids.indexOf(draggedId);
+    const toIndex = ids.indexOf(targetId);
+
+    if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+      return;
+    }
+
+    const nextIds = [...ids];
+    const [moved] = nextIds.splice(fromIndex, 1);
+    nextIds.splice(toIndex, 0, moved);
+    void persistOrder(nextIds);
+  }
+
+  function handleSelectDev(devId: string) {
+    document.getElementById(`report-${devId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -833,25 +1030,38 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         totalDeveloperCount={totalDeveloperCount}
       />
 
-      <div className="space-y-3">
-        {loading ? (
-          <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
-            Loading reports...
-          </div>
-        ) : reportTrees.length > 0 ? (
-          reportTrees.map((report) => (
-            <ReportCard
-              key={report.id}
-              report={report}
-              developerName={developerNames[report.userId] ?? 'Loading…'}
-              leadUserId={leadUserId}
-            />
-          ))
-        ) : (
-          <p className="px-1 py-2 text-sm text-fg-muted">
-            No reports yet today. Try a different date if you are reviewing past work.
-          </p>
-        )}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <aside className="lg:order-2 lg:w-64 lg:shrink-0 lg:sticky lg:top-4">
+          <TeamBox
+            devs={displayedDevs}
+            reportedUserIds={reportedUserIds}
+            onMoveDev={handleMoveDev}
+            onReorderDrag={handleReorderDrag}
+            onSelectDev={handleSelectDev}
+            error={teamOrderError}
+          />
+        </aside>
+
+        <div className="min-w-0 flex-1 space-y-3 lg:order-1">
+          {loading ? (
+            <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
+              Loading reports...
+            </div>
+          ) : orderedReportTrees.length > 0 ? (
+            orderedReportTrees.map((report) => (
+              <ReportCard
+                key={report.id}
+                report={report}
+                developerName={developerNames[report.userId] ?? 'Loading…'}
+                leadUserId={leadUserId}
+              />
+            ))
+          ) : (
+            <p className="px-1 py-2 text-sm text-fg-muted">
+              No reports yet today. Try a different date if you are reviewing past work.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

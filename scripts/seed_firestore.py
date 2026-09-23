@@ -95,6 +95,12 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
         {"path": f"users/{lead_uid}", "data": {"name": lead_name, "role": "lead"}},
     ]
     ops.extend({"path": f"users/{uid}", "data": profile} for uid, profile in TEST_DEVELOPERS.items())
+    ops.append(
+        {
+            "path": "settings/team",
+            "data": {"memberOrder": list(TEST_DEVELOPERS.keys()), "updatedAt": SERVER_TIMESTAMP},
+        }
+    )
 
     ops.extend(
         build_report(
@@ -296,6 +302,7 @@ def read_back(db: firestore.Client, today: str) -> dict[str, int]:
         "leadNotes": len(list(db.collection_group("leadNotes").stream())),
         "leadQuestions": len(list(db.collection_group("leadQuestions").stream())),
         "images": len(list(db.collection_group("images").stream())),
+        "settings_team": 1 if db.document("settings/team").get().exists else 0,
     }
 
 
