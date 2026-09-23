@@ -120,6 +120,37 @@ export interface ReportSummary extends Report {
   id: string;
 }
 
+export type AssignmentStatus = 'open' | 'closed';
+
+export interface Assignment {
+  description: string;
+  assigneeIds: string[];
+  createdBy: string;
+  startDate: string;
+  status: AssignmentStatus;
+  closedDate?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface AssignmentWithId extends Assignment {
+  id: string;
+}
+
+export interface AssignmentUpdate {
+  assigneeId: string;
+  date: string;
+  text?: string;
+  links: TaskLink[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface AssignmentUpdateWithImages extends AssignmentUpdate {
+  id: string;
+  images: TaskImageWithId[];
+}
+
 export function todayDateString(date = new Date()): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');

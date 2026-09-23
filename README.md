@@ -207,6 +207,43 @@ service cloud.firestore {
       allow read: if isLead();
       allow write: if isLead();
     }
+
+    match /assignments/{assignmentId} {
+      allow read: if isLead()
+        || (signedIn() && request.auth.uid in resource.data.assigneeIds);
+      allow create, update, delete: if isLead();
+
+      match /updates/{updateId} {
+        // The update doc id is `${assigneeId}_${date}`, so its prefix proves
+        // ownership without a parent lookup when the doc doesn't exist yet
+        // (the assignee's first write of the day).
+        allow read: if isLead()
+          || (signedIn()
+              && (resource == null
+                  ? updateId.matches(request.auth.uid + '_.*')
+                  : resource.data.assigneeId == request.auth.uid));
+        allow create, update: if signedIn()
+          && request.resource.data.assigneeId == request.auth.uid
+          && updateId.matches(request.auth.uid + '_.*')
+          && request.auth.uid in
+            get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds;
+        // The lead also needs delete here so removeAssignment's cascade can
+        // clean up every assignee's updates, not only its own.
+        allow delete: if isLead()
+          || (signedIn() && resource.data.assigneeId == request.auth.uid);
+
+        match /images/{imageId} {
+          allow read: if isLead()
+            || (signedIn() && updateId.matches(request.auth.uid + '_.*'));
+          allow create, update: if signedIn()
+            && updateId.matches(request.auth.uid + '_.*')
+            && request.auth.uid in
+              get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds;
+          allow delete: if isLead()
+            || (signedIn() && updateId.matches(request.auth.uid + '_.*'));
+        }
+      }
+    }
   }
 }
 ```
@@ -221,10 +258,14 @@ Security intent:
 - Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, and `answeredAt`.
 - Only users with `role: 'lead'` can read or write `settings/team`, which stores the lead's chosen developer ordering for the "Team" list and the reports rollup.
 - Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
+- Only users with `role: 'lead'` can create, update, or delete `assignments`; an assignee can only read the assignments that list their uid in `assigneeIds`.
+- An assignee can create or update only their own `updates` doc (id `${assigneeId}_${date}`), and only while they're still listed in the parent assignment's `assigneeIds`; the lead can read and delete any assignee's `updates`/`images` so `removeAssignment` can cascade-delete them.
 
 > **Note:** the lead's private-notes collection was renamed to `leadNotes`, and the old team-wide prompts collection was removed in favor of per-task `leadQuestions`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or lead notes/questions will be rejected.
 >
 > **Note:** the `settings/team` rule is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or saving the lead's team order will be rejected.
+>
+> **Note:** the `assignments` collection (and its `updates`/`images` subcollections) is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or creating/answering lead assignments will be rejected.
 
 ## Usage
 
@@ -234,6 +275,7 @@ Security intent:
 - Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
 - Keeps task descriptions short with a 140-character limit.
 - Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text or by picking an option).
+- Shows an "Assigned by lead" block above the report when the developer has at least one assignment visible on the selected date, with a "Pending"/"Updated" pill per assignment; each is answered with its own daily text/links/images update, independent of the report (it works even with no report for that date).
 
 ### LeadView
 
@@ -257,6 +299,9 @@ Security intent:
 | `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
 | `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. |
 | `settings/team` | The lead's saved developer ordering: `{ memberOrder: string[], updatedAt }`, where `memberOrder` is an ordered list of developer uids. Drives both the "Team" list and the reports rollup order in LeadView. |
+| `assignments/{assignmentId}` | A lead-created task assigned to one or more developers: `{ description, assigneeIds, createdBy, startDate, status: 'open' | 'closed', closedDate?, createdAt, updatedAt }`. Visible on a date when `startDate <= date` and the assignment is still `'open'` or `closedDate >= date`. Independent of `reports`. |
+| `assignments/{assignmentId}/updates/{assigneeId}_{date}` | One assignee's daily answer to an assignment: `{ assigneeId, date, text?, links, createdAt, updatedAt }`. |
+| `assignments/{assignmentId}/updates/{updateId}/images/{imageId}` | Update image document with `imageBase64` data URL and `createdAt`, same one-doc-per-image shape as task images. |
 
 ## Roles
 

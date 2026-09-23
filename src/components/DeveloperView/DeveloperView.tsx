@@ -1,20 +1,27 @@
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  addAssignmentUpdateImage,
   addQuestion,
   addSection,
   addTask,
   addTaskImage,
   answerLeadQuestion,
+  removeAssignmentUpdateImage,
   removeQuestion,
   removeSection,
   removeTask,
   removeTaskImage,
   renameSection,
+  saveAssignmentUpdate,
+  subscribeAssignmentUpdate,
   updateTask,
 } from '../../services/firestore';
+import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
 import type { CreateQuestionInput } from '../../services/firestore';
 import type {
+  AssignmentUpdateWithImages,
+  AssignmentWithId,
   LeadNoteWithId,
   LeadQuestionWithId,
   QuestionWithId,
@@ -376,6 +383,227 @@ function TaskLinks({
         </button>
       </form>
     </div>
+  );
+}
+
+function AssignmentUpdateEditor({
+  assignmentId,
+  assigneeId,
+  date,
+  update,
+}: {
+  assignmentId: string;
+  assigneeId: string;
+  date: string;
+  update: AssignmentUpdateWithImages | null;
+}) {
+  const [text, setText] = useState(update?.text ?? '');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setText(update?.text ?? '');
+  }, [update?.text]);
+
+  const charactersRemaining = TASK_DESCRIPTION_LIMIT - text.length;
+  const counterColor = charactersRemaining <= 10 ? 'text-danger-fg' : charactersRemaining <= 25 ? 'text-attention-fg' : 'text-fg-muted';
+
+  function persistText() {
+    const nextText = text.trim();
+    if (nextText !== (update?.text ?? '')) {
+      runSafely(
+        saveAssignmentUpdate(assignmentId, assigneeId, date, { text: nextText }),
+        'Assignment update save failed',
+      );
+      setText(nextText);
+    }
+  }
+
+  function updateLinks(links: TaskLink[]) {
+    runSafely(
+      saveAssignmentUpdate(assignmentId, assigneeId, date, { links }),
+      'Assignment update links save failed',
+    );
+  }
+
+  async function handleImageSelected(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const imageBase64 = await compressTaskImage(file);
+      await addAssignmentUpdateImage(assignmentId, assigneeId, date, imageBase64);
+    } catch (error) {
+      console.error('Assignment image processing failed', error);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }
+
+  function handleRemoveImage(imageId: string) {
+    setUploadError(null);
+    runSafely(
+      removeAssignmentUpdateImage(assignmentId, assigneeId, date, imageId),
+      'Assignment image remove failed',
+    );
+  }
+
+  const images = update?.images ?? [];
+
+  return (
+    <div className="mt-3">
+      <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
+        Your update
+        <input
+          className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onBlur={persistText}
+          onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+            if (event.key === 'Enter') {
+              event.currentTarget.blur();
+            }
+          }}
+          maxLength={TASK_DESCRIPTION_LIMIT}
+          placeholder="What did you do on this assignment today?"
+        />
+      </label>
+      <p className={`mt-1 text-right text-xs font-medium ${counterColor}`}>
+        {text.length}/{TASK_DESCRIPTION_LIMIT}
+      </p>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-[10rem_1fr]">
+        <div>
+          {images.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
+              {images.map((image) => (
+                <div className="group/assignmentImage relative" key={image.id}>
+                  <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open update image">
+                    <img
+                      className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
+                      src={image.imageBase64}
+                      alt="Assignment update attachment preview"
+                    />
+                  </a>
+                  <button
+                    className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/assignmentImage:opacity-100 md:group-focus-within/assignmentImage:opacity-100"
+                    type="button"
+                    onClick={() => handleRemoveImage(image.id)}
+                    aria-label="Remove image"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <input
+            ref={fileInputRef}
+            className="sr-only"
+            type="file"
+            accept="image/*"
+            onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
+          />
+          <div className="mt-2 flex gap-2">
+            <button
+              className="inline-flex flex-1 items-center justify-center rounded-md border border-line bg-control px-3 py-1.5 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-wait disabled:opacity-60"
+              type="button"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploading ? 'Processing...' : 'Attach image'}
+            </button>
+          </div>
+          {uploadError && (
+            <p className="mt-1 text-xs font-medium text-danger-fg" role="alert">{uploadError}</p>
+          )}
+        </div>
+
+        <TaskLinks links={update?.links ?? []} onChange={updateLinks} />
+      </div>
+    </div>
+  );
+}
+
+function AssignmentRow({
+  assignment,
+  assigneeId,
+  date,
+}: {
+  assignment: AssignmentWithId;
+  assigneeId: string;
+  date: string;
+}) {
+  const [update, setUpdate] = useState<AssignmentUpdateWithImages | null>(null);
+
+  useEffect(() => {
+    setUpdate(null);
+    const unsubscribe = subscribeAssignmentUpdate(assignment.id, assigneeId, date, setUpdate);
+    return unsubscribe;
+  }, [assignment.id, assigneeId, date]);
+
+  const hasUpdateContent = Boolean(
+    (update?.text && update.text.trim().length > 0) ||
+      (update?.links && update.links.length > 0) ||
+      (update?.images && update.images.length > 0),
+  );
+
+  return (
+    <article className="px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium text-fg">{assignment.description}</p>
+        <span
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+            hasUpdateContent
+              ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+              : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
+          }`}
+        >
+          {hasUpdateContent ? 'Updated' : 'Pending'}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
+
+      <AssignmentUpdateEditor assignmentId={assignment.id} assigneeId={assigneeId} date={date} update={update} />
+    </article>
+  );
+}
+
+function AssignmentsBox({
+  assignments,
+  userId,
+  date,
+}: {
+  assignments: AssignmentWithId[];
+  userId: string;
+  date: string;
+}) {
+  if (assignments.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-md border border-line bg-canvas">
+      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
+        <h2 className="text-sm font-semibold text-fg">Assigned by lead</h2>
+        <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs font-medium text-fg-muted">
+          {assignments.length}
+        </span>
+      </div>
+      <div className="divide-y divide-line-muted">
+        {assignments.map((assignment) => (
+          <AssignmentRow key={assignment.id} assignment={assignment} assigneeId={userId} date={date} />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -965,6 +1193,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   // null means "follow today"; picking today's date again returns to that mode.
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const { reportTree, reportId, loading, date, ensureReportExists } = useMyReport(userId, selectedDate);
+  const { assignments } = useMyAssignments(userId, date);
   const handleDateChange = (nextDate: string) =>
     setSelectedDate(nextDate === todayDateString() ? null : nextDate);
 
@@ -1039,6 +1268,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   return (
     <div className="space-y-4">
       <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
+      <AssignmentsBox assignments={assignments} userId={userId} date={date} />
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas">
           <div className="border-b border-line bg-canvas-subtle px-4 py-2">
