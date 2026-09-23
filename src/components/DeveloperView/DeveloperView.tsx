@@ -142,7 +142,7 @@ function Header({
     <header className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-base font-semibold text-fg">{formatDisplayDate(date)}</h1>
+          <h1 className="text-xl font-semibold text-fg">{formatDisplayDate(date)}</h1>
           <p className="mt-1 text-sm text-fg-muted">{developerName}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -750,7 +750,7 @@ function AssignmentsBox({
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-        <h2 className="text-sm font-semibold text-fg">Assigned by lead</h2>
+        <h2 className="text-lg font-semibold text-fg">Assigned by lead</h2>
         <span className="rounded-full border border-accent-emphasis/40 bg-accent-muted px-2 py-0.5 text-xs font-medium text-accent-fg">
           {assignments.length}
         </span>
@@ -1120,7 +1120,7 @@ function SectionsList({
     <section>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-fg">Today’s work</h2>
+          <h2 className="text-lg font-semibold text-fg">Today’s work</h2>
           <p className="text-sm text-fg-muted">Group related work under clear main titles.</p>
         </div>
       </div>
@@ -1300,7 +1300,7 @@ function QuestionsPanel({
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-        <h2 className="text-sm font-semibold text-fg">Questions to the lead</h2>
+        <h2 className="text-lg font-semibold text-fg">Questions to the lead</h2>
         <span className="rounded-full border border-done-emphasis/40 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
           multiple choice
         </span>
@@ -1411,7 +1411,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas shadow-sm">
           <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-            <h2 className="text-sm font-semibold text-fg">From the lead</h2>
+            <h2 className="text-lg font-semibold text-fg">From the lead</h2>
           </div>
           <div className="p-4">
             <LeadNotesReadOnly notes={reportLevelLeadNotes} />

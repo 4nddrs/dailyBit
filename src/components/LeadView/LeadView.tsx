@@ -156,7 +156,7 @@ function LeadHeader({
   return (
     <header className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-        <h1 className="text-base font-semibold text-fg">{formatDisplayDate(date)}</h1>
+        <h1 className="text-xl font-semibold text-fg">{formatDisplayDate(date)}</h1>
 
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-fg-muted">
@@ -781,7 +781,7 @@ function LeadAssignmentsBox({
   return (
     <section className="mt-4 rounded-md bg-canvas-subtle">
       <div className="flex items-center gap-2 px-4 py-3">
-        <h3 className="text-sm font-semibold text-fg">Assigned by lead</h3>
+        <h3 className="text-base font-semibold text-fg">Assigned by lead</h3>
         <span className="rounded-full border border-accent-emphasis/40 bg-accent-muted px-2 py-0.5 text-xs font-medium text-accent-fg">
           {assignments.length}
         </span>
@@ -928,7 +928,7 @@ function SectionCard({
   return (
     <section className="rounded-md bg-canvas-subtle">
       <div className="px-4 py-3">
-        <h3 className="text-sm font-semibold text-fg">{section.title}</h3>
+        <h3 className="text-base font-semibold text-fg">{section.title}</h3>
       </div>
       <div className="divide-y divide-line">
         {section.tasks.length > 0 ? (
@@ -1101,7 +1101,7 @@ function ReportCard({
     <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
+          <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
             <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
@@ -1186,7 +1186,7 @@ function ReportCard({
 
             {report.questions && report.questions.length > 0 ? (
               <section className="mt-4 rounded-md bg-canvas-subtle p-4">
-                <h3 className="text-sm font-semibold text-fg">Questions from {developerName}</h3>
+                <h3 className="text-base font-semibold text-fg">Questions from {developerName}</h3>
                 <div className="mt-3 space-y-3">
                   {report.questions.map((question) => (
                     <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
@@ -1233,7 +1233,7 @@ function AssignmentOnlyCard({
   return (
     <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
       <div className="flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-        <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
+        <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
         <button
           className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
           type="button"
@@ -1288,7 +1288,7 @@ function TeamBox({
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="flex items-center justify-between rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-        <h2 className="text-sm font-semibold text-fg">Team</h2>
+        <h2 className="text-lg font-semibold text-fg">Team</h2>
         <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
           {devs.length}
         </span>
