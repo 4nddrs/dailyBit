@@ -7,6 +7,7 @@ import {
   removeLeadNote,
   removeLeadQuestion,
 } from '../../services/firestore';
+import { ImageLightbox } from '../ImageLightbox';
 import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import type {
@@ -450,6 +451,7 @@ function TaskCard({
   onRemoveQuestion: (questionId: string) => void;
 }) {
   const [openComposer, setOpenComposer] = useState<'question' | 'note' | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   function toggleComposer(composer: 'question' | 'note') {
     setOpenComposer((current) => (current === composer ? null : composer));
@@ -460,20 +462,20 @@ function TaskCard({
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
-            {task.images.map((image) => (
-              <a
-                href={image.imageBase64}
+            {task.images.map((image, imageIndex) => (
+              <button
+                className="cursor-zoom-in rounded-md focus:outline-none focus:ring-1 focus:ring-accent-emphasis"
                 key={image.id}
-                rel="noreferrer"
-                target="_blank"
+                type="button"
                 aria-label="Open task image"
+                onClick={() => setLightboxIndex(imageIndex)}
               >
                 <img
                   className="h-24 w-24 rounded-md border border-line object-cover transition hover:opacity-90"
                   src={image.imageBase64}
                   alt="Task attachment thumbnail"
                 />
-              </a>
+              </button>
             ))}
           </div>
         ) : null}
@@ -512,6 +514,14 @@ function TaskCard({
       <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
       <span className="sr-only">Report {reportId}</span>
+
+      {lightboxIndex !== null ? (
+        <ImageLightbox
+          images={task.images}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      ) : null}
     </article>
   );
 }
