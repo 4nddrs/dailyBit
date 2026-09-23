@@ -1110,7 +1110,7 @@ function ReportCard({
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
+    <article className="group/report rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
@@ -1118,7 +1118,7 @@ function ReportCard({
             <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 gap-2 transition md:opacity-0 md:group-hover/report:opacity-100 md:group-focus-within/report:opacity-100">
           <button
             className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
             type="button"
@@ -1244,11 +1244,11 @@ function AssignmentOnlyCard({
   const [composerOpen, setComposerOpen] = useState(false);
 
   return (
-    <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
+    <article className="group/report rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
       <div className="flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
         <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
         <button
-          className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
+          className="md:opacity-0 md:group-hover/report:opacity-100 md:group-focus-within/report:opacity-100 rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
           type="button"
           onClick={() => setComposerOpen((current) => !current)}
         >
