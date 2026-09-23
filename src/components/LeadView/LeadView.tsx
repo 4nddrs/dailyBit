@@ -539,14 +539,30 @@ function LeadQuestionComposer({
   );
 }
 
+// After creating an assignment, bring the new row into view. The Firestore
+// listener applies local writes almost immediately, so wait a frame or two for
+// the row to render before scrolling.
+function revealAssignment(assignmentId: string, assigneeId: string, attemptsLeft = 10) {
+  const element = document.getElementById(`assignment-${assignmentId}-${assigneeId}`);
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
+  if (attemptsLeft > 0) {
+    window.setTimeout(() => revealAssignment(assignmentId, assigneeId, attemptsLeft - 1), 100);
+  }
+}
+
 function AssignmentComposer({
   devs,
   preselectedDevId,
   onAssign,
+  onDone,
 }: {
   devs: UserProfileWithId[];
   preselectedDevId: string;
-  onAssign: (input: { description: string; assigneeIds: string[] }) => Promise<void>;
+  onAssign: (input: { description: string; assigneeIds: string[] }) => Promise<string>;
+  onDone: (assignmentId: string) => void;
 }) {
   const [description, setDescription] = useState('');
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
@@ -574,9 +590,10 @@ function AssignmentComposer({
     setSubmitting(true);
     setError(null);
     try {
-      await onAssign({ description: trimmedDescription, assigneeIds });
+      const assignmentId = await onAssign({ description: trimmedDescription, assigneeIds });
       setDescription('');
       setAssigneeIds(preselectedDevId ? [preselectedDevId] : []);
+      onDone(assignmentId);
     } catch (caughtError) {
       console.error('Assignment create failed', caughtError);
       setError('Task could not be assigned. Please try again.');
@@ -661,7 +678,7 @@ function LeadAssignmentRow({
   const images = update?.images ?? [];
 
   return (
-    <article className="group/assignmentRow px-4 py-3">
+    <article id={`assignment-${assignment.id}-${assigneeId}`} className="group/assignmentRow scroll-mt-4 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium leading-6 text-fg">{assignment.description}</p>
@@ -762,14 +779,14 @@ function LeadAssignmentsBox({
   }
 
   return (
-    <section className="mt-3 rounded-md border border-line bg-canvas">
-      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
-        <h3 className="text-sm font-semibold text-fg">Assigned by lead</h3>
-        <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs font-medium text-fg-muted">
+    <section className="mt-3 rounded-md border border-accent-emphasis/60 bg-accent-muted">
+      <div className="flex items-center gap-2 border-b border-accent-emphasis/40 bg-accent-muted px-4 py-2">
+        <h3 className="text-sm font-semibold text-accent-fg">Assigned by lead</h3>
+        <span className="rounded-full border border-accent-emphasis/40 bg-canvas px-2 py-0.5 text-xs font-medium text-accent-fg">
           {assignments.length}
         </span>
       </div>
-      <div className="divide-y divide-line-muted">
+      <div className="divide-y divide-accent-emphasis/20">
         {assignments.map((assignment) => (
           <LeadAssignmentRow
             key={assignment.id}
@@ -1010,7 +1027,7 @@ function ReportCard({
   allDevs: UserProfileWithId[];
   assignments: AssignmentWithId[];
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<void>;
+  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<string>;
   onCloseAssignment: (assignmentId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onlyMineFilter: boolean;
@@ -1122,7 +1139,15 @@ function ReportCard({
           <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
         ) : null}
         {openComposer === 'task' ? (
-          <AssignmentComposer devs={allDevs} preselectedDevId={report.userId} onAssign={onCreateAssignment} />
+          <AssignmentComposer
+            devs={allDevs}
+            preselectedDevId={report.userId}
+            onAssign={onCreateAssignment}
+            onDone={(assignmentId) => {
+              setOpenComposer(null);
+              revealAssignment(assignmentId, report.userId);
+            }}
+          />
         ) : null}
 
         {onlyMineFilter ? (
@@ -1199,7 +1224,7 @@ function AssignmentOnlyCard({
   allDevs: UserProfileWithId[];
   assignments: AssignmentWithId[];
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<void>;
+  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<string>;
   onCloseAssignment: (assignmentId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
 }) {
@@ -1220,7 +1245,15 @@ function AssignmentOnlyCard({
 
       <div className="p-4">
         {composerOpen ? (
-          <AssignmentComposer devs={allDevs} preselectedDevId={userId} onAssign={onCreateAssignment} />
+          <AssignmentComposer
+            devs={allDevs}
+            preselectedDevId={userId}
+            onAssign={onCreateAssignment}
+            onDone={(assignmentId) => {
+              setComposerOpen(false);
+              revealAssignment(assignmentId, userId);
+            }}
+          />
         ) : null}
 
         <LeadAssignmentsBox
@@ -1374,7 +1407,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   }, [assignments]);
 
   async function handleCreateAssignment(input: { description: string; assigneeIds: string[] }) {
-    await createAssignment({
+    return createAssignment({
       description: input.description,
       assigneeIds: input.assigneeIds,
       createdBy: leadUserId,

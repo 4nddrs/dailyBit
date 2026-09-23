@@ -591,14 +591,14 @@ function AssignmentsBox({
   }
 
   return (
-    <section className="rounded-md border border-line bg-canvas">
-      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
-        <h2 className="text-sm font-semibold text-fg">Assigned by lead</h2>
-        <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs font-medium text-fg-muted">
+    <section className="rounded-md border border-accent-emphasis/60 bg-accent-muted">
+      <div className="flex items-center gap-2 border-b border-accent-emphasis/40 bg-accent-muted px-4 py-2">
+        <h2 className="text-sm font-semibold text-accent-fg">Assigned by lead</h2>
+        <span className="rounded-full border border-accent-emphasis/40 bg-canvas px-2 py-0.5 text-xs font-medium text-accent-fg">
           {assignments.length}
         </span>
       </div>
-      <div className="divide-y divide-line-muted">
+      <div className="divide-y divide-accent-emphasis/20">
         {assignments.map((assignment) => (
           <AssignmentRow key={assignment.id} assignment={assignment} assigneeId={userId} date={date} />
         ))}
