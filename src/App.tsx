@@ -5,6 +5,18 @@ import { LeadView } from './components/LeadView';
 import { signIn, signUp } from './services/auth';
 import { useAuth } from './hooks/useAuth';
 
+function Wordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
+  const dimension = size === 'sm' ? 'h-5 w-5 text-xs' : 'h-8 w-8 text-sm';
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-sm bg-fg font-bold text-canvas ${dimension}`}
+      aria-hidden="true"
+    >
+      D
+    </span>
+  );
+}
+
 function AuthForm() {
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
@@ -35,81 +47,85 @@ function AuthForm() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
-      <section className="w-full max-w-md rounded-2xl border border-line bg-canvas p-8">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-wide text-accent-fg">DailyBit</p>
-          <h1 className="mt-2 text-3xl font-semibold text-fg">
-            {isSignUp ? 'Create your account' : 'Welcome back'}
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+          <Wordmark />
+          <h1 className="text-xl font-normal text-fg">
+            {isSignUp ? 'Create your account' : 'Sign in to DailyBit'}
           </h1>
-          <p className="mt-3 text-sm leading-6 text-fg-muted">
+          <p className="text-sm leading-6 text-fg-muted">
             Sign in to manage daily reports and questions.
           </p>
         </div>
 
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          {isSignUp ? (
+        <section className="rounded-md border border-line bg-canvas-subtle p-4">
+          <form className="space-y-3" onSubmit={handleSubmit}>
+            {isSignUp ? (
+              <label className="block text-sm font-medium text-fg">
+                Name
+                <input
+                  className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+                  type="text"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
+                  required
+                />
+              </label>
+            ) : null}
+
             <label className="block text-sm font-medium text-fg">
-              Name
+              Email
               <input
-                className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
-                type="text"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoComplete="name"
+                className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
                 required
               />
             </label>
-          ) : null}
 
-          <label className="block text-sm font-medium text-fg">
-            Email
-            <input
-              className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              required
-            />
-          </label>
+            <label className="block text-sm font-medium text-fg">
+              Password
+              <input
+                className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                minLength={6}
+                required
+              />
+            </label>
 
-          <label className="block text-sm font-medium text-fg">
-            Password
-            <input
-              className="mt-2 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={isSignUp ? 'new-password' : 'current-password'}
-              minLength={6}
-              required
-            />
-          </label>
+            {error ? (
+              <p className="rounded-md bg-danger-muted px-3 py-2 text-sm text-danger-fg">{error}</p>
+            ) : null}
 
-          {error ? (
-            <p className="rounded-lg bg-danger-muted px-3 py-2 text-sm text-danger-fg">{error}</p>
-          ) : null}
+            <button
+              className="w-full rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-60"
+              type="submit"
+              disabled={submitting}
+            >
+              {submitting ? 'Working...' : isSignUp ? 'Sign up' : 'Sign in'}
+            </button>
+          </form>
+        </section>
 
+        <div className="mt-3 rounded-md border border-line bg-canvas-subtle p-3 text-center">
           <button
-            className="w-full rounded-lg border border-white/15 bg-success-emphasis px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-60"
-            type="submit"
-            disabled={submitting}
+            className="text-sm font-medium text-accent-fg hover:underline"
+            type="button"
+            onClick={() => {
+              setError(null);
+              setMode(isSignUp ? 'signIn' : 'signUp');
+            }}
           >
-            {submitting ? 'Working...' : isSignUp ? 'Sign up' : 'Sign in'}
+            {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
           </button>
-        </form>
-
-        <button
-          className="mt-5 w-full text-sm font-medium text-accent-fg hover:underline"
-          type="button"
-          onClick={() => {
-            setError(null);
-            setMode(isSignUp ? 'signIn' : 'signUp');
-          }}
-        >
-          {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
-        </button>
-      </section>
+        </div>
+      </div>
     </main>
   );
 }
@@ -121,35 +137,42 @@ interface AppShellProps {
 }
 
 function AppShell({ user, profile, signOut }: AppShellProps) {
-  return (
-    <main className="min-h-screen bg-canvas px-6 py-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="flex flex-col gap-4 rounded-2xl border border-line bg-canvas p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-accent-fg">DailyBit</p>
-            <h1 className="mt-2 text-3xl font-semibold text-fg">
-              {profile?.name ?? 'DailyBit user'}
-            </h1>
-            <p className="mt-2 text-sm text-fg-muted">Role: {profile?.role ?? 'loading...'}</p>
-          </div>
-          <button
-            className="rounded-lg border border-line bg-control px-4 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover"
-            type="button"
-            onClick={() => void signOut()}
-          >
-            Sign out
-          </button>
-        </header>
+  const viewName = profile?.role === 'lead' ? 'Lead View' : 'Developer';
 
-        <div className="mt-6">
-          {profile?.role === 'lead' ? (
-            <LeadView leadUserId={user.uid} />
-          ) : (
-            <DeveloperView userId={user.uid} developerName={profile?.name ?? user.email ?? 'Developer'} />
-          )}
+  return (
+    <div className="min-h-screen bg-canvas">
+      <header className="border-b border-line bg-canvas-subtle">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm">
+            <Wordmark size="sm" />
+            <span className="font-semibold text-fg">DailyBit</span>
+            <span className="text-fg-muted">/</span>
+            <span className="text-fg-muted">{viewName}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-fg-muted">{profile?.name ?? 'DailyBit user'}</span>
+            <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
+              {profile?.role ?? 'loading...'}
+            </span>
+            <button
+              className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+              type="button"
+              onClick={() => void signOut()}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
-      </div>
-    </main>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-4 py-4">
+        {profile?.role === 'lead' ? (
+          <LeadView leadUserId={user.uid} />
+        ) : (
+          <DeveloperView userId={user.uid} developerName={profile?.name ?? user.email ?? 'Developer'} />
+        )}
+      </main>
+    </div>
   );
 }
 
@@ -167,8 +190,8 @@ export default function App() {
   if (profileError) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
-        <section className="w-full max-w-lg rounded-2xl border border-danger-emphasis/50 bg-danger-muted p-8">
-          <h1 className="text-2xl font-semibold text-danger-fg">Could not load your profile</h1>
+        <section className="w-full max-w-lg rounded-md border border-danger-emphasis/50 bg-danger-muted p-4">
+          <h1 className="text-lg font-semibold text-danger-fg">Could not load your profile</h1>
           <p className="mt-4 text-sm leading-6 text-fg">{profileError}</p>
           <p className="mt-3 text-sm leading-6 text-fg-muted">
             Check that the Firestore database exists and its rules allow authenticated reads of the

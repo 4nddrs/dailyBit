@@ -120,16 +120,13 @@ async function compressTaskImage(file: File): Promise<string> {
 
 function Header({ date, developerName }: { date?: string; developerName: string }) {
   return (
-    <header className="rounded-3xl border border-line bg-canvas p-6">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+    <header className="rounded-md border border-line bg-canvas-subtle px-4 py-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-fg">DailyBit</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-fg">
-            {formatDisplayDate(date)}
-          </h1>
-          <p className="mt-2 text-sm text-fg-muted">{developerName}</p>
+          <h1 className="text-lg font-semibold tracking-tight text-fg">{formatDisplayDate(date)}</h1>
+          <p className="mt-1 text-sm text-fg-muted">{developerName}</p>
         </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-3 py-1.5 text-sm font-medium text-success-fg">
+        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-2 py-1 text-xs font-medium text-success-fg">
           <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
           Everything saves automatically
         </div>
@@ -140,10 +137,9 @@ function Header({ date, developerName }: { date?: string; developerName: string 
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-2xl border border-dashed border-line bg-canvas-inset px-5 py-8 text-center">
-      <h3 className="text-sm font-semibold text-fg">{title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-fg-muted">{description}</p>
-    </div>
+    <p className="px-4 py-3 text-sm text-fg-muted">
+      <span className="font-medium text-fg">{title}.</span> {description}
+    </p>
   );
 }
 
@@ -170,7 +166,7 @@ function SectionTitle({
 
   return (
     <input
-      className="w-full rounded-xl border border-transparent bg-transparent px-2 py-1 text-lg font-semibold text-fg outline-none transition hover:border-line focus:border-accent-emphasis focus:bg-canvas-subtle focus:ring-2 focus:ring-accent-emphasis"
+      className="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-lg font-semibold text-fg outline-none transition hover:border-line focus:border-accent-emphasis focus:bg-canvas-subtle focus:ring-1 focus:ring-accent-emphasis"
       value={title}
       onChange={(event) => setTitle(event.target.value)}
       onBlur={persistTitle}
@@ -206,16 +202,16 @@ function AddSectionForm({ reportId, sections }: { reportId: string; sections: Se
   }
 
   return (
-    <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSubmit}>
+    <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
       <input
-        className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-4 py-2.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+        className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
         placeholder="Add main title"
         aria-label="Add main title"
       />
       <button
-        className="rounded-xl border border-white/15 bg-success-emphasis px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
         type="submit"
         disabled={!title.trim()}
       >
@@ -256,7 +252,7 @@ function AddTaskForm({
   return (
     <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
       <input
-        className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+        className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={description}
         onChange={(event) => setDescription(event.target.value)}
         placeholder="Add a short task, then press Enter"
@@ -264,7 +260,7 @@ function AddTaskForm({
         aria-label="New task description"
       />
       <button
-        className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
         type="submit"
         disabled={!description.trim()}
       >
@@ -325,21 +321,21 @@ function TaskLinks({
 
       <form className="grid gap-2 md:grid-cols-[1fr_9rem_auto]" onSubmit={handleSubmit}>
         <input
-          className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+          className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://..."
           aria-label="Link URL"
         />
         <input
-          className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+          className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
           value={label}
           onChange={(event) => setLabel(event.target.value)}
           placeholder="Label"
           aria-label="Link label"
         />
         <button
-          className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!isValidUrl(url.trim())}
         >
@@ -356,10 +352,10 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
   }
 
   return (
-    <div className="mt-3 space-y-2">
+    <div className="mt-2 space-y-2">
       {notes.map((note) => (
         <p
-          className="rounded-xl border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
+          className="rounded-md border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
           key={note.id}
         >
           <span className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</span>
@@ -421,13 +417,13 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
   }
 
   return (
-    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
+    <article className="rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
       <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
 
       {!editing && isAnswered ? (
         <div className="mt-2">
           {question.kind === 'text' ? (
-            <p className="rounded-lg border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+            <p className="rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
               {question.answerText}
             </p>
           ) : (
@@ -447,7 +443,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
             </div>
           )}
           <button
-            className="mt-2 rounded-xl border border-line bg-control px-3 py-1.5 text-xs font-semibold text-fg transition hover:bg-control-hover"
+            className="mt-2 rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
             type="button"
             onClick={() => setEditing(true)}
           >
@@ -457,14 +453,14 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
       ) : question.kind === 'text' ? (
         <form className="mt-2" onSubmit={handleTextSubmit}>
           <textarea
-            className="min-h-16 w-full resize-y rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+            className="min-h-16 w-full resize-y rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             value={answerText}
             onChange={(event) => setAnswerText(event.target.value)}
             placeholder="Type your answer"
           />
           <div className="mt-2 flex justify-end">
             <button
-              className="rounded-xl border border-white/15 bg-success-emphasis px-3 py-2 text-xs font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-xs font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
               type="submit"
               disabled={!answerText.trim() || submittingText}
             >
@@ -560,13 +556,13 @@ function TaskCard({
   }
 
   return (
-    <article className="rounded-2xl border border-line bg-canvas-subtle p-4">
+    <article className="px-4 py-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
             Task
             <input
-              className="mt-2 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+              className="mt-2 w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               onBlur={persistDescription}
@@ -583,7 +579,7 @@ function TaskCard({
           </p>
         </div>
         <button
-          className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
           type="button"
           onClick={() => runSafely(removeTask(reportId, sectionId, task.id), 'Task remove failed')}
           aria-label="Remove task"
@@ -592,7 +588,7 @@ function TaskCard({
         </button>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[10rem_1fr]">
+      <div className="mt-3 grid gap-3 lg:grid-cols-[10rem_1fr]">
         <div>
           {task.images.length > 0 ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
@@ -600,7 +596,7 @@ function TaskCard({
                 <div className="relative" key={image.id}>
                   <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
                     <img
-                      className="h-24 w-full rounded-xl border border-line object-cover transition hover:opacity-90"
+                      className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
                       src={image.imageBase64}
                       alt="Task attachment preview"
                     />
@@ -626,7 +622,7 @@ function TaskCard({
           />
           <div className="mt-2 flex gap-2">
             <button
-              className="inline-flex flex-1 items-center justify-center rounded-xl border border-line bg-control px-3 py-2 text-xs font-semibold text-fg transition hover:bg-control-hover disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex flex-1 items-center justify-center rounded-md border border-line bg-control px-3 py-1.5 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-wait disabled:opacity-60"
               type="button"
               disabled={uploading}
               onClick={() => fileInputRef.current?.click()}
@@ -644,7 +640,7 @@ function TaskCard({
 
       <LeadNotesReadOnly notes={leadNotes} />
       {leadQuestions.length > 0 ? (
-        <div className="mt-3 space-y-3">
+        <div className="mt-2 space-y-2">
           {leadQuestions.map((question) => (
             <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
           ))}
@@ -666,11 +662,11 @@ function SectionCard({
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
   return (
-    <section className="rounded-3xl border border-line bg-canvas-subtle p-4">
-      <div className="flex items-center gap-3">
+    <section className="rounded-md border border-line bg-canvas">
+      <div className="flex items-center gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
         <SectionTitle reportId={reportId} section={section} />
         <button
-          className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
           type="button"
           onClick={() => runSafely(removeSection(reportId, section.id), 'Section remove failed')}
         >
@@ -678,7 +674,7 @@ function SectionCard({
         </button>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="divide-y divide-line-muted">
         {section.tasks.length > 0 ? (
           section.tasks.map((task) => (
             <TaskCard
@@ -695,7 +691,7 @@ function SectionCard({
         )}
       </div>
 
-      <div className="mt-4">
+      <div className="border-t border-line-muted px-4 py-3">
         <AddTaskForm reportId={reportId} section={section} />
       </div>
     </section>
@@ -719,19 +715,19 @@ function SectionsList({
   );
 
   return (
-    <section className="rounded-3xl border border-line bg-canvas p-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <section>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-fg">Today’s work</h2>
-          <p className="mt-1 text-sm text-fg-muted">Group related work under clear main titles.</p>
+          <h2 className="text-base font-semibold text-fg">Today’s work</h2>
+          <p className="text-sm text-fg-muted">Group related work under clear main titles.</p>
         </div>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-3">
         <AddSectionForm reportId={reportId} sections={sortedSections} />
       </div>
 
-      <div className="mt-5 space-y-4">
+      <div className="mt-3 space-y-3">
         {sortedSections.length > 0 ? (
           sortedSections.map((section) => (
             <SectionCard
@@ -791,31 +787,31 @@ function QuestionComposer({ reportId }: { reportId: string }) {
   }
 
   return (
-    <form className="rounded-2xl border border-done-emphasis/40 bg-done-muted p-4" onSubmit={handleSubmit}>
+    <form className="rounded-md border border-done-emphasis/40 bg-done-muted p-3" onSubmit={handleSubmit}>
       <label className="block text-sm font-medium text-done-fg">
         Question for the lead
         <input
-          className="mt-2 w-full rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+          className="mt-2 w-full rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
           placeholder="What should the lead decide?"
         />
       </label>
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-3 space-y-2">
         {options.map((option, index) => (
           <div className="flex items-center gap-2" key={index}>
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
               {optionLabels[index]}
             </span>
             <input
-              className="min-w-0 flex-1 rounded-xl border border-line bg-canvas-subtle px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+              className="min-w-0 flex-1 rounded-md border border-line bg-canvas-subtle px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               value={option}
               onChange={(event) => updateOption(index, event.target.value)}
               placeholder={`Option ${optionLabels[index]}`}
             />
             <button
-              className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
               type="button"
               disabled={options.length <= QUESTION_OPTION_MINIMUM}
               onClick={() => removeOption(index)}
@@ -826,9 +822,9 @@ function QuestionComposer({ reportId }: { reportId: string }) {
         ))}
       </div>
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-between">
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-between">
         <button
-          className="rounded-xl border border-line bg-control px-3 py-2 text-sm font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           disabled={options.length >= QUESTION_OPTION_LIMIT}
           onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
@@ -836,7 +832,7 @@ function QuestionComposer({ reportId }: { reportId: string }) {
           Add option
         </button>
         <button
-          className="rounded-xl border border-white/15 bg-success-emphasis px-4 py-2 text-sm font-semibold text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!questionText.trim() || options.filter((option) => option.trim()).length < QUESTION_OPTION_MINIMUM}
         >
@@ -852,7 +848,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
   const answerText = isAnswered ? question.options[question.selectedAnswer ?? 0] : undefined;
 
   return (
-    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
+    <article className="rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-fg">{question.questionText}</p>
@@ -861,7 +857,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
           </p>
         </div>
         <button
-          className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
           type="button"
           onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
         >
@@ -888,25 +884,31 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
 
 function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questions?: QuestionWithId[] }) {
   return (
-    <section className="rounded-3xl border border-done-emphasis/40 bg-canvas p-5">
-      <div>
-        <h2 className="text-xl font-semibold text-fg">Questions to the lead</h2>
-        <p className="mt-1 text-sm text-fg-muted">Use multiple choice when you need a fast answer.</p>
+    <section className="rounded-md border border-line bg-canvas">
+      <div className="flex items-center gap-2 border-b border-line bg-canvas-subtle px-4 py-2">
+        <h2 className="text-sm font-semibold text-fg">Questions to the lead</h2>
+        <span className="rounded-full border border-done-emphasis/40 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
+          multiple choice
+        </span>
       </div>
 
-      <div className="mt-5">
-        <QuestionComposer reportId={reportId} />
-      </div>
+      <div className="p-4">
+        <p className="text-sm text-fg-muted">Use multiple choice when you need a fast answer.</p>
 
-      <div className="mt-5 space-y-3">
-        {questions.length > 0 ? (
-          questions.map((question) => <QuestionCard key={question.id} reportId={reportId} question={question} />)
-        ) : (
-          <EmptyState
-            title="No questions yet"
-            description="Add a decision the lead can answer quickly. Their selected answer will show here in realtime once question subscription is available."
-          />
-        )}
+        <div className="mt-3">
+          <QuestionComposer reportId={reportId} />
+        </div>
+
+        <div className="mt-3 space-y-3">
+          {questions.length > 0 ? (
+            questions.map((question) => <QuestionCard key={question.id} reportId={reportId} question={question} />)
+          ) : (
+            <EmptyState
+              title="No questions yet"
+              description="Add a decision the lead can answer quickly. Their selected answer will show here in realtime once question subscription is available."
+            />
+          )}
+        </div>
       </div>
     </section>
   );
@@ -942,9 +944,9 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   if (loading || !reportId) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Header developerName={developerName} />
-        <div className="rounded-3xl border border-line bg-canvas p-8 text-sm text-fg-muted">
+        <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
           Preparing today’s report...
         </div>
       </div>
@@ -953,9 +955,9 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   if (!reportTree) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <Header developerName={developerName} />
-        <div className="rounded-3xl border border-danger-emphasis/40 bg-danger-muted p-8 text-sm text-danger-fg">
+        <div className="rounded-md border border-danger-emphasis/40 bg-danger-muted p-4 text-sm text-danger-fg">
           Today’s report could not be loaded. Please refresh and try again.
         </div>
       </div>
@@ -963,19 +965,23 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <Header date={reportTree.date} developerName={developerName} />
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
-        <section className="rounded-3xl border border-line bg-canvas p-5">
-          <h2 className="text-lg font-semibold text-fg">From the lead</h2>
-          <LeadNotesReadOnly notes={reportLevelLeadNotes} />
-          {reportLevelLeadQuestions.length > 0 ? (
-            <div className="mt-3 space-y-3">
-              {reportLevelLeadQuestions.map((question) => (
-                <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
-              ))}
-            </div>
-          ) : null}
+        <section className="rounded-md border border-line bg-canvas">
+          <div className="border-b border-line bg-canvas-subtle px-4 py-2">
+            <h2 className="text-sm font-semibold text-fg">From the lead</h2>
+          </div>
+          <div className="p-4">
+            <LeadNotesReadOnly notes={reportLevelLeadNotes} />
+            {reportLevelLeadQuestions.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {reportLevelLeadQuestions.map((question) => (
+                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
+                ))}
+              </div>
+            ) : null}
+          </div>
         </section>
       ) : null}
       <SectionsList

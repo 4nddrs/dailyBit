@@ -81,32 +81,27 @@ function LeadHeader({
   totalDeveloperCount: number;
 }) {
   return (
-    <header className="rounded-3xl border border-line bg-canvas p-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-fg">Lead View</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-fg">
-            {formatDisplayDate(date)}
-          </h1>
-          <p className="mt-2 text-sm text-fg-muted">
-            {reportedCount} of {totalDeveloperCount} developers reported
-          </p>
-        </div>
+    <header className="rounded-md border border-line bg-canvas-subtle px-4 py-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <h1 className="text-lg font-semibold tracking-tight text-fg">{formatDisplayDate(date)}</h1>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="text-sm font-medium text-fg">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-fg-muted">
             Report date
             <input
-              className="mt-2 w-full rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis sm:w-44"
+              className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               type="date"
               value={date}
               onChange={(event) => onDateChange(event.target.value)}
             />
           </label>
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-3 py-1.5 text-sm font-medium text-success-fg">
-            <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
+          <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
+            {reportedCount}/{totalDeveloperCount} reported
+          </span>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-success-emphasis/40 bg-success-muted px-2 py-0.5 text-xs font-medium text-success-fg">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-success-fg" aria-hidden="true" />
             Live
-          </div>
+          </span>
         </div>
       </div>
     </header>
@@ -150,12 +145,12 @@ function LeadNoteBlock({
     <div className="mt-3 space-y-2">
       {notes.map((note) => (
         <div
-          className="flex items-start justify-between gap-3 rounded-xl border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
+          className="flex items-start justify-between gap-3 rounded-md border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
           key={note.id}
         >
           <p className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</p>
           <button
-            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
             type="button"
             onClick={() => onRemove(note.id)}
           >
@@ -186,13 +181,13 @@ function LeadQuestionBlock({
 
         return (
           <div
-            className="rounded-xl border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm"
+            className="rounded-md border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm"
             key={question.id}
           >
             <div className="flex items-start justify-between gap-3">
               <p className="font-semibold leading-6 text-done-fg">{question.questionText}</p>
               <button
-                className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+                className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
                 type="button"
                 onClick={() => onRemove(question.id)}
               >
@@ -203,7 +198,7 @@ function LeadQuestionBlock({
             {!isAnswered ? (
               <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
             ) : question.kind === 'text' ? (
-              <p className="mt-2 rounded-lg border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+              <p className="mt-2 rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
                 {question.answerText}
               </p>
             ) : (
@@ -262,11 +257,11 @@ function NoteComposer({
   }
 
   return (
-    <form className="mt-3 rounded-2xl border border-attention-emphasis/60 bg-attention-muted p-3" onSubmit={handleSubmit}>
+    <form className="mt-3 rounded-md border border-attention-emphasis/60 bg-attention-muted p-3" onSubmit={handleSubmit}>
       <label className="block text-xs font-semibold uppercase tracking-wide text-attention-fg">
         {label}
         <textarea
-          className="mt-2 min-h-20 w-full resize-y rounded-xl border border-attention-emphasis/60 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-attention-emphasis focus:ring-2 focus:ring-attention-muted"
+          className="mt-2 min-h-20 w-full resize-y rounded-md border border-attention-emphasis/60 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-attention-emphasis focus:ring-1 focus:ring-attention-muted"
           value={noteText}
           onChange={(event) => setNoteText(event.target.value)}
           placeholder="Add a private lead note"
@@ -276,7 +271,7 @@ function NoteComposer({
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
       <div className="mt-2 flex justify-end">
         <button
-          className="rounded-xl bg-attention-emphasis px-3 py-2 text-sm font-semibold text-white transition hover:bg-attention-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-attention-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-attention-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!noteText.trim() || submitting}
         >
@@ -343,11 +338,11 @@ function LeadQuestionComposer({
   }
 
   return (
-    <form className="mt-3 rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-3" onSubmit={handleSubmit}>
+    <form className="mt-3 rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3" onSubmit={handleSubmit}>
       <label className="block text-xs font-semibold uppercase tracking-wide text-done-fg">
         Question for the developer
         <textarea
-          className="mt-2 min-h-20 w-full resize-y rounded-xl border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-done-emphasis focus:ring-2 focus:ring-done-muted"
+          className="mt-2 min-h-20 w-full resize-y rounded-md border border-done-emphasis/40 bg-canvas-subtle px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-done-emphasis focus:ring-1 focus:ring-done-muted"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
           placeholder="What do you need to know about this task?"
@@ -357,7 +352,7 @@ function LeadQuestionComposer({
 
       <div className="mt-3 flex gap-2">
         <button
-          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
             kind === 'text'
               ? 'border-done-emphasis/40 bg-done-muted text-done-fg'
               : 'border-line bg-canvas-subtle text-fg-muted hover:border-done-emphasis/40'
@@ -368,7 +363,7 @@ function LeadQuestionComposer({
           Free text
         </button>
         <button
-          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
             kind === 'options'
               ? 'border-done-emphasis/40 bg-done-muted text-done-fg'
               : 'border-line bg-canvas-subtle text-fg-muted hover:border-done-emphasis/40'
@@ -388,13 +383,13 @@ function LeadQuestionComposer({
                 {getOptionLabel(index)}
               </span>
               <input
-                className="min-w-0 flex-1 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-2 focus:ring-accent-emphasis"
+                className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
                 value={option}
                 onChange={(event) => updateOption(index, event.target.value)}
                 placeholder={`Option ${getOptionLabel(index)}`}
               />
               <button
-                className="rounded-lg px-2 py-1 text-sm font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
                 type="button"
                 disabled={options.length <= QUESTION_OPTION_MINIMUM}
                 onClick={() => removeOption(index)}
@@ -404,7 +399,7 @@ function LeadQuestionComposer({
             </div>
           ))}
           <button
-            className="rounded-xl border border-line bg-control px-3 py-2 text-xs font-semibold text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border border-line bg-control px-3 py-1.5 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
             type="button"
             disabled={options.length >= QUESTION_OPTION_LIMIT}
             onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
@@ -418,7 +413,7 @@ function LeadQuestionComposer({
 
       <div className="mt-3 flex justify-end">
         <button
-          className="rounded-xl bg-done-emphasis px-3 py-2 text-sm font-semibold text-white transition hover:bg-done-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-done-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-done-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!canSubmit || submitting}
         >
@@ -461,8 +456,8 @@ function TaskCard({
   }
 
   return (
-    <article className="group rounded-2xl border border-line bg-canvas-subtle p-4">
-      <div className={`grid gap-4 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
+    <article className="group px-4 py-3">
+      <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {task.images.map((image) => (
@@ -474,7 +469,7 @@ function TaskCard({
                 aria-label="Open task image"
               >
                 <img
-                  className="h-24 w-24 rounded-xl border border-line object-cover transition hover:opacity-90"
+                  className="h-24 w-24 rounded-md border border-line object-cover transition hover:opacity-90"
                   src={image.imageBase64}
                   alt="Task attachment thumbnail"
                 />
@@ -488,14 +483,14 @@ function TaskCard({
             <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>
             <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <button
-                className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+                className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
                 type="button"
                 onClick={() => toggleComposer('question')}
               >
                 Question
               </button>
               <button
-                className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+                className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
                 type="button"
                 onClick={() => toggleComposer('note')}
               >
@@ -545,9 +540,11 @@ function SectionCard({
   onRemoveQuestion: (questionId: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-canvas-subtle p-4">
-      <h3 className="text-base font-semibold text-fg">{section.title}</h3>
-      <div className="mt-4 space-y-3">
+    <section className="rounded-md border border-line bg-canvas">
+      <div className="border-b border-line bg-canvas-subtle px-4 py-2">
+        <h3 className="text-sm font-semibold text-fg">{section.title}</h3>
+      </div>
+      <div className="divide-y divide-line-muted">
         {section.tasks.length > 0 ? (
           section.tasks.map((task) => (
             <TaskCard
@@ -564,7 +561,9 @@ function SectionCard({
             />
           ))
         ) : (
-          <CompactEmptyState text="No tasks in this section." />
+          <div className="px-4 py-2">
+            <CompactEmptyState text="No tasks in this section." />
+          </div>
         )}
       </div>
     </section>
@@ -597,14 +596,14 @@ function QuestionCard({
   }
 
   return (
-    <article className="rounded-2xl border border-done-emphasis/40 bg-canvas-subtle p-4">
+    <article className="rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
       <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {question.options.map((option, index) => {
           const selected = question.selectedAnswer === index;
           return (
             <button
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-wait disabled:opacity-60 ${
                 selected
                   ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
                   : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
@@ -699,24 +698,24 @@ function ReportCard({
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <article className="rounded-3xl border border-line bg-canvas p-5">
-      <div className="flex flex-col gap-3 border-b border-line-muted pb-4 sm:flex-row sm:items-start sm:justify-between">
+    <article className="rounded-md border border-line bg-canvas">
+      <div className="flex flex-col gap-3 border-b border-line bg-canvas-subtle px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-fg">{developerName}</h2>
+          <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
-            <p className="mt-1 text-sm text-fg-muted">{summaryParts.join(' · ')}</p>
+            <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
         </div>
         <div className="flex shrink-0 gap-2">
           <button
-            className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
             type="button"
             onClick={() => toggleComposer('question')}
           >
             Question
           </button>
           <button
-            className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
             type="button"
             onClick={() => toggleComposer('note')}
           >
@@ -725,46 +724,48 @@ function ReportCard({
         </div>
       </div>
 
-      {openComposer === 'question' ? (
-        <LeadQuestionComposer onAdd={(input) => handleAddQuestion('', '', input)} />
-      ) : null}
-      {openComposer === 'note' ? (
-        <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
-      ) : null}
+      <div className="p-4">
+        {openComposer === 'question' ? (
+          <LeadQuestionComposer onAdd={(input) => handleAddQuestion('', '', input)} />
+        ) : null}
+        {openComposer === 'note' ? (
+          <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
+        ) : null}
 
-      <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
-      <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
+        <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+        <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
 
-      <div className="mt-5 space-y-4">
-        {report.sections.length > 0 ? (
-          report.sections.map((section) => (
-            <SectionCard
-              key={section.id}
-              reportId={report.id}
-              section={section}
-              notesByTarget={notesByTarget}
-              questionsByTarget={questionsByTarget}
-              onAddNote={handleAddNote}
-              onRemoveNote={handleRemoveNote}
-              onAddQuestion={handleAddQuestion}
-              onRemoveQuestion={handleRemoveQuestion}
-            />
-          ))
-        ) : (
-          <CompactEmptyState text="No tasks reported yet." />
-        )}
+        <div className="mt-3 space-y-3">
+          {report.sections.length > 0 ? (
+            report.sections.map((section) => (
+              <SectionCard
+                key={section.id}
+                reportId={report.id}
+                section={section}
+                notesByTarget={notesByTarget}
+                questionsByTarget={questionsByTarget}
+                onAddNote={handleAddNote}
+                onRemoveNote={handleRemoveNote}
+                onAddQuestion={handleAddQuestion}
+                onRemoveQuestion={handleRemoveQuestion}
+              />
+            ))
+          ) : (
+            <CompactEmptyState text="No tasks reported yet." />
+          )}
+        </div>
+
+        {report.questions && report.questions.length > 0 ? (
+          <section className="mt-3 rounded-md border border-line bg-canvas-subtle p-3">
+            <h3 className="text-sm font-semibold text-fg">Questions from {developerName}</h3>
+            <div className="mt-3 space-y-3">
+              {report.questions.map((question) => (
+                <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
-
-      {report.questions && report.questions.length > 0 ? (
-        <section className="mt-5 rounded-2xl border border-line bg-canvas-subtle p-4">
-          <h3 className="text-base font-semibold text-fg">Questions from {developerName}</h3>
-          <div className="mt-4 space-y-3">
-            {report.questions.map((question) => (
-              <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
-            ))}
-          </div>
-        </section>
-      ) : null}
     </article>
   );
 }
@@ -814,7 +815,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   }, [developerNames, reportTrees]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <LeadHeader
         date={normalizedSelectedDate}
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
@@ -822,9 +823,9 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         totalDeveloperCount={totalDeveloperCount}
       />
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {loading ? (
-          <div className="rounded-3xl border border-line bg-canvas p-8 text-sm text-fg-muted">
+          <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
             Loading reports...
           </div>
         ) : reportTrees.length > 0 ? (
@@ -837,9 +838,9 @@ export function LeadView({ leadUserId }: LeadViewProps) {
             />
           ))
         ) : (
-          <div className="rounded-2xl border border-line bg-canvas p-4 text-sm text-fg-muted">
+          <p className="px-1 py-2 text-sm text-fg-muted">
             No reports yet today. Try a different date if you are reviewing past work.
-          </div>
+          </p>
         )}
       </div>
     </div>
