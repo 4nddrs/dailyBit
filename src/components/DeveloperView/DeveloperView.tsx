@@ -333,14 +333,14 @@ function TaskLinks({
         <div className="flex flex-wrap gap-2">
           {links.map((link, index) => (
             <span
-              className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted"
+              className="group/link inline-flex items-center gap-2 rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted"
               key={`${link.url}-${index}`}
             >
               <a className="max-w-[12rem] truncate hover:text-accent-fg" href={link.url} target="_blank" rel="noreferrer">
                 {link.label || link.url}
               </a>
               <button
-                className="text-danger-fg transition hover:text-danger-fg"
+                className="text-danger-fg transition hover:text-danger-fg md:opacity-0 md:group-hover/link:opacity-100 md:group-focus-within/link:opacity-100"
                 type="button"
                 onClick={() => onChange(links.filter((_, linkIndex) => linkIndex !== index))}
                 aria-label={`Remove link ${link.label || link.url}`}
@@ -589,7 +589,7 @@ function TaskCard({
   }
 
   return (
-    <article className="px-4 py-3">
+    <article className="group/task px-4 py-3">
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
@@ -612,7 +612,7 @@ function TaskCard({
           </p>
         </div>
         <button
-          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/task:opacity-100 md:group-focus-within/task:opacity-100"
           type="button"
           onClick={() => runSafely(removeTask(reportId, sectionId, task.id), 'Task remove failed')}
           aria-label="Remove task"
@@ -626,7 +626,7 @@ function TaskCard({
           {task.images.length > 0 ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
               {task.images.map((image) => (
-                <div className="relative" key={image.id}>
+                <div className="group/image relative" key={image.id}>
                   <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open task image">
                     <img
                       className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
@@ -635,7 +635,7 @@ function TaskCard({
                     />
                   </a>
                   <button
-                    className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+                    className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/image:opacity-100 md:group-focus-within/image:opacity-100"
                     type="button"
                     onClick={() => handleRemoveImage(image.id)}
                     aria-label="Remove image"
@@ -696,10 +696,10 @@ function SectionCard({
 }) {
   return (
     <section className="rounded-md border border-line bg-canvas">
-      <div className="flex items-center gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
+      <div className="group/section flex items-center gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
         <SectionTitle reportId={reportId} section={section} />
         <button
-          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100"
           type="button"
           onClick={() => runSafely(removeSection(reportId, section.id), 'Section remove failed')}
         >
@@ -887,7 +887,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
   const answerText = isAnswered ? question.options[question.selectedAnswer ?? 0] : undefined;
 
   return (
-    <article className="rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
+    <article className="group/question rounded-md border border-done-emphasis/40 bg-canvas-subtle p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-fg">{question.questionText}</p>
@@ -896,7 +896,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
           </p>
         </div>
         <button
-          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/question:opacity-100 md:group-focus-within/question:opacity-100"
           type="button"
           onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
         >
