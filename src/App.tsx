@@ -46,7 +46,7 @@ function AuthForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-canvas-inset px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
           <Wordmark />
@@ -140,7 +140,7 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
   const viewName = profile?.role === 'lead' ? 'Lead View' : 'Developer';
 
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen bg-canvas-inset">
       <header className="border-b border-line bg-canvas-subtle">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm">
@@ -181,7 +181,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-canvas text-fg-muted">
+      <main className="flex min-h-screen items-center justify-center bg-canvas-inset text-fg-muted">
         Loading DailyBit...
       </main>
     );
@@ -189,7 +189,7 @@ export default function App() {
 
   if (profileError) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <main className="flex min-h-screen items-center justify-center bg-canvas-inset px-4 py-10">
         <section className="w-full max-w-lg rounded-md border border-danger-emphasis/50 bg-danger-muted p-4">
           <h1 className="text-lg font-semibold text-danger-fg">Could not load your profile</h1>
           <p className="mt-4 text-sm leading-6 text-fg">{profileError}</p>

@@ -926,8 +926,8 @@ function SectionCard({
   onRemoveQuestion: (questionId: string) => void;
 }) {
   return (
-    <section className="rounded-md border border-line bg-canvas">
-      <div className="border-b border-line bg-canvas-subtle px-4 py-2">
+    <section className="rounded-md border border-line bg-canvas-subtle">
+      <div className="border-b border-line bg-control px-4 py-2">
         <h3 className="text-sm font-semibold text-fg">{section.title}</h3>
       </div>
       <div className="divide-y divide-line-muted">
@@ -1098,8 +1098,8 @@ function ReportCard({
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <article className="rounded-md border border-line bg-canvas" id={`report-${report.userId}`}>
-      <div className="flex flex-col gap-3 border-b border-line bg-canvas-subtle px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
+    <article className="rounded-md border border-line bg-canvas-subtle" id={`report-${report.userId}`}>
+      <div className="flex flex-col gap-3 border-b border-line bg-control px-4 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
@@ -1231,8 +1231,8 @@ function AssignmentOnlyCard({
   const [composerOpen, setComposerOpen] = useState(false);
 
   return (
-    <article className="rounded-md border border-line bg-canvas" id={`report-${userId}`}>
-      <div className="flex items-center justify-between gap-3 border-b border-line bg-canvas-subtle px-4 py-2">
+    <article className="rounded-md border border-line bg-canvas-subtle" id={`report-${userId}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-line bg-control px-4 py-2">
         <h2 className="text-sm font-semibold text-fg">{developerName}</h2>
         <button
           className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
@@ -1286,8 +1286,8 @@ function TeamBox({
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   return (
-    <section className="rounded-md border border-line bg-canvas">
-      <div className="flex items-center justify-between border-b border-line bg-canvas-subtle px-3 py-2">
+    <section className="rounded-md border border-line bg-canvas-subtle">
+      <div className="flex items-center justify-between border-b border-line bg-control px-3 py-2">
         <h2 className="text-sm font-semibold text-fg">Team</h2>
         <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
           {devs.length}
@@ -1600,7 +1600,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
 
         <div className="min-w-0 flex-1 space-y-3 lg:order-1">
           {loading ? (
-            <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
+            <div className="rounded-md border border-line bg-canvas-subtle p-4 text-sm text-fg-muted">
               Loading reports...
             </div>
           ) : visibleCardEntries.length > 0 ? (
