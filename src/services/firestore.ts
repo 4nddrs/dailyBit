@@ -50,7 +50,9 @@ export type CreateLeadQuestionInput = Pick<
   LeadQuestion,
   'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options'
 >;
-export type AnswerLeadQuestionInput = { answerText: string } | { selectedAnswer: number };
+export type AnswerLeadQuestionInput =
+  | { answerText: string; answerLinks?: TaskLink[] }
+  | { selectedAnswer: number };
 
 const collections = {
   users: 'users',
@@ -136,6 +138,14 @@ function leadQuestionsCollection(reportId: string) {
 
 function leadQuestionDoc(reportId: string, questionId: string) {
   return doc(leadQuestionsCollection(reportId), questionId);
+}
+
+function leadQuestionImagesCollection(reportId: string, questionId: string) {
+  return collection(leadQuestionDoc(reportId, questionId), collections.images);
+}
+
+function leadQuestionImageDoc(reportId: string, questionId: string, imageId: string) {
+  return doc(leadQuestionImagesCollection(reportId, questionId), imageId);
 }
 
 function assignmentsCollection() {
@@ -301,7 +311,9 @@ export function subscribeReport(
   const taskImages = new Map<string, TaskImageWithId[]>();
   const questions: QuestionWithId[] = [];
   const notes: LeadNoteWithId[] = [];
-  const leadQuestions: LeadQuestionWithId[] = [];
+  const leadQuestionsBase = new Map<string, LeadQuestion>();
+  const leadQuestionImages = new Map<string, TaskImageWithId[]>();
+  const leadQuestionImageUnsubscribes = new Map<string, Unsubscribe>();
   const taskUnsubscribes = new Map<string, Unsubscribe>();
   const imageUnsubscribes = new Map<string, Unsubscribe>();
 
@@ -324,13 +336,21 @@ export function subscribeReport(
       }))
       .sort((a, b) => a.order - b.order);
 
+    const leadQuestionTrees: LeadQuestionWithId[] = Array.from(leadQuestionsBase.entries()).map(
+      ([id, leadQuestion]) => ({
+        id,
+        ...leadQuestion,
+        answerImages: [...(leadQuestionImages.get(id) ?? [])],
+      }),
+    );
+
     callback({
       id: reportId,
       ...report,
       sections: sectionTrees,
       questions: [...questions],
       notes: [...notes],
-      leadQuestions: [...leadQuestions],
+      leadQuestions: leadQuestionTrees,
     });
   };
 
@@ -444,13 +464,41 @@ export function subscribeReport(
   });
 
   const leadQuestionsUnsubscribe = onSnapshot(leadQuestionsCollection(reportId), (snapshot) => {
-    leadQuestions.length = 0;
+    const nextQuestionIds = new Set<string>();
+
     snapshot.docs.forEach((leadQuestionSnapshot) => {
-      leadQuestions.push({
-        id: leadQuestionSnapshot.id,
-        ...(leadQuestionSnapshot.data() as LeadQuestion),
-      });
+      const questionId = leadQuestionSnapshot.id;
+      nextQuestionIds.add(questionId);
+      leadQuestionsBase.set(questionId, leadQuestionSnapshot.data() as LeadQuestion);
+
+      if (!leadQuestionImageUnsubscribes.has(questionId)) {
+        const imagesQuery = query(
+          leadQuestionImagesCollection(reportId, questionId),
+          orderBy('createdAt', 'asc'),
+        );
+        const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+          leadQuestionImages.set(
+            questionId,
+            imageSnapshot.docs.map((imageDocument) => {
+              const image = imageDocument.data() as TaskImage;
+              return { id: imageDocument.id, imageBase64: image.imageBase64 };
+            }),
+          );
+          emit();
+        });
+        leadQuestionImageUnsubscribes.set(questionId, unsubscribeImages);
+      }
     });
+
+    Array.from(leadQuestionsBase.keys()).forEach((questionId) => {
+      if (!nextQuestionIds.has(questionId)) {
+        leadQuestionsBase.delete(questionId);
+        leadQuestionImages.delete(questionId);
+        leadQuestionImageUnsubscribes.get(questionId)?.();
+        leadQuestionImageUnsubscribes.delete(questionId);
+      }
+    });
+
     emit();
   });
 
@@ -462,6 +510,7 @@ export function subscribeReport(
     leadQuestionsUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
     imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    leadQuestionImageUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
 
@@ -498,6 +547,21 @@ async function deleteTaskImages(reportId: string, sectionId: string, taskId: str
   }
 }
 
+// Firestore never cascades deletes into subcollections, so a lead question's
+// answer images must be removed explicitly, before its own doc, same as
+// deleteTaskImages above.
+async function deleteLeadQuestionImages(reportId: string, questionId: string) {
+  const imageSnapshots = await getDocs(leadQuestionImagesCollection(reportId, questionId));
+
+  for (let start = 0; start < imageSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    imageSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((imageSnapshot) => batch.delete(imageSnapshot.ref));
+    await batch.commit();
+  }
+}
+
 // Firestore never cascades deletes, and leadQuestions/leadNotes live in
 // report-level collections rather than under the task, so both are queried
 // by their task-reference field and deleted explicitly.
@@ -506,6 +570,13 @@ async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
     getDocs(query(leadQuestionsCollection(reportId), where('taskId', '==', taskId))),
     getDocs(query(leadNotesCollection(reportId), where('targetTaskId', '==', taskId))),
   ]);
+
+  await Promise.all(
+    questionSnapshots.docs.map((questionSnapshot) =>
+      deleteLeadQuestionImages(reportId, questionSnapshot.id),
+    ),
+  );
+
   const docsToDelete = [...questionSnapshots.docs, ...noteSnapshots.docs];
 
   for (let start = 0; start < docsToDelete.length; start += MAX_BATCH_DELETES) {
@@ -659,19 +730,53 @@ export async function addLeadQuestion(
   return ref.id;
 }
 
-export function removeLeadQuestion(reportId: string, questionId: string): Promise<void> {
-  return deleteDoc(leadQuestionDoc(reportId, questionId));
+export async function removeLeadQuestion(reportId: string, questionId: string): Promise<void> {
+  await deleteLeadQuestionImages(reportId, questionId);
+  await deleteDoc(leadQuestionDoc(reportId, questionId));
 }
 
+// Firestore rejects undefined field values, so `answerLinks` is only included
+// when the caller actually passed it.
 export async function answerLeadQuestion(
   reportId: string,
   questionId: string,
   answer: AnswerLeadQuestionInput,
 ): Promise<void> {
-  await updateDoc(leadQuestionDoc(reportId, questionId), {
-    ...answer,
-    answeredAt: serverTimestamp(),
+  const payload: Record<string, unknown> = { answeredAt: serverTimestamp() };
+
+  if ('selectedAnswer' in answer) {
+    payload.selectedAnswer = answer.selectedAnswer;
+  } else {
+    payload.answerText = answer.answerText;
+    if (answer.answerLinks !== undefined) {
+      payload.answerLinks = answer.answerLinks;
+    }
+  }
+
+  await updateDoc(leadQuestionDoc(reportId, questionId), payload);
+}
+
+// Mirrors addTaskImage: an image on an otherwise-unanswered text question
+// counts as answering it, so this also stamps `answeredAt`.
+export async function addLeadQuestionAnswerImage(
+  reportId: string,
+  questionId: string,
+  imageBase64: string,
+): Promise<string> {
+  const ref = await addDoc(leadQuestionImagesCollection(reportId, questionId), {
+    imageBase64,
+    createdAt: serverTimestamp(),
   });
+  await updateDoc(leadQuestionDoc(reportId, questionId), { answeredAt: serverTimestamp() });
+  return ref.id;
+}
+
+export function removeLeadQuestionAnswerImage(
+  reportId: string,
+  questionId: string,
+  imageId: string,
+): Promise<void> {
+  return deleteDoc(leadQuestionImageDoc(reportId, questionId, imageId));
 }
 
 export function subscribeReportsByDate(

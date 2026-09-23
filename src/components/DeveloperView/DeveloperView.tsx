@@ -1,12 +1,14 @@
 import { FormEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addAssignmentUpdateImage,
+  addLeadQuestionAnswerImage,
   addQuestion,
   addSection,
   addTask,
   addTaskImage,
   answerLeadQuestion,
   removeAssignmentUpdateImage,
+  removeLeadQuestionAnswerImage,
   removeQuestion,
   removeSection,
   removeTask,
@@ -788,12 +790,19 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
 }
 
 function LeadQuestionCard({ reportId, question }: { reportId: string; question: LeadQuestionWithId }) {
-  const isAnswered = question.kind === 'text' ? Boolean(question.answerText) : question.selectedAnswer !== undefined;
+  const isText = question.kind === 'text';
+  const isAnswered = isText
+    ? (Boolean(question.answerText?.trim()) || (question.answerLinks?.length ?? 0) > 0 || question.answerImages.length > 0)
+    : question.selectedAnswer !== undefined;
   const [editing, setEditing] = useState(!isAnswered);
   const [answerText, setAnswerText] = useState(question.answerText ?? '');
   const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
   const [submittingText, setSubmittingText] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setAnswerText(question.answerText ?? '');
@@ -802,6 +811,9 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
   useEffect(() => {
     setEditing(!isAnswered);
   }, [isAnswered]);
+
+  const answerLinks = question.answerLinks ?? [];
+  const answerImages = question.answerImages;
 
   async function handleTextSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -814,7 +826,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
     setSubmittingText(true);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer });
+      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer, answerLinks });
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -838,13 +850,83 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
     }
   }
 
+  function updateAnswerLinks(nextLinks: TaskLink[]) {
+    runSafely(
+      answerLeadQuestion(reportId, question.id, {
+        answerText: question.answerText ?? '',
+        answerLinks: nextLinks,
+      }),
+      'Lead question answer links save failed',
+    );
+  }
+
+  async function handleImageSelected(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const imageBase64 = await compressTaskImage(file);
+      await addLeadQuestionAnswerImage(reportId, question.id, imageBase64);
+    } catch (error) {
+      console.error('Lead question image processing failed', error);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }
+
+  function handleRemoveImage(imageId: string) {
+    setUploadError(null);
+    runSafely(
+      removeLeadQuestionAnswerImage(reportId, question.id, imageId),
+      'Lead question image remove failed',
+    );
+  }
+
   return (
-    <article className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
-      <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+    <article className="group/task rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        {isText ? (
+          <CardToolbar>
+            <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />
+            <IconButton
+              icon={<ImageIcon />}
+              label={uploading ? 'Processing image' : 'Add image'}
+              onClick={() => fileInputRef.current?.click()}
+            />
+          </CardToolbar>
+        ) : null}
+      </div>
+
+      {isText ? (
+        <input
+          ref={fileInputRef}
+          className="sr-only"
+          type="file"
+          accept="image/*"
+          onChange={(event) => runSafely(handleImageSelected(event.target.files?.[0]), 'Image selection failed')}
+        />
+      ) : null}
+
+      {isText && showLinkForm ? (
+        <div className="mt-2">
+          <LinkForm
+            onAdd={(link) => updateAnswerLinks([...answerLinks, link])}
+            onClose={() => setShowLinkForm(false)}
+          />
+        </div>
+      ) : null}
 
       {!editing && isAnswered ? (
         <div className="mt-2">
-          {question.kind === 'text' ? (
+          {isText ? (
             <p className="rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
               {question.answerText}
             </p>
@@ -872,7 +954,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
             Change answer
           </button>
         </div>
-      ) : question.kind === 'text' ? (
+      ) : isText ? (
         <form className="mt-2" onSubmit={handleTextSubmit}>
           <textarea
             className="min-h-16 w-full resize-y rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
@@ -909,6 +991,18 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
           ))}
         </div>
       )}
+
+      {isText ? (
+        <TaskAttachments
+          images={answerImages}
+          onRemoveImage={handleRemoveImage}
+          imageAlt="Lead question answer attachment preview"
+          links={answerLinks}
+          onRemoveLink={(index) => updateAnswerLinks(answerLinks.filter((_, linkIndex) => linkIndex !== index))}
+          error={uploadError}
+        />
+      ) : null}
+
       {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
     </article>
   );

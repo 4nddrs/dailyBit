@@ -72,6 +72,7 @@ export interface LeadQuestion {
   kind: LeadQuestionKind;
   options?: string[];
   answerText?: string;
+  answerLinks?: TaskLink[];
   selectedAnswer?: number;
   answeredAt?: Timestamp;
   createdAt: Timestamp;
@@ -106,6 +107,7 @@ export interface LeadNoteWithId extends LeadNote {
 
 export interface LeadQuestionWithId extends LeadQuestion {
   id: string;
+  answerImages: TaskImageWithId[];
 }
 
 export interface ReportTree extends Report {

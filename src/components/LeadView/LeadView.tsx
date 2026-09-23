@@ -237,6 +237,43 @@ function LeadNoteBlock({
   );
 }
 
+function AnswerAttachmentImages({ images }: { images: Array<{ id: string; imageBase64: string }> }) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  if (images.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {images.map((image, index) => (
+          <button
+            className="cursor-zoom-in rounded-md focus:outline-none focus:ring-1 focus:ring-accent-emphasis"
+            key={image.id}
+            type="button"
+            aria-label="Open answer image"
+            onClick={() => setLightboxIndex(index)}
+          >
+            <img
+              className="h-16 w-16 rounded-md border border-line object-cover transition hover:opacity-90"
+              src={image.imageBase64}
+              alt="Lead question answer attachment thumbnail"
+            />
+          </button>
+        ))}
+      </div>
+      {lightboxIndex !== null ? (
+        <ImageLightbox
+          images={images}
+          initialIndex={Math.min(lightboxIndex, images.length - 1)}
+          onClose={() => setLightboxIndex(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function LeadQuestionItem({
   question,
   onRemove,
@@ -247,7 +284,9 @@ function LeadQuestionItem({
   context?: string;
 }) {
   const isAnswered =
-    question.kind === 'text' ? Boolean(question.answerText) : question.selectedAnswer !== undefined;
+    question.kind === 'text'
+      ? (Boolean(question.answerText?.trim()) || (question.answerLinks?.length ?? 0) > 0 || question.answerImages.length > 0)
+      : question.selectedAnswer !== undefined;
 
   return (
     <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
@@ -266,9 +305,13 @@ function LeadQuestionItem({
       {!isAnswered ? (
         <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
       ) : question.kind === 'text' ? (
-        <p className="mt-2 rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
-          {question.answerText}
-        </p>
+        <>
+          <p className="mt-2 rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+            {question.answerText}
+          </p>
+          <LinkChips links={question.answerLinks} />
+          <AnswerAttachmentImages images={question.answerImages} />
+        </>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">
           {(question.options ?? []).map((option, index) => (
