@@ -7,12 +7,19 @@ interface UseMyReportResult {
   reportTree: ReportTree | null;
   reportId: string | null;
   loading: boolean;
+  date: string;
 }
 
 const DATE_CHECK_INTERVAL_MS = 60_000;
 
-export function useMyReport(userId: string | null | undefined): UseMyReportResult {
+// `selectedDate` pins the report to a specific day; when it is null the hook
+// follows the current day and rolls over automatically at midnight.
+export function useMyReport(
+  userId: string | null | undefined,
+  selectedDate: string | null = null,
+): UseMyReportResult {
   const [today, setToday] = useState(() => todayDateString());
+  const date = selectedDate ?? today;
   const [reportTree, setReportTree] = useState<ReportTree | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [loading, setLoading] = useState(Boolean(userId));
@@ -41,7 +48,7 @@ export function useMyReport(userId: string | null | undefined): UseMyReportResul
     setReportTree(null);
     setReportId(null);
 
-    getOrCreateTodayReport(userId, today)
+    getOrCreateTodayReport(userId, date)
       .then((report) => {
         if (cancelled) {
           return;
@@ -65,7 +72,7 @@ export function useMyReport(userId: string | null | undefined): UseMyReportResul
       cancelled = true;
       unsubscribeReport?.();
     };
-  }, [today, userId]);
+  }, [date, userId]);
 
-  return { reportTree, reportId, loading };
+  return { reportTree, reportId, loading, date };
 }

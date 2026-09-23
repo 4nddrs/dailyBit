@@ -21,6 +21,7 @@ import type {
   TaskLink,
   TaskWithId,
 } from '../../types';
+import { todayDateString } from '../../types';
 
 const TASK_DESCRIPTION_LIMIT = 140;
 const QUESTION_OPTION_LIMIT = 6;
@@ -118,7 +119,15 @@ async function compressTaskImage(file: File): Promise<string> {
   }
 }
 
-function Header({ date, developerName }: { date?: string; developerName: string }) {
+function Header({
+  date,
+  developerName,
+  onDateChange,
+}: {
+  date: string;
+  developerName: string;
+  onDateChange: (date: string) => void;
+}) {
   return (
     <header className="rounded-md border border-line bg-canvas-subtle px-4 py-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -126,9 +135,25 @@ function Header({ date, developerName }: { date?: string; developerName: string 
           <h1 className="text-lg font-semibold tracking-tight text-fg">{formatDisplayDate(date)}</h1>
           <p className="mt-1 text-sm text-fg-muted">{developerName}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm font-medium text-fg">
+          Report date
+          <input
+            className="rounded-md border border-line bg-canvas px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            type="date"
+            value={date}
+            max={todayDateString()}
+            onChange={(event) => {
+              if (event.target.value) {
+                onDateChange(event.target.value);
+              }
+            }}
+          />
+        </label>
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-2 py-1 text-xs font-medium text-success-fg">
           <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
           Everything saves automatically
+        </div>
         </div>
       </div>
     </header>
@@ -915,7 +940,11 @@ function QuestionsPanel({ reportId, questions = [] }: { reportId: string; questi
 }
 
 export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
-  const { reportTree, reportId, loading } = useMyReport(userId);
+  // null means "follow today"; picking today's date again returns to that mode.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const { reportTree, reportId, loading, date } = useMyReport(userId, selectedDate);
+  const handleDateChange = (nextDate: string) =>
+    setSelectedDate(nextDate === todayDateString() ? null : nextDate);
 
   const leadNotesByTask = useMemo(() => {
     const grouped = new Map<string, LeadNoteWithId[]>();
@@ -945,9 +974,9 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   if (loading || !reportId) {
     return (
       <div className="space-y-4">
-        <Header developerName={developerName} />
+        <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
         <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted">
-          Preparing today’s report...
+          Preparing the report...
         </div>
       </div>
     );
@@ -956,7 +985,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   if (!reportTree) {
     return (
       <div className="space-y-4">
-        <Header developerName={developerName} />
+        <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
         <div className="rounded-md border border-danger-emphasis/40 bg-danger-muted p-4 text-sm text-danger-fg">
           Today’s report could not be loaded. Please refresh and try again.
         </div>
@@ -966,7 +995,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   return (
     <div className="space-y-4">
-      <Header date={reportTree.date} developerName={developerName} />
+      <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas">
           <div className="border-b border-line bg-canvas-subtle px-4 py-2">
