@@ -529,6 +529,35 @@ export async function renameSection(
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
 }
 
+// Persists a new section order in one batch: `order` is set to each id's
+// index in `orderedSectionIds`, so callers pass the full desired order.
+export async function reorderSections(
+  reportId: string,
+  orderedSectionIds: string[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  orderedSectionIds.forEach((sectionId, index) => {
+    batch.update(sectionDoc(reportId, sectionId), { order: index });
+  });
+  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
+// Persists a new task order within one section in one batch, same shape as
+// `reorderSections`. Moving a task to a different section is out of scope.
+export async function reorderTasks(
+  reportId: string,
+  sectionId: string,
+  orderedTaskIds: string[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  orderedTaskIds.forEach((taskId, index) => {
+    batch.update(taskDoc(reportId, sectionId, taskId), { order: index });
+  });
+  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
 // Firestore write batches accept at most 500 operations.
 const MAX_BATCH_DELETES = 450;
 

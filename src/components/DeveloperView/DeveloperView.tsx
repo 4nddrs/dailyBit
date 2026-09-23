@@ -1,4 +1,14 @@
-import { FormEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DragEvent,
+  FormEvent,
+  KeyboardEvent,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   addAssignmentUpdateImage,
   addLeadQuestionAnswerImage,
@@ -14,11 +24,14 @@ import {
   removeTask,
   removeTaskImage,
   renameSection,
+  reorderSections,
+  reorderTasks,
   saveAssignmentUpdate,
   subscribeAssignmentUpdate,
   updateTask,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
+import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
 import type { CreateQuestionInput } from '../../services/firestore';
@@ -42,6 +55,56 @@ const QUESTION_OPTION_MINIMUM = 2;
 const MAX_IMAGE_SIDE = 1024;
 const MAX_IMAGE_DATA_URL_LENGTH = 900_000;
 const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+const SECTION_DRAG_TYPE = 'application/x-dailybit-section';
+const TASK_DRAG_TYPE = 'application/x-dailybit-task';
+const PREVIEW_AS_LEAD_STORAGE_KEY = 'developerView.previewAsLead';
+
+function loadPreviewAsLead(): boolean {
+  try {
+    return window.localStorage.getItem(PREVIEW_AS_LEAD_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function persistPreviewAsLead(value: boolean): void {
+  try {
+    window.localStorage.setItem(PREVIEW_AS_LEAD_STORAGE_KEY, String(value));
+  } catch {
+    // Best-effort only: an unavailable/blocked storage never blocks the toggle.
+  }
+}
+
+// Swaps `id` with its adjacent neighbor in `direction`; returns null at a
+// boundary (nothing to move) or when `id` is not found.
+function reorderedIdsForMove(ids: string[], id: string, direction: 'up' | 'down'): string[] | null {
+  const index = ids.indexOf(id);
+  const swapWith = direction === 'up' ? index - 1 : index + 1;
+
+  if (index === -1 || swapWith < 0 || swapWith >= ids.length) {
+    return null;
+  }
+
+  const next = [...ids];
+  [next[index], next[swapWith]] = [next[swapWith], next[index]];
+  return next;
+}
+
+// Moves `draggedId` to just before/after `targetId` (i.e. to `targetId`'s
+// current slot); returns null when either id is missing or they are equal.
+function reorderedIdsForDrag(ids: string[], draggedId: string, targetId: string): string[] | null {
+  const fromIndex = ids.indexOf(draggedId);
+  const toIndex = ids.indexOf(targetId);
+
+  if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+    return null;
+  }
+
+  const next = [...ids];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
 
 interface DeveloperViewProps {
   userId: string;
@@ -132,14 +195,48 @@ async function compressTaskImage(file: File): Promise<string> {
   }
 }
 
+function PreviewAsLeadToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm font-medium text-fg">
+      Preview as lead
+      <button
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition ${
+          checked ? 'border-accent-emphasis bg-accent-emphasis' : 'border-line bg-neutral-muted'
+        }`}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition ${
+            checked ? 'translate-x-4' : 'translate-x-1'
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+    </label>
+  );
+}
+
 function Header({
   date,
   developerName,
   onDateChange,
+  previewAsLead,
+  onPreviewAsLeadChange,
 }: {
   date: string;
   developerName: string;
   onDateChange: (date: string) => void;
+  previewAsLead: boolean;
+  onPreviewAsLeadChange: (checked: boolean) => void;
 }) {
   return (
     <header className="rounded-md border border-line bg-canvas shadow-sm">
@@ -163,10 +260,13 @@ function Header({
             }}
           />
         </label>
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-2 py-1 text-xs font-medium text-success-fg">
-          <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
-          Everything saves automatically
-        </div>
+        <PreviewAsLeadToggle checked={previewAsLead} onChange={onPreviewAsLeadChange} />
+        {previewAsLead ? null : (
+          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-success-emphasis/40 bg-success-muted px-2 py-1 text-xs font-medium text-success-fg">
+            <span className="h-2 w-2 rounded-full bg-success-fg" aria-hidden="true" />
+            Everything saves automatically
+          </div>
+        )}
         </div>
       </div>
     </header>
@@ -344,21 +444,24 @@ function IconButton({
   label,
   onClick,
   danger = false,
+  disabled = false,
 }: {
   icon: ReactNode;
   label: string;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition ${
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition disabled:cursor-not-allowed disabled:opacity-40 ${
         danger ? 'hover:bg-danger-muted hover:text-danger-fg' : 'hover:bg-control-hover hover:text-fg'
       }`}
       type="button"
       title={label}
       aria-label={label}
       onClick={onClick}
+      disabled={disabled}
     >
       {icon}
     </button>
@@ -1015,6 +1118,11 @@ function TaskCard({
   letter,
   leadNotes,
   leadQuestions,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+  onReorderDrop,
 }: {
   reportId: string;
   sectionId: string;
@@ -1022,11 +1130,18 @@ function TaskCard({
   letter: string;
   leadNotes: LeadNoteWithId[];
   leadQuestions: LeadQuestionWithId[];
+  isFirst: boolean;
+  isLast: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onReorderDrop: (draggedTaskId: string, targetTaskId: string) => void;
 }) {
   const [description, setDescription] = useState(task.description);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLinkForm, setShowLinkForm] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragArmed, setDragArmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -1074,11 +1189,61 @@ function TaskCard({
     runSafely(updateTask(reportId, sectionId, task.id, { links }), 'Task links update failed');
   }
 
+  function handleDragStart(event: DragEvent<HTMLElement>) {
+    event.dataTransfer.setData(TASK_DRAG_TYPE, JSON.stringify({ sectionId, taskId: task.id }));
+    event.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const raw = event.dataTransfer.getData(TASK_DRAG_TYPE);
+    if (!raw) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { sectionId: string; taskId: string };
+      if (parsed.sectionId === sectionId && parsed.taskId !== task.id) {
+        onReorderDrop(parsed.taskId, task.id);
+      }
+    } catch {
+      // A malformed or unrelated drag payload (e.g. a section drag): ignore.
+    }
+  }
+
+  function handleDragEnd() {
+    setIsDragging(false);
+    setDragArmed(false);
+  }
+
   const links = task.links ?? [];
 
   return (
-    <article className="group/task px-4 py-3">
+    <article
+      className={`group/task px-4 py-3 transition ${isDragging ? 'opacity-50' : ''}`}
+      // Only the handle arms dragging, so selecting text inside inputs never starts a drag.
+      draggable={dragArmed}
+      onPointerUp={() => setDragArmed(false)}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragEnd={handleDragEnd}
+    >
       <div className="flex items-start gap-3">
+        <span
+          className="mt-2 shrink-0 cursor-grab select-none text-fg-muted"
+          aria-hidden="true"
+          title="Drag to reorder"
+          onPointerDown={() => setDragArmed(true)}
+        >
+          ⋮⋮
+        </span>
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
             Task
@@ -1105,6 +1270,18 @@ function TaskCard({
           </p>
         </div>
         <CardToolbar>
+          <IconButton
+            icon={<span aria-hidden="true">↑</span>}
+            label="Move task up"
+            onClick={onMoveUp}
+            disabled={isFirst}
+          />
+          <IconButton
+            icon={<span aria-hidden="true">↓</span>}
+            label="Move task down"
+            onClick={onMoveDown}
+            disabled={isLast}
+          />
           <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />
           <IconButton
             icon={<ImageIcon />}
@@ -1161,18 +1338,144 @@ function SectionCard({
   number,
   leadNotesByTask,
   leadQuestionsByTask,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+  onReorderDrop,
 }: {
   reportId: string;
   section: SectionWithTasks;
   number: number;
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
+  isFirst: boolean;
+  isLast: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onReorderDrop: (draggedSectionId: string, targetSectionId: string) => void;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragArmed, setDragArmed] = useState(false);
+  const [taskOrderOverride, setTaskOrderOverride] = useState<string[] | null>(null);
+  const [taskOrderError, setTaskOrderError] = useState<string | null>(null);
+
+  // Reset the optimistic override once the source data it was derived from
+  // (the task ids under this section) changes underneath it.
+  const taskIdsKey = section.tasks.map((task) => task.id).join(',');
+  useEffect(() => {
+    setTaskOrderOverride(null);
+  }, [taskIdsKey]);
+
+  const displayedTasks = useMemo(() => {
+    if (!taskOrderOverride) {
+      return section.tasks;
+    }
+
+    const taskById = new Map(section.tasks.map((task) => [task.id, task]));
+    const overridden = taskOrderOverride
+      .map((id) => taskById.get(id))
+      .filter((task): task is TaskWithId => Boolean(task));
+    const overriddenIds = new Set(overridden.map((task) => task.id));
+    const missing = section.tasks.filter((task) => !overriddenIds.has(task.id));
+
+    return [...overridden, ...missing];
+  }, [taskOrderOverride, section.tasks]);
+
+  async function persistTaskOrder(nextIds: string[]) {
+    const previousIds = displayedTasks.map((task) => task.id);
+    setTaskOrderOverride(nextIds);
+    setTaskOrderError(null);
+    try {
+      await reorderTasks(reportId, section.id, nextIds);
+    } catch (error) {
+      console.error('Task reorder failed', error);
+      setTaskOrderOverride(previousIds);
+      setTaskOrderError('Order could not be saved. Please try again.');
+    }
+  }
+
+  function handleMoveTask(taskId: string, direction: 'up' | 'down') {
+    const ids = displayedTasks.map((task) => task.id);
+    const next = reorderedIdsForMove(ids, taskId, direction);
+    if (next) {
+      void persistTaskOrder(next);
+    }
+  }
+
+  function handleTaskReorderDrop(draggedTaskId: string, targetTaskId: string) {
+    const ids = displayedTasks.map((task) => task.id);
+    const next = reorderedIdsForDrag(ids, draggedTaskId, targetTaskId);
+    if (next) {
+      void persistTaskOrder(next);
+    }
+  }
+
+  function handleDragStart(event: DragEvent<HTMLElement>) {
+    event.dataTransfer.setData(SECTION_DRAG_TYPE, section.id);
+    event.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    const draggedId = event.dataTransfer.getData(SECTION_DRAG_TYPE);
+    if (draggedId && draggedId !== section.id) {
+      onReorderDrop(draggedId, section.id);
+    }
+  }
+
+  function handleDragEnd() {
+    setIsDragging(false);
+    setDragArmed(false);
+  }
+
   return (
-    <section className="rounded-md border border-line bg-canvas shadow-sm">
+    <section
+      className={`rounded-md border border-line bg-canvas shadow-sm transition ${isDragging ? 'opacity-50' : ''}`}
+      // Only the handle arms dragging, so editing the title or tasks never starts a drag.
+      draggable={dragArmed}
+      onPointerUp={() => setDragArmed(false)}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragEnd={handleDragEnd}
+    >
       <div className="group/section flex items-center gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+        <span
+          className="shrink-0 cursor-grab select-none text-fg-muted"
+          aria-hidden="true"
+          title="Drag to reorder"
+          onPointerDown={() => setDragArmed(true)}
+        >
+          ⋮⋮
+        </span>
         <span className="shrink-0 text-lg font-semibold text-fg-muted tabular-nums">{number}.</span>
         <SectionTitle reportId={reportId} section={section} />
+        <div className="flex shrink-0 items-center gap-1 md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100">
+          <button
+            className="rounded-md border border-line bg-control px-1.5 py-0.5 text-xs text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            disabled={isFirst}
+            aria-label="Move section up"
+            onClick={onMoveUp}
+          >
+            ↑
+          </button>
+          <button
+            className="rounded-md border border-line bg-control px-1.5 py-0.5 text-xs text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-40"
+            type="button"
+            disabled={isLast}
+            aria-label="Move section down"
+            onClick={onMoveDown}
+          >
+            ↓
+          </button>
+        </div>
         <button
           className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100"
           type="button"
@@ -1182,9 +1485,15 @@ function SectionCard({
         </button>
       </div>
 
+      {taskOrderError ? (
+        <p className="px-4 py-2 text-xs font-medium text-danger-fg" role="alert">
+          {taskOrderError}
+        </p>
+      ) : null}
+
       <div className="divide-y divide-line">
-        {section.tasks.length > 0 ? (
-          section.tasks.map((task, taskIndex) => (
+        {displayedTasks.length > 0 ? (
+          displayedTasks.map((task, taskIndex) => (
             <TaskCard
               key={task.id}
               reportId={reportId}
@@ -1193,6 +1502,11 @@ function SectionCard({
               letter={taskLetter(taskIndex)}
               leadNotes={leadNotesByTask.get(task.id) ?? []}
               leadQuestions={leadQuestionsByTask.get(task.id) ?? []}
+              isFirst={taskIndex === 0}
+              isLast={taskIndex === displayedTasks.length - 1}
+              onMoveUp={() => handleMoveTask(task.id, 'up')}
+              onMoveDown={() => handleMoveTask(task.id, 'down')}
+              onReorderDrop={handleTaskReorderDrop}
             />
           ))
         ) : (
@@ -1225,6 +1539,60 @@ function SectionsList({
     [sections],
   );
 
+  const [sectionOrderOverride, setSectionOrderOverride] = useState<string[] | null>(null);
+  const [sectionOrderError, setSectionOrderError] = useState<string | null>(null);
+
+  // Reset the optimistic override once the source data it was derived from
+  // (the section ids on this report) changes underneath it.
+  const sectionIdsKey = sortedSections.map((section) => section.id).join(',');
+  useEffect(() => {
+    setSectionOrderOverride(null);
+  }, [sectionIdsKey]);
+
+  const displayedSections = useMemo(() => {
+    if (!sectionOrderOverride) {
+      return sortedSections;
+    }
+
+    const sectionById = new Map(sortedSections.map((section) => [section.id, section]));
+    const overridden = sectionOrderOverride
+      .map((id) => sectionById.get(id))
+      .filter((section): section is SectionWithTasks => Boolean(section));
+    const overriddenIds = new Set(overridden.map((section) => section.id));
+    const missing = sortedSections.filter((section) => !overriddenIds.has(section.id));
+
+    return [...overridden, ...missing];
+  }, [sectionOrderOverride, sortedSections]);
+
+  async function persistSectionOrder(nextIds: string[]) {
+    const previousIds = displayedSections.map((section) => section.id);
+    setSectionOrderOverride(nextIds);
+    setSectionOrderError(null);
+    try {
+      await reorderSections(reportId, nextIds);
+    } catch (error) {
+      console.error('Section reorder failed', error);
+      setSectionOrderOverride(previousIds);
+      setSectionOrderError('Order could not be saved. Please try again.');
+    }
+  }
+
+  function handleMoveSection(sectionId: string, direction: 'up' | 'down') {
+    const ids = displayedSections.map((section) => section.id);
+    const next = reorderedIdsForMove(ids, sectionId, direction);
+    if (next) {
+      void persistSectionOrder(next);
+    }
+  }
+
+  function handleSectionReorderDrop(draggedSectionId: string, targetSectionId: string) {
+    const ids = displayedSections.map((section) => section.id);
+    const next = reorderedIdsForDrag(ids, draggedSectionId, targetSectionId);
+    if (next) {
+      void persistSectionOrder(next);
+    }
+  }
+
   return (
     <section>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -1234,13 +1602,19 @@ function SectionsList({
         </div>
       </div>
 
+      {sectionOrderError ? (
+        <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
+          {sectionOrderError}
+        </p>
+      ) : null}
+
       <div className="mt-3">
         <AddSectionForm sections={sortedSections} onAddSection={onAddSection} />
       </div>
 
       <div className="mt-4 space-y-6">
-        {sortedSections.length > 0 ? (
-          sortedSections.map((section, sectionIndex) => (
+        {displayedSections.length > 0 ? (
+          displayedSections.map((section, sectionIndex) => (
             <SectionCard
               key={section.id}
               reportId={reportId}
@@ -1248,6 +1622,11 @@ function SectionsList({
               number={sectionIndex + 1}
               leadNotesByTask={leadNotesByTask}
               leadQuestionsByTask={leadQuestionsByTask}
+              isFirst={sectionIndex === 0}
+              isLast={sectionIndex === displayedSections.length - 1}
+              onMoveUp={() => handleMoveSection(section.id, 'up')}
+              onMoveDown={() => handleMoveSection(section.id, 'down')}
+              onReorderDrop={handleSectionReorderDrop}
             />
           ))
         ) : (
@@ -1443,8 +1822,14 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const { reportTree, reportId, loading, date, ensureReportExists } = useMyReport(userId, selectedDate);
   const { assignments } = useMyAssignments(userId, date);
+  const [previewAsLead, setPreviewAsLead] = useState(() => loadPreviewAsLead());
   const handleDateChange = (nextDate: string) =>
     setSelectedDate(nextDate === todayDateString() ? null : nextDate);
+
+  function handlePreviewAsLeadChange(next: boolean) {
+    setPreviewAsLead(next);
+    persistPreviewAsLead(next);
+  }
 
   // The report document only exists once the developer actually adds
   // content, so every write that could be the first one on an empty report
@@ -1495,7 +1880,13 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   if (loading || !reportId) {
     return (
       <div className="space-y-6">
-        <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
+        <Header
+          date={date}
+          developerName={developerName}
+          onDateChange={handleDateChange}
+          previewAsLead={previewAsLead}
+          onPreviewAsLeadChange={handlePreviewAsLeadChange}
+        />
         <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted shadow-sm">
           Preparing the report...
         </div>
@@ -1506,7 +1897,13 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   if (!reportTree) {
     return (
       <div className="space-y-6">
-        <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
+        <Header
+          date={date}
+          developerName={developerName}
+          onDateChange={handleDateChange}
+          previewAsLead={previewAsLead}
+          onPreviewAsLeadChange={handlePreviewAsLeadChange}
+        />
         <div className="rounded-md border border-danger-emphasis/40 bg-danger-muted p-4 text-sm text-danger-fg shadow-sm">
           Today’s report could not be loaded. Please refresh and try again.
         </div>
@@ -1516,33 +1913,45 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   return (
     <div className="space-y-6">
-      <Header date={date} developerName={developerName} onDateChange={handleDateChange} />
-      <AssignmentsBox assignments={assignments} userId={userId} date={date} />
-      {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
-        <section className="rounded-md border border-line bg-canvas shadow-sm">
-          <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-            <h2 className="text-lg font-semibold text-fg">From the lead</h2>
-          </div>
-          <div className="p-4">
-            <LeadNotesReadOnly notes={reportLevelLeadNotes} />
-            {reportLevelLeadQuestions.length > 0 ? (
-              <div className="mt-3 space-y-3">
-                {reportLevelLeadQuestions.map((question) => (
-                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-      <SectionsList
-        reportId={reportId}
-        sections={reportTree.sections}
-        leadNotesByTask={leadNotesByTask}
-        leadQuestionsByTask={leadQuestionsByTask}
-        onAddSection={handleAddSection}
+      <Header
+        date={date}
+        developerName={developerName}
+        onDateChange={handleDateChange}
+        previewAsLead={previewAsLead}
+        onPreviewAsLeadChange={handlePreviewAsLeadChange}
       />
-      <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
+      {previewAsLead ? (
+        <ReportPreview reportTree={reportTree} developerId={userId} date={date} assignments={assignments} />
+      ) : (
+        <>
+          <AssignmentsBox assignments={assignments} userId={userId} date={date} />
+          {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
+            <section className="rounded-md border border-line bg-canvas shadow-sm">
+              <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+                <h2 className="text-lg font-semibold text-fg">From the lead</h2>
+              </div>
+              <div className="p-4">
+                <LeadNotesReadOnly notes={reportLevelLeadNotes} />
+                {reportLevelLeadQuestions.length > 0 ? (
+                  <div className="mt-3 space-y-3">
+                    {reportLevelLeadQuestions.map((question) => (
+                      <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          ) : null}
+          <SectionsList
+            reportId={reportId}
+            sections={reportTree.sections}
+            leadNotesByTask={leadNotesByTask}
+            leadQuestionsByTask={leadQuestionsByTask}
+            onAddSection={handleAddSection}
+          />
+          <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
+        </>
+      )}
     </div>
   );
 }

@@ -183,7 +183,7 @@ function LeadHeader({
   );
 }
 
-function LinkChips({ links = [] }: { links?: TaskLink[] }) {
+export function LinkChips({ links = [] }: { links?: TaskLink[] }) {
   if (links.length === 0) {
     return null;
   }
@@ -205,12 +205,14 @@ function LinkChips({ links = [] }: { links?: TaskLink[] }) {
   );
 }
 
-function LeadNoteBlock({
+// `onRemove` is optional so this block can be reused read-only (e.g. the
+// developer's "Preview as lead" mode), where no removal action exists.
+export function LeadNoteBlock({
   notes,
   onRemove,
 }: {
   notes: LeadNoteWithId[];
-  onRemove: (noteId: string) => void;
+  onRemove?: (noteId: string) => void;
 }) {
   if (notes.length === 0) {
     return null;
@@ -224,20 +226,22 @@ function LeadNoteBlock({
           key={note.id}
         >
           <p className="leading-6">{note.noteText}</p>
-          <button
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
-            type="button"
-            onClick={() => onRemove(note.id)}
-          >
-            Remove
-          </button>
+          {onRemove ? (
+            <button
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
+              type="button"
+              onClick={() => onRemove(note.id)}
+            >
+              Remove
+            </button>
+          ) : null}
         </div>
       ))}
     </div>
   );
 }
 
-function AnswerAttachmentImages({ images }: { images: Array<{ id: string; imageBase64: string }> }) {
+export function AnswerAttachmentImages({ images }: { images: Array<{ id: string; imageBase64: string }> }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   if (images.length === 0) {
@@ -274,13 +278,15 @@ function AnswerAttachmentImages({ images }: { images: Array<{ id: string; imageB
   );
 }
 
-function LeadQuestionItem({
+// `onRemove` is optional so this item can be reused read-only (e.g. the
+// developer's "Preview as lead" mode), where no removal action exists.
+export function LeadQuestionItem({
   question,
   onRemove,
   context,
 }: {
   question: LeadQuestionWithId;
-  onRemove: (questionId: string) => void;
+  onRemove?: (questionId: string) => void;
   context?: string;
 }) {
   const isAnswered =
@@ -293,13 +299,15 @@ function LeadQuestionItem({
       {context ? <p className="mb-1 text-xs font-medium text-fg-muted">{context}</p> : null}
       <div className="flex items-start justify-between gap-3">
         <p className="font-semibold leading-6 text-done-fg">{question.questionText}</p>
-        <button
-          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
-          type="button"
-          onClick={() => onRemove(question.id)}
-        >
-          Remove
-        </button>
+        {onRemove ? (
+          <button
+            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
+            type="button"
+            onClick={() => onRemove(question.id)}
+          >
+            Remove
+          </button>
+        ) : null}
       </div>
 
       {!isAnswered ? (
@@ -332,12 +340,14 @@ function LeadQuestionItem({
   );
 }
 
-function LeadQuestionBlock({
+// `onRemove` is optional so this block can be reused read-only (e.g. the
+// developer's "Preview as lead" mode), where no removal action exists.
+export function LeadQuestionBlock({
   questions,
   onRemove,
 }: {
   questions: LeadQuestionWithId[];
-  onRemove: (questionId: string) => void;
+  onRemove?: (questionId: string) => void;
 }) {
   if (questions.length === 0) {
     return null;
@@ -703,6 +713,53 @@ function AssignmentComposer({
   );
 }
 
+// Renders one developer's update for an assignment (text, links, image
+// thumbnails with their own lightbox), or "No updates" when empty. Shared by
+// `LeadAssignmentRow` and the developer's read-only "Preview as lead" mode.
+export function AssignmentUpdateDisplay({ update }: { update: AssignmentUpdateWithImages | null }) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const hasUpdateContent = Boolean(
+    (update?.text && update.text.trim().length > 0) ||
+      (update?.links && update.links.length > 0) ||
+      (update?.images && update.images.length > 0),
+  );
+  const images = update?.images ?? [];
+
+  if (!hasUpdateContent) {
+    return <p className="text-sm text-fg-muted">No updates</p>;
+  }
+
+  return (
+    <>
+      {update?.text ? <p className="text-sm text-fg">{update.text}</p> : null}
+      <LinkChips links={update?.links} />
+      {images.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {images.map((image, imageIndex) => (
+            <button
+              className="cursor-zoom-in rounded-md focus:outline-none focus:ring-1 focus:ring-accent-emphasis"
+              key={image.id}
+              type="button"
+              aria-label="Open update image"
+              onClick={() => setLightboxIndex(imageIndex)}
+            >
+              <img
+                className="h-16 w-16 rounded-md border border-line object-cover transition hover:opacity-90"
+                src={image.imageBase64}
+                alt="Assignment update attachment thumbnail"
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {lightboxIndex !== null ? (
+        <ImageLightbox images={images} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
+      ) : null}
+    </>
+  );
+}
+
 function LeadAssignmentRow({
   assignment,
   assigneeId,
@@ -716,8 +773,6 @@ function LeadAssignmentRow({
   onClose: (assignmentId: string) => void;
   onRemove: (assignmentId: string) => void;
 }) {
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-
   const hasUpdateContent = Boolean(
     (update?.text && update.text.trim().length > 0) ||
       (update?.links && update.links.length > 0) ||
@@ -725,7 +780,6 @@ function LeadAssignmentRow({
   );
   const isClosed = assignment.status === 'closed';
   const otherAssigneeCount = assignment.assigneeIds.filter((id) => id !== assigneeId).length;
-  const images = update?.images ?? [];
 
   return (
     <article id={`assignment-${assignment.id}-${assigneeId}`} className="group/assignmentRow scroll-mt-4 px-4 py-3">
@@ -778,38 +832,8 @@ function LeadAssignmentRow({
       </div>
 
       <div className="mt-2">
-        {hasUpdateContent ? (
-          <>
-            {update?.text ? <p className="text-sm text-fg">{update.text}</p> : null}
-            <LinkChips links={update?.links} />
-            {images.length > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {images.map((image, imageIndex) => (
-                  <button
-                    className="cursor-zoom-in rounded-md focus:outline-none focus:ring-1 focus:ring-accent-emphasis"
-                    key={image.id}
-                    type="button"
-                    aria-label="Open update image"
-                    onClick={() => setLightboxIndex(imageIndex)}
-                  >
-                    <img
-                      className="h-16 w-16 rounded-md border border-line object-cover transition hover:opacity-90"
-                      src={image.imageBase64}
-                      alt="Assignment update attachment thumbnail"
-                    />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </>
-        ) : (
-          <p className="text-sm text-fg-muted">No updates</p>
-        )}
+        <AssignmentUpdateDisplay update={update} />
       </div>
-
-      {lightboxIndex !== null ? (
-        <ImageLightbox images={images} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} />
-      ) : null}
     </article>
   );
 }
