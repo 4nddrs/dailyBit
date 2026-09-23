@@ -129,6 +129,7 @@ export interface Assignment {
   startDate: string;
   status: AssignmentStatus;
   closedDate?: string;
+  relatedTask?: { description: string };
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

@@ -557,12 +557,18 @@ function revealAssignment(assignmentId: string, assigneeId: string, attemptsLeft
 function AssignmentComposer({
   devs,
   preselectedDevId,
+  relatedTask,
   onAssign,
   onDone,
 }: {
   devs: UserProfileWithId[];
   preselectedDevId: string;
-  onAssign: (input: { description: string; assigneeIds: string[] }) => Promise<string>;
+  relatedTask?: { description: string };
+  onAssign: (input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) => Promise<string>;
   onDone: (assignmentId: string) => void;
 }) {
   const [description, setDescription] = useState('');
@@ -591,7 +597,7 @@ function AssignmentComposer({
     setSubmitting(true);
     setError(null);
     try {
-      const assignmentId = await onAssign({ description: trimmedDescription, assigneeIds });
+      const assignmentId = await onAssign({ description: trimmedDescription, assigneeIds, relatedTask });
       setDescription('');
       setAssigneeIds(preselectedDevId ? [preselectedDevId] : []);
       onDone(assignmentId);
@@ -689,6 +695,9 @@ function LeadAssignmentRow({
               ? ` · Shared with ${otherAssigneeCount} other ${pluralize(otherAssigneeCount, 'developer', 'developers')}`
               : ''}
           </p>
+          {assignment.relatedTask ? (
+            <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {isClosed ? (
@@ -810,10 +819,13 @@ function TaskCard({
   letter,
   notes,
   questions,
+  allDevs,
+  reportOwnerId,
   onAddNote,
   onRemoveNote,
   onAddQuestion,
   onRemoveQuestion,
+  onCreateAssignment,
 }: {
   reportId: string;
   sectionId: string;
@@ -821,6 +833,8 @@ function TaskCard({
   letter: string;
   notes: LeadNoteWithId[];
   questions: LeadQuestionWithId[];
+  allDevs: UserProfileWithId[];
+  reportOwnerId: string;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
   onAddQuestion: (
@@ -829,11 +843,16 @@ function TaskCard({
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) => Promise<void>;
   onRemoveQuestion: (questionId: string) => void;
+  onCreateAssignment: (input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) => Promise<string>;
 }) {
-  const [openComposer, setOpenComposer] = useState<'question' | 'note' | null>(null);
+  const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  function toggleComposer(composer: 'question' | 'note') {
+  function toggleComposer(composer: 'question' | 'note' | 'task') {
     setOpenComposer((current) => (current === composer ? null : composer));
   }
 
@@ -881,6 +900,13 @@ function TaskCard({
               >
                 Note
               </button>
+              <button
+                className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
+                type="button"
+                onClick={() => toggleComposer('task')}
+              >
+                Task
+              </button>
             </div>
           </div>
           <LinkChips links={task.links} />
@@ -892,6 +918,18 @@ function TaskCard({
       ) : null}
       {openComposer === 'note' ? (
         <NoteComposer label="Lead task note" onAdd={(noteText) => onAddNote(task.id, noteText)} />
+      ) : null}
+      {openComposer === 'task' ? (
+        <AssignmentComposer
+          devs={allDevs}
+          preselectedDevId={reportOwnerId}
+          relatedTask={{ description: task.description }}
+          onAssign={onCreateAssignment}
+          onDone={(assignmentId) => {
+            setOpenComposer(null);
+            revealAssignment(assignmentId, reportOwnerId);
+          }}
+        />
       ) : null}
 
       <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} />
@@ -914,16 +952,21 @@ function SectionCard({
   number,
   notesByTarget,
   questionsByTarget,
+  allDevs,
+  reportOwnerId,
   onAddNote,
   onRemoveNote,
   onAddQuestion,
   onRemoveQuestion,
+  onCreateAssignment,
 }: {
   reportId: string;
   section: SectionWithTasks;
   number: number;
   notesByTarget: Map<string, LeadNoteWithId[]>;
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
+  allDevs: UserProfileWithId[];
+  reportOwnerId: string;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
   onAddQuestion: (
@@ -932,6 +975,11 @@ function SectionCard({
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) => Promise<void>;
   onRemoveQuestion: (questionId: string) => void;
+  onCreateAssignment: (input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) => Promise<string>;
 }) {
   return (
     <section className="rounded-md bg-canvas-subtle">
@@ -952,10 +1000,13 @@ function SectionCard({
               letter={taskLetter(taskIndex)}
               notes={notesByTarget.get(task.id) ?? []}
               questions={questionsByTarget.get(task.id) ?? []}
+              allDevs={allDevs}
+              reportOwnerId={reportOwnerId}
               onAddNote={onAddNote}
               onRemoveNote={onRemoveNote}
               onAddQuestion={onAddQuestion}
               onRemoveQuestion={onRemoveQuestion}
+              onCreateAssignment={onCreateAssignment}
             />
           ))
         ) : (
@@ -1039,7 +1090,11 @@ function ReportCard({
   allDevs: UserProfileWithId[];
   assignments: AssignmentWithId[];
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<string>;
+  onCreateAssignment: (input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) => Promise<string>;
   onCloseAssignment: (assignmentId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onlyMineFilter: boolean;
@@ -1110,15 +1165,15 @@ function ReportCard({
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <article className="group/report rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
-      <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
+      <div className="group/reportHeader flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
             <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 gap-2 transition md:opacity-0 md:group-hover/report:opacity-100 md:group-focus-within/report:opacity-100">
+        <div className="flex shrink-0 gap-2 transition md:opacity-0 md:group-hover/reportHeader:opacity-100 md:group-focus-within/reportHeader:opacity-100">
           <button
             className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
             type="button"
@@ -1186,10 +1241,13 @@ function ReportCard({
                     number={sectionIndex + 1}
                     notesByTarget={notesByTarget}
                     questionsByTarget={questionsByTarget}
+                    allDevs={allDevs}
+                    reportOwnerId={report.userId}
                     onAddNote={handleAddNote}
                     onRemoveNote={handleRemoveNote}
                     onAddQuestion={handleAddQuestion}
                     onRemoveQuestion={handleRemoveQuestion}
+                    onCreateAssignment={onCreateAssignment}
                   />
                 ))
               ) : (
@@ -1237,18 +1295,22 @@ function AssignmentOnlyCard({
   allDevs: UserProfileWithId[];
   assignments: AssignmentWithId[];
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onCreateAssignment: (input: { description: string; assigneeIds: string[] }) => Promise<string>;
+  onCreateAssignment: (input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) => Promise<string>;
   onCloseAssignment: (assignmentId: string) => void;
   onRemoveAssignment: (assignmentId: string) => void;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
 
   return (
-    <article className="group/report rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
-      <div className="flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+    <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
+      <div className="group/reportHeader flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
         <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
         <button
-          className="md:opacity-0 md:group-hover/report:opacity-100 md:group-focus-within/report:opacity-100 rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
+          className="md:opacity-0 md:group-hover/reportHeader:opacity-100 md:group-focus-within/reportHeader:opacity-100 rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
           type="button"
           onClick={() => setComposerOpen((current) => !current)}
         >
@@ -1419,12 +1481,17 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     return grouped;
   }, [assignments]);
 
-  async function handleCreateAssignment(input: { description: string; assigneeIds: string[] }) {
+  async function handleCreateAssignment(input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) {
     return createAssignment({
       description: input.description,
       assigneeIds: input.assigneeIds,
       createdBy: leadUserId,
       startDate: normalizedSelectedDate,
+      relatedTask: input.relatedTask,
     });
   }
 

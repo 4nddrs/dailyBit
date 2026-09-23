@@ -729,6 +729,9 @@ function AssignmentRow({
         </span>
       </div>
       <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
+      {assignment.relatedTask ? (
+        <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>
+      ) : null}
 
       <AssignmentUpdateEditor assignmentId={assignment.id} assigneeId={assigneeId} date={date} update={update} />
     </div>

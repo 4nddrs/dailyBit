@@ -68,7 +68,7 @@ const collections = {
 
 export type CreateAssignmentInput = Pick<
   Assignment,
-  'description' | 'assigneeIds' | 'createdBy' | 'startDate'
+  'description' | 'assigneeIds' | 'createdBy' | 'startDate' | 'relatedTask'
 >;
 export type SaveAssignmentUpdateInput = { text?: string; links?: TaskLink[] };
 
@@ -716,7 +716,9 @@ export async function createAssignment(input: CreateAssignmentInput): Promise<st
     throw new Error('An assignment needs at least one assignee.');
   }
 
-  const ref = await addDoc(assignmentsCollection(), {
+  // Firestore rejects undefined field values, so `relatedTask` is only
+  // included when the caller actually passed one.
+  const payload: Record<string, unknown> = {
     description,
     assigneeIds,
     createdBy: input.createdBy,
@@ -724,7 +726,13 @@ export async function createAssignment(input: CreateAssignmentInput): Promise<st
     status: 'open',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+
+  if (input.relatedTask !== undefined) {
+    payload.relatedTask = input.relatedTask;
+  }
+
+  const ref = await addDoc(assignmentsCollection(), payload);
 
   return ref.id;
 }
