@@ -49,6 +49,14 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
       answering in Developer View, remove `teamQuestions`. Route: delegated (writer
       trigger: 4+ files).
 
+- [x] T4 — Compact empty states in Lead View: replace the large "No sections yet" /
+      "No questions" boxes with one-line muted messages; header summary counts stay small.
+- [x] T5 — Report-level lead questions and notes (user decision 2026-09-23): the lead can
+      ask a question (text/options) or leave a note on the report as a whole, not only on a
+      task; works when the report has no sections. Report-level = `taskId`/`sectionId` ''
+      (questions) and `targetTaskId` '' (notes). Developer View shows and answers them.
+      Route: delegated (writer trigger: 2+ non-trivial files), together with T4.
+
 ## Acceptance criteria
 - `grep -rni ryan src scripts README.md` returns nothing.
 - Lead hovers a task → "Question" and "Note" buttons; both can be added to the same task.
@@ -62,6 +70,8 @@ hover action bar (Question / Note) on each task. Hide the "No image" placeholder
 - T2: done inline (2 files, mechanical). Lead View drops the image column when a task has no images. tsc OK.
 
 - T3: delegated writer (4+ files). `leadQuestions` subcollection (kind text|options), hover Question/Note bar, dev answers/re-answers, cascade delete of lead questions/notes with task/section, teamQuestions removed, README rules + seed updated. tsc/build/py_compile OK; grep teamQuestion/ryan empty. Composers stay open after submit (flagged). First review `review-084c9903cfc06b93` escalated: options: undefined rejected by Firestore for text questions; dev task delete denied by lead-only delete rules. Fixed (conditional options payload; owner may delete leadNotes/leadQuestions). Re-review `review-5a11a140c56ed8a9` APPROVED. Commit `33a98f6`.
+
+- T4+T5: delegated writer. CompactEmptyState one-liners, dev-questions section hidden when empty, pluralized summary; report-level Question/Note buttons in card header (taskId/sectionId/targetTaskId ''), Developer View shows/answers them above sections. tsc/build OK.
 
 ## Next step
 - User deploys updated Firestore rules (leadNotes, leadQuestions) before using the build.

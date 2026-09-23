@@ -61,13 +61,12 @@ function getOptionLabel(index: number): string {
   return optionLabels[index] ?? String(index + 1);
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-line bg-canvas-inset px-5 py-8 text-center">
-      <h3 className="text-sm font-semibold text-fg">{title}</h3>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-fg-muted">{description}</p>
-    </div>
-  );
+function CompactEmptyState({ text }: { text: string }) {
+  return <p className="py-1 text-sm text-fg-muted">{text}</p>;
+}
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
 }
 
 function LeadHeader({
@@ -163,25 +162,6 @@ function LeadNoteBlock({
             Remove
           </button>
         </div>
-      ))}
-    </div>
-  );
-}
-
-function ReadOnlyLeadNoteBlock({ notes }: { notes: LeadNoteWithId[] }) {
-  if (notes.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="mt-3 space-y-2">
-      {notes.map((note) => (
-        <p
-          className="rounded-xl border border-attention-emphasis/60 bg-attention-muted px-3 py-2 text-sm text-attention-fg"
-          key={note.id}
-        >
-          <span className="border-l-4 border-attention-emphasis pl-3 leading-6">{note.noteText}</span>
-        </p>
       ))}
     </div>
   );
@@ -584,7 +564,7 @@ function SectionCard({
             />
           ))
         ) : (
-          <EmptyState title="No tasks in this section" description="The developer has not added task details here yet." />
+          <CompactEmptyState text="No tasks in this section." />
         )}
       </div>
     </section>
@@ -653,8 +633,14 @@ function ReportCard({
   developerName: string;
   leadUserId: string;
 }) {
+  const [openComposer, setOpenComposer] = useState<'question' | 'note' | null>(null);
+
   const notes = report.notes ?? [];
   const leadQuestions = report.leadQuestions ?? [];
+
+  function toggleComposer(composer: 'question' | 'note') {
+    setOpenComposer((current) => (current === composer ? null : composer));
+  }
 
   const notesByTarget = useMemo(() => {
     const groupedNotes = new Map<string, LeadNoteWithId[]>();
@@ -699,16 +685,55 @@ function ReportCard({
     });
   }
 
+  const reportLevelNotes = notesByTarget.get('') ?? [];
+  const reportLevelQuestions = questionsByTarget.get('') ?? [];
+  const devQuestionCount = report.questions?.length ?? 0;
+  const totalQuestionCount = devQuestionCount + leadQuestions.length;
+  const summaryParts = [
+    report.sections.length > 0
+      ? `${report.sections.length} ${pluralize(report.sections.length, 'section', 'sections')}`
+      : null,
+    totalQuestionCount > 0
+      ? `${totalQuestionCount} ${pluralize(totalQuestionCount, 'question', 'questions')}`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+
   return (
     <article className="rounded-3xl border border-line bg-canvas p-5">
       <div className="flex flex-col gap-3 border-b border-line-muted pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-fg">{developerName}</h2>
-          <p className="mt-1 text-sm text-fg-muted">{report.sections.length} sections · {report.questions?.length ?? 0} questions</p>
+          {summaryParts.length > 0 ? (
+            <p className="mt-1 text-sm text-fg-muted">{summaryParts.join(' · ')}</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button
+            className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={() => toggleComposer('question')}
+          >
+            Question
+          </button>
+          <button
+            className="rounded-lg border border-line bg-control px-2 py-1 text-xs font-semibold text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={() => toggleComposer('note')}
+          >
+            Note
+          </button>
         </div>
       </div>
 
-      <ReadOnlyLeadNoteBlock notes={notesByTarget.get('') ?? []} />
+      {openComposer === 'question' ? (
+        <LeadQuestionComposer onAdd={(input) => handleAddQuestion('', '', input)} />
+      ) : null}
+      {openComposer === 'note' ? (
+        <NoteComposer label="Lead report note" onAdd={(noteText) => handleAddNote('', noteText)} />
+      ) : null}
+
+      <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+      <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
 
       <div className="mt-5 space-y-4">
         {report.sections.length > 0 ? (
@@ -726,22 +751,20 @@ function ReportCard({
             />
           ))
         ) : (
-          <EmptyState title="No sections yet" description="This report exists, but the developer has not added sections." />
+          <CompactEmptyState text="No tasks reported yet." />
         )}
       </div>
 
-      <section className="mt-5 rounded-2xl border border-line bg-canvas-subtle p-4">
-        <h3 className="text-base font-semibold text-fg">Questions from {developerName}</h3>
-        <div className="mt-4 space-y-3">
-          {report.questions && report.questions.length > 0 ? (
-            report.questions.map((question) => (
+      {report.questions && report.questions.length > 0 ? (
+        <section className="mt-5 rounded-2xl border border-line bg-canvas-subtle p-4">
+          <h3 className="text-base font-semibold text-fg">Questions from {developerName}</h3>
+          <div className="mt-4 space-y-3">
+            {report.questions.map((question) => (
               <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
-            ))
-          ) : (
-            <EmptyState title="No questions" description="There are no decisions waiting on this report." />
-          )}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </article>
   );
 }
@@ -814,10 +837,9 @@ export function LeadView({ leadUserId }: LeadViewProps) {
             />
           ))
         ) : (
-          <EmptyState
-            title="No reports yet today"
-            description="Reports will appear here live after developers start their daily updates. Try a different date if you are reviewing past work."
-          />
+          <div className="rounded-2xl border border-line bg-canvas p-4 text-sm text-fg-muted">
+            No reports yet today. Try a different date if you are reviewing past work.
+          </div>
         )}
       </div>
     </div>

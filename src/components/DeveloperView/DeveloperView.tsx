@@ -934,6 +934,12 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
     return grouped;
   }, [reportTree?.leadQuestions]);
 
+  const reportLevelLeadNotes = useMemo(
+    () => (reportTree?.notes ?? []).filter((note) => !note.targetTaskId),
+    [reportTree?.notes],
+  );
+  const reportLevelLeadQuestions = leadQuestionsByTask.get('') ?? [];
+
   if (loading || !reportId) {
     return (
       <div className="space-y-6">
@@ -959,6 +965,19 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   return (
     <div className="space-y-6">
       <Header date={reportTree.date} developerName={developerName} />
+      {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
+        <section className="rounded-3xl border border-line bg-canvas p-5">
+          <h2 className="text-lg font-semibold text-fg">From the lead</h2>
+          <LeadNotesReadOnly notes={reportLevelLeadNotes} />
+          {reportLevelLeadQuestions.length > 0 ? (
+            <div className="mt-3 space-y-3">
+              {reportLevelLeadQuestions.map((question) => (
+                <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <SectionsList
         reportId={reportId}
         sections={reportTree.sections}

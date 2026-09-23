@@ -100,7 +100,7 @@ reports/{userId}_{date}
   leadQuestions/{questionId}
 ```
 
-Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions; `leadNotes` are the lead's report-level or task-level notes; `leadQuestions` are the lead's per-task questions to the report owner, answered as free text or by picking one of several options.
+Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions; `leadNotes` are the lead's report-level or task-level notes; `leadQuestions` are the lead's report-level or per-task questions to the report owner (empty `taskId`/`sectionId` means the question is about the report as a whole), answered as free text or by picking one of several options.
 
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
@@ -246,7 +246,7 @@ Security intent:
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}/images/{imageId}` | Task image document with `imageBase64` data URL and `createdAt`; one doc per image, so the 1 MB limit applies per image doc. |
 | `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. |
 | `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
-| `reports/{reportId}/leadQuestions/{questionId}` | The lead's per-task question to the report owner (`kind: 'text' | 'options'`) and the owner's answer. |
+| `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. |
 
 ## Roles
 
