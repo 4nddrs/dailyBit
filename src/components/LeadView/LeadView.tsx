@@ -19,6 +19,7 @@ import type { AssignmentUpdatesByAssignment } from '../../hooks/useAssignmentUpd
 import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
+import { taskLetter } from '../../utils/numbering';
 import { orderDevelopers, orderReportsByTeam } from '../../utils/team';
 import type {
   AssignmentUpdateWithImages,
@@ -806,6 +807,7 @@ function TaskCard({
   reportId,
   sectionId,
   task,
+  letter,
   notes,
   questions,
   onAddNote,
@@ -816,6 +818,7 @@ function TaskCard({
   reportId: string;
   sectionId: string;
   task: TaskWithId;
+  letter: string;
   notes: LeadNoteWithId[];
   questions: LeadQuestionWithId[];
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
@@ -859,7 +862,10 @@ function TaskCard({
 
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
-            <p className="text-sm font-medium leading-6 text-fg">{task.description}</p>
+            <p className="text-sm font-medium leading-6 text-fg">
+              <span className="mr-1.5 font-semibold text-fg-muted tabular-nums">{letter}.</span>
+              {task.description}
+            </p>
             <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <button
                 className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
@@ -905,6 +911,7 @@ function TaskCard({
 function SectionCard({
   reportId,
   section,
+  number,
   notesByTarget,
   questionsByTarget,
   onAddNote,
@@ -914,6 +921,7 @@ function SectionCard({
 }: {
   reportId: string;
   section: SectionWithTasks;
+  number: number;
   notesByTarget: Map<string, LeadNoteWithId[]>;
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
@@ -928,16 +936,20 @@ function SectionCard({
   return (
     <section className="rounded-md bg-canvas-subtle">
       <div className="px-4 py-3">
-        <h3 className="text-base font-semibold text-fg">{section.title}</h3>
+        <h3 className="text-base font-semibold text-fg">
+          <span className="mr-1.5 text-fg-muted tabular-nums">{number}.</span>
+          {section.title}
+        </h3>
       </div>
       <div className="divide-y divide-line">
         {section.tasks.length > 0 ? (
-          section.tasks.map((task) => (
+          section.tasks.map((task, taskIndex) => (
             <TaskCard
               key={task.id}
               reportId={reportId}
               sectionId={section.id}
               task={task}
+              letter={taskLetter(taskIndex)}
               notes={notesByTarget.get(task.id) ?? []}
               questions={questionsByTarget.get(task.id) ?? []}
               onAddNote={onAddNote}
@@ -1166,11 +1178,12 @@ function ReportCard({
 
             <div className="mt-3 space-y-3">
               {report.sections.length > 0 ? (
-                report.sections.map((section) => (
+                report.sections.map((section, sectionIndex) => (
                   <SectionCard
                     key={section.id}
                     reportId={report.id}
                     section={section}
+                    number={sectionIndex + 1}
                     notesByTarget={notesByTarget}
                     questionsByTarget={questionsByTarget}
                     onAddNote={handleAddNote}

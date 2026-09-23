@@ -34,6 +34,7 @@ import type {
 import { todayDateString } from '../../types';
 
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
+import { taskLetter } from '../../utils/numbering';
 const QUESTION_OPTION_LIMIT = 6;
 const QUESTION_OPTION_MINIMUM = 2;
 const MAX_IMAGE_SIDE = 1024;
@@ -914,12 +915,14 @@ function TaskCard({
   reportId,
   sectionId,
   task,
+  letter,
   leadNotes,
   leadQuestions,
 }: {
   reportId: string;
   sectionId: string;
   task: TaskWithId;
+  letter: string;
   leadNotes: LeadNoteWithId[];
   leadQuestions: LeadQuestionWithId[];
 }) {
@@ -982,8 +985,12 @@ function TaskCard({
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
             Task
+            <span className="mt-2 flex items-center gap-2">
+            <span className="w-6 shrink-0 text-sm font-semibold normal-case tracking-normal text-fg-muted tabular-nums">
+              {letter}.
+            </span>
             <input
-              className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+              className="w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               onBlur={persistDescription}
@@ -994,6 +1001,7 @@ function TaskCard({
               }}
               maxLength={TASK_DESCRIPTION_LIMIT}
             />
+            </span>
           </label>
           <p className={`mt-1 text-right text-xs font-medium ${counterColor}`}>
             {description.length}/{TASK_DESCRIPTION_LIMIT}
@@ -1053,17 +1061,20 @@ function TaskCard({
 function SectionCard({
   reportId,
   section,
+  number,
   leadNotesByTask,
   leadQuestionsByTask,
 }: {
   reportId: string;
   section: SectionWithTasks;
+  number: number;
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="group/section flex items-center gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+        <span className="shrink-0 text-lg font-semibold text-fg-muted tabular-nums">{number}.</span>
         <SectionTitle reportId={reportId} section={section} />
         <button
           className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100"
@@ -1076,12 +1087,13 @@ function SectionCard({
 
       <div className="divide-y divide-line">
         {section.tasks.length > 0 ? (
-          section.tasks.map((task) => (
+          section.tasks.map((task, taskIndex) => (
             <TaskCard
               key={task.id}
               reportId={reportId}
               sectionId={section.id}
               task={task}
+              letter={taskLetter(taskIndex)}
               leadNotes={leadNotesByTask.get(task.id) ?? []}
               leadQuestions={leadQuestionsByTask.get(task.id) ?? []}
             />
@@ -1131,11 +1143,12 @@ function SectionsList({
 
       <div className="mt-4 space-y-6">
         {sortedSections.length > 0 ? (
-          sortedSections.map((section) => (
+          sortedSections.map((section, sectionIndex) => (
             <SectionCard
               key={section.id}
               reportId={reportId}
               section={section}
+              number={sectionIndex + 1}
               leadNotesByTask={leadNotesByTask}
               leadQuestionsByTask={leadQuestionsByTask}
             />
