@@ -16,6 +16,7 @@ import {
   subscribeAssignmentUpdate,
   updateTask,
 } from '../../services/firestore';
+import { ImageLightbox } from '../ImageLightbox';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
 import type { CreateQuestionInput } from '../../services/firestore';
@@ -378,21 +379,28 @@ function AttachmentImages({
   onRemove: (imageId: string) => void;
   altText: string;
 }) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
   if (images.length === 0) {
     return null;
   }
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-      {images.map((image) => (
+      {images.map((image, index) => (
         <div className="group/media relative" key={image.id}>
-          <a href={image.imageBase64} rel="noreferrer" target="_blank" aria-label="Open attachment image">
+          <button
+            className="block w-full cursor-zoom-in rounded-md focus:outline-none focus:ring-1 focus:ring-accent-emphasis"
+            type="button"
+            onClick={() => setLightboxIndex(index)}
+            aria-label="Open attachment image"
+          >
             <img
               className="h-24 w-full rounded-md border border-line object-cover transition hover:opacity-90"
               src={image.imageBase64}
               alt={altText}
             />
-          </a>
+          </button>
           <button
             className="absolute right-1 top-1 rounded-full bg-canvas-subtle/90 px-1.5 py-0.5 text-xs font-semibold text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/media:opacity-100 md:group-focus-within/media:opacity-100"
             type="button"
@@ -403,6 +411,13 @@ function AttachmentImages({
           </button>
         </div>
       ))}
+      {lightboxIndex !== null ? (
+        <ImageLightbox
+          images={images}
+          initialIndex={Math.min(lightboxIndex, images.length - 1)}
+          onClose={() => setLightboxIndex(null)}
+        />
+      ) : null}
     </div>
   );
 }
