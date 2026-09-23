@@ -1120,7 +1120,7 @@ function SectionsList({
     <section>
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-fg">Today’s work</h2>
+          <h2 className="text-2xl font-semibold text-fg">Today’s work</h2>
           <p className="text-sm text-fg-muted">Group related work under clear main titles.</p>
         </div>
       </div>
