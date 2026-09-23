@@ -47,14 +47,14 @@ interface DeveloperViewProps {
 
 function formatDisplayDate(dateString?: string): string {
   if (!dateString) {
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat('en-US', {
       weekday: 'long',
       month: 'short',
       day: 'numeric',
     }).format(new Date());
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',

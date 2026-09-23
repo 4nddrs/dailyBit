@@ -89,7 +89,7 @@ function normalizeDateString(dateString: string): string {
 }
 
 function formatDisplayDate(dateString: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
