@@ -501,9 +501,28 @@ function TaskTextarea({ value, onValueChange, onEnter, className = '', ...props 
 
   useLayoutEffect(fitHeight, [fitHeight, value]);
 
+  // Refit whenever the field's width changes (window or layout resizes, first
+  // shown after being hidden) and once web fonts finish loading, since both
+  // change where the text wraps. Height-only changes are ignored so the refit
+  // cannot retrigger itself.
   useEffect(() => {
-    window.addEventListener('resize', fitHeight);
-    return () => window.removeEventListener('resize', fitHeight);
+    const field = fieldRef.current;
+    if (!field) {
+      return;
+    }
+    void document.fonts?.ready.then(fitHeight);
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    let lastWidth = field.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth !== lastWidth) {
+        lastWidth = field.clientWidth;
+        fitHeight();
+      }
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
   }, [fitHeight]);
 
   return (
@@ -513,7 +532,7 @@ function TaskTextarea({ value, onValueChange, onEnter, className = '', ...props 
       rows={1}
       className={`block resize-none overflow-hidden ${className}`}
       value={value}
-      onChange={(event) => onValueChange(event.target.value.replace(/\r?\n/g, ' '))}
+      onChange={(event) => onValueChange(event.target.value.replace(/\r\n|[\r\n]/g, ' '))}
       onKeyDown={(event) => {
         if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
           event.preventDefault();
