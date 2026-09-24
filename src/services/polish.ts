@@ -1,6 +1,6 @@
 import { auth } from '../firebase';
 
-export type PolishKind = 'task' | 'question' | 'answer';
+export type PolishKind = 'task' | 'question' | 'answer' | 'option';
 
 export interface PolishTextInput {
   kind: PolishKind;

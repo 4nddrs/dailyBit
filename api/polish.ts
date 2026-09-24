@@ -6,7 +6,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 // sentence via OpenAI. The API key stays server-side only: it is read from
 // `OPENAI_API_KEY` and never forwarded to, or echoed back to, the client.
 
-export type PolishKind = 'task' | 'question' | 'answer';
+export type PolishKind = 'task' | 'question' | 'answer' | 'option';
 
 interface PolishRequestBody {
   kind: PolishKind;
@@ -14,7 +14,7 @@ interface PolishRequestBody {
   questionContext?: string;
 }
 
-const VALID_KINDS: PolishKind[] = ['task', 'question', 'answer'];
+const VALID_KINDS: PolishKind[] = ['task', 'question', 'answer', 'option'];
 
 const MAX_TEXT_LENGTH = 500;
 const MAX_CONTEXT_LENGTH = 500;
@@ -23,6 +23,7 @@ const KIND_LIMITS: Record<PolishKind, number> = {
   task: 140,
   question: 200,
   answer: 280,
+  option: 80,
 };
 
 const BASE_SYSTEM_PROMPT = [
@@ -38,6 +39,8 @@ const KIND_INSTRUCTIONS: Record<PolishKind, string> = {
     'Rewrite it as one clear, direct question the lead can answer without needing extra context. At most 200 characters.',
   answer:
     "Rewrite it so it directly answers the question given as context, in 1 to 2 short sentences, at most 280 characters.",
+  option:
+    'Rewrite it as one answer option for the multiple-choice question given as context: a short, specific phrase that is clearly distinct and directly answers the question, at most 80 characters, without a leading letter or label and without a trailing period.',
 };
 
 // Simple per-instance sliding-window rate limit. This resets whenever the
@@ -114,7 +117,7 @@ function validateBody(raw: unknown): ValidationResult {
   const { kind, text, questionContext } = body as Record<string, unknown>;
 
   if (typeof kind !== 'string' || !VALID_KINDS.includes(kind as PolishKind)) {
-    return { ok: false, error: 'Invalid "kind". Expected task, question, or answer.' };
+    return { ok: false, error: 'Invalid "kind". Expected task, question, answer, or option.' };
   }
 
   if (typeof text !== 'string') {
@@ -149,10 +152,12 @@ function buildMessages(
   questionContext: string | undefined,
 ): Array<{ role: 'system' | 'user'; content: string }> {
   const systemContent = `${BASE_SYSTEM_PROMPT} ${KIND_INSTRUCTIONS[kind]}`;
-  const userContent =
-    kind === 'answer' && questionContext
-      ? `Question from the lead: "${questionContext}"\n\nDeveloper's answer to rewrite:\n"""${text}"""`
-      : `Text to rewrite:\n"""${text}"""`;
+  let userContent = `Text to rewrite:\n"""${text}"""`;
+  if (kind === 'answer' && questionContext) {
+    userContent = `Question from the lead: "${questionContext}"\n\nDeveloper's answer to rewrite:\n"""${text}"""`;
+  } else if (kind === 'option' && questionContext) {
+    userContent = `Multiple-choice question for the lead: "${questionContext}"\n\nAnswer option to rewrite:\n"""${text}"""`;
+  }
 
   return [
     { role: 'system', content: systemContent },

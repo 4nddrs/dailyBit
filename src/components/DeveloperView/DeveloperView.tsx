@@ -1849,6 +1849,65 @@ function SectionsList({
   );
 }
 
+function QuestionOptionRow({
+  label,
+  value,
+  questionText,
+  canRemove,
+  onChange,
+  onRemove,
+}: {
+  label: string;
+  value: string;
+  questionText: string;
+  canRemove: boolean;
+  onChange: (value: string) => void;
+  onRemove: () => void;
+}) {
+  // The question is sent as context so the option is polished as an answer to it.
+  const optionPolish = usePolishAction({
+    kind: 'option',
+    questionContext: questionText.trim() || undefined,
+    onUse: onChange,
+  });
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
+          {label}
+        </span>
+        <input
+          className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={`Option ${label}`}
+        />
+        <PolishButton
+          disabled={!value.trim()}
+          loading={optionPolish.loading}
+          onClick={() => void optionPolish.trigger(value)}
+        />
+        <button
+          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
+          type="button"
+          disabled={!canRemove}
+          onClick={onRemove}
+        >
+          Remove
+        </button>
+      </div>
+      <PolishSuggestionPanel
+        loading={optionPolish.loading}
+        suggestion={optionPolish.suggestion}
+        error={optionPolish.error}
+        onUse={optionPolish.useSuggestion}
+        onDismiss={optionPolish.dismiss}
+      />
+    </div>
+  );
+}
+
 function QuestionComposer({
   onAddQuestion,
 }: {
@@ -1924,25 +1983,15 @@ function QuestionComposer({
 
       <div className="mt-3 space-y-2">
         {options.map((option, index) => (
-          <div className="flex items-center gap-2" key={index}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-muted text-xs font-semibold text-fg">
-              {optionLabels[index]}
-            </span>
-            <input
-              className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-              value={option}
-              onChange={(event) => updateOption(index, event.target.value)}
-              placeholder={`Option ${optionLabels[index]}`}
-            />
-            <button
-              className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
-              type="button"
-              disabled={options.length <= QUESTION_OPTION_MINIMUM}
-              onClick={() => removeOption(index)}
-            >
-              Remove
-            </button>
-          </div>
+          <QuestionOptionRow
+            key={index}
+            label={optionLabels[index]}
+            value={option}
+            questionText={questionText}
+            canRemove={options.length > QUESTION_OPTION_MINIMUM}
+            onChange={(value) => updateOption(index, value)}
+            onRemove={() => removeOption(index)}
+          />
         ))}
       </div>
 
