@@ -707,8 +707,7 @@ function LinkForm({
   const [url, setUrl] = useState('');
   const [label, setLabel] = useState('');
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function submitLink() {
     const trimmedUrl = url.trim();
     const trimmedLabel = label.trim();
 
@@ -722,14 +721,20 @@ function LinkForm({
     onClose();
   }
 
+  // Deliberately not a <form>: LinkForm is rendered inside other forms (e.g. the
+  // question composer), and nested forms would submit the outer form instead.
   return (
-    <form
+    <div
       className="grid gap-2 md:grid-cols-[1fr_9rem_auto_auto]"
-      onSubmit={handleSubmit}
+      role="group"
+      aria-label="Add link"
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
           onClose();
+        } else if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+          event.preventDefault();
+          submitLink();
         }
       }}
     >
@@ -750,8 +755,9 @@ function LinkForm({
       />
       <button
         className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
-        type="submit"
+        type="button"
         disabled={!isValidUrl(url.trim())}
+        onClick={submitLink}
       >
         Add link
       </button>
@@ -762,7 +768,7 @@ function LinkForm({
       >
         Cancel
       </button>
-    </form>
+    </div>
   );
 }
 
