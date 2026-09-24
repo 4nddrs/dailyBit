@@ -4,6 +4,7 @@ import {
   addLeadQuestion,
   answerQuestion,
   closeAssignment,
+  reopenAssignment,
   createAssignment,
   getUserProfile,
   removeAssignment,
@@ -228,13 +229,7 @@ export function LeadNoteBlock({
         >
           <p className="min-w-0 break-words leading-6">{note.noteText}</p>
           {onRemove ? (
-            <button
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
-              type="button"
-              onClick={() => onRemove(note.id)}
-            >
-              Remove
-            </button>
+            <RemoveButton label="Remove note" onClick={() => onRemove(note.id)} />
           ) : null}
         </div>
       ))}
@@ -301,13 +296,7 @@ export function LeadQuestionItem({
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
         {onRemove ? (
-          <button
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
-            type="button"
-            onClick={() => onRemove(question.id)}
-          >
-            Remove
-          </button>
+          <RemoveButton label="Remove question" onClick={() => onRemove(question.id)} />
         ) : null}
       </div>
 
@@ -391,6 +380,106 @@ function LeadTaskQuestionsOnly({
         <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} context={task.description} />
       ))}
     </div>
+  );
+}
+
+type LeadActionKind = 'question' | 'note' | 'task';
+
+const leadActionStyles: Record<LeadActionKind, string> = {
+  question:
+    'border-done-emphasis/60 bg-done-muted text-done-fg hover:border-done-emphasis hover:bg-done-emphasis/40 aria-pressed:border-done-emphasis aria-pressed:bg-done-emphasis/40',
+  note: 'border-attention-emphasis/60 bg-attention-muted text-attention-fg hover:border-attention-emphasis hover:bg-attention-emphasis/40 aria-pressed:border-attention-emphasis aria-pressed:bg-attention-emphasis/40',
+  task: 'border-accent-emphasis/60 bg-accent-muted text-accent-fg hover:border-accent-emphasis hover:bg-accent-emphasis/40 aria-pressed:border-accent-emphasis aria-pressed:bg-accent-emphasis/40',
+};
+
+const leadActionLabels: Record<LeadActionKind, string> = {
+  question: 'Ask a question',
+  note: 'Add a note',
+  task: 'Assign a task',
+};
+
+function LeadActionIcon({ kind }: { kind: LeadActionKind }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {kind === 'question' ? (
+        <>
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M6.25 6.25a1.75 1.75 0 1 1 2.6 1.53c-.5.28-.85.62-.85 1.22v.25" />
+          <circle cx="8" cy="11.5" r="0.4" fill="currentColor" />
+        </>
+      ) : kind === 'note' ? (
+        <>
+          <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="1.5" />
+          <path d="M5 6.5h6M5 9.5h4" />
+        </>
+      ) : (
+        <>
+          <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="1.5" />
+          <path d="m5.25 8.25 1.75 1.75 3.75-4" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+// Always-visible icon button for the lead's Question / Note / Task actions.
+// `active` marks the button whose composer is currently open.
+function LeadActionButton({
+  kind,
+  active = false,
+  onClick,
+}: {
+  kind: LeadActionKind;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition hover:scale-110 hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis ${leadActionStyles[kind]}`}
+      type="button"
+      aria-label={leadActionLabels[kind]}
+      aria-pressed={active}
+      title={leadActionLabels[kind]}
+      onClick={onClick}
+    >
+      <LeadActionIcon kind={kind} />
+    </button>
+  );
+}
+
+// Always-visible trash button used for every lead-side removal.
+function RemoveButton({
+  label,
+  onClick,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-danger-fg transition hover:scale-110 hover:bg-danger-emphasis/30 focus:outline-none focus-visible:ring-1 focus-visible:ring-danger-emphasis disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-transparent"
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+        <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.75 1.75 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+      </svg>
+    </button>
   );
 }
 
@@ -558,14 +647,11 @@ function LeadQuestionComposer({
                 onChange={(event) => updateOption(index, event.target.value)}
                 placeholder={`Option ${getOptionLabel(index)}`}
               />
-              <button
-                className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
-                type="button"
+              <RemoveButton
+                label={`Remove option ${getOptionLabel(index)}`}
                 disabled={options.length <= QUESTION_OPTION_MINIMUM}
                 onClick={() => removeOption(index)}
-              >
-                Remove
-              </button>
+              />
             </div>
           ))}
           <button
@@ -766,13 +852,13 @@ function LeadAssignmentRow({
   assignment,
   assigneeId,
   update,
-  onClose,
+  onSetClosed,
   onRemove,
 }: {
   assignment: AssignmentWithId;
   assigneeId: string;
   update: AssignmentUpdateWithImages | null;
-  onClose: (assignmentId: string) => void;
+  onSetClosed: (assignmentId: string, closed: boolean) => void;
   onRemove: (assignmentId: string) => void;
 }) {
   const hasUpdateContent = Boolean(
@@ -784,10 +870,14 @@ function LeadAssignmentRow({
   const otherAssigneeCount = assignment.assigneeIds.filter((id) => id !== assigneeId).length;
 
   return (
-    <article id={`assignment-${assignment.id}-${assigneeId}`} className="group/assignmentRow scroll-mt-4 px-4 py-3">
+    <article id={`assignment-${assignment.id}-${assigneeId}`} className="scroll-mt-4 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="break-words text-sm font-medium leading-6 text-fg">{assignment.description}</p>
+          <p
+            className={`break-words text-sm font-medium leading-6 ${isClosed ? 'text-fg-muted line-through' : 'text-fg'}`}
+          >
+            {assignment.description}
+          </p>
           <p className="mt-1 text-xs text-fg-muted">
             Assigned {assignment.startDate}
             {otherAssigneeCount > 0
@@ -799,11 +889,6 @@ function LeadAssignmentRow({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {isClosed ? (
-            <span className="rounded-full border border-line bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
-              Closed
-            </span>
-          ) : null}
           <span
             className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
               hasUpdateContent
@@ -813,23 +898,20 @@ function LeadAssignmentRow({
           >
             {hasUpdateContent ? 'Updated' : 'No updates'}
           </span>
-          <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover/assignmentRow:opacity-100 md:group-focus-within/assignmentRow:opacity-100">
-            <button
-              className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-40"
-              type="button"
-              disabled={isClosed}
-              onClick={() => onClose(assignment.id)}
-            >
-              Close
-            </button>
-            <button
-              className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
-              type="button"
-              onClick={() => onRemove(assignment.id)}
-            >
-              Remove
-            </button>
-          </div>
+          {/* One toggle: "Close" while open, "Reopen" once closed. */}
+          <button
+            className={`w-16 shrink-0 rounded-md border px-2 py-1 text-xs font-medium transition ${
+              isClosed
+                ? 'border-accent-emphasis/60 bg-accent-muted text-accent-fg hover:border-accent-emphasis hover:bg-accent-emphasis/40'
+                : 'border-line bg-control text-fg hover:border-fg-muted hover:bg-control-hover'
+            }`}
+            type="button"
+            title={isClosed ? 'Reopen this task' : 'Close this task'}
+            onClick={() => onSetClosed(assignment.id, !isClosed)}
+          >
+            {isClosed ? 'Reopen' : 'Close'}
+          </button>
+          <RemoveButton label="Remove assignment" onClick={() => onRemove(assignment.id)} />
         </div>
       </div>
 
@@ -844,13 +926,13 @@ function LeadAssignmentsBox({
   assignments,
   assigneeId,
   updatesByAssignment,
-  onClose,
+  onSetClosed,
   onRemove,
 }: {
   assignments: AssignmentWithId[];
   assigneeId: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onClose: (assignmentId: string) => void;
+  onSetClosed: (assignmentId: string, closed: boolean) => void;
   onRemove: (assignmentId: string) => void;
 }) {
   if (assignments.length === 0) {
@@ -872,7 +954,7 @@ function LeadAssignmentsBox({
             assignment={assignment}
             assigneeId={assigneeId}
             update={updatesByAssignment.get(assignment.id)?.get(assigneeId) ?? null}
-            onClose={onClose}
+            onSetClosed={onSetClosed}
             onRemove={onRemove}
           />
         ))}
@@ -926,7 +1008,7 @@ function TaskCard({
   }
 
   return (
-    <article className="group px-4 py-3">
+    <article className="px-4 py-3">
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -958,28 +1040,10 @@ function TaskCard({
                 <LinkChips links={task.links} />
               </div>
             </div>
-            <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-              <button
-                className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
-                type="button"
-                onClick={() => toggleComposer('question')}
-              >
-                Question
-              </button>
-              <button
-                className="rounded-md border border-attention-emphasis/60 bg-attention-muted px-2 py-1 text-xs font-medium text-attention-fg transition hover:border-attention-emphasis hover:bg-attention-emphasis/25"
-                type="button"
-                onClick={() => toggleComposer('note')}
-              >
-                Note
-              </button>
-              <button
-                className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
-                type="button"
-                onClick={() => toggleComposer('task')}
-              >
-                Task
-              </button>
+            <div className="flex shrink-0 gap-2">
+              <LeadActionButton kind="question" active={openComposer === 'question'} onClick={() => toggleComposer('question')} />
+              <LeadActionButton kind="note" active={openComposer === 'note'} onClick={() => toggleComposer('note')} />
+              <LeadActionButton kind="task" active={openComposer === 'task'} onClick={() => toggleComposer('task')} />
             </div>
           </div>
         </div>
@@ -1108,7 +1172,14 @@ function SectionCard({
                 <span className="mb-2 inline-flex items-center rounded-full border border-done-emphasis/60 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
                   Question
                 </span>
-                <QuestionCard reportId={reportId} question={item.question} leadUserId={leadUserId} />
+                <QuestionCard
+                  reportId={reportId}
+                  question={item.question}
+                  leadUserId={leadUserId}
+                  notes={notesByTarget.get(item.id) ?? []}
+                  onAddNote={onAddNote}
+                  onRemoveNote={onRemoveNote}
+                />
               </div>
             ),
           )
@@ -1176,12 +1247,19 @@ function QuestionCard({
   reportId,
   question,
   leadUserId,
+  notes,
+  onAddNote,
+  onRemoveNote,
 }: {
   reportId: string;
   question: QuestionWithId;
   leadUserId: string;
+  notes: LeadNoteWithId[];
+  onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
+  onRemoveNote: (noteId: string) => void;
 }) {
   const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
+  const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
 
   async function handleAnswer(optionIndex: number) {
@@ -1203,15 +1281,22 @@ function QuestionCard({
     <article className="rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
-        <span
-          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
-            isAnswered
-              ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-              : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
-          }`}
-        >
-          {isAnswered ? 'Answered' : 'Needs your answer'}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <LeadActionButton
+            kind="note"
+            active={noteComposerOpen}
+            onClick={() => setNoteComposerOpen((current) => !current)}
+          />
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+              isAnswered
+                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
+            }`}
+          >
+            {isAnswered ? 'Answered' : 'Needs your answer'}
+          </span>
+        </div>
       </div>
 
       <QuestionOptionList
@@ -1235,6 +1320,17 @@ function QuestionCard({
         }
       />
       {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
+
+      {noteComposerOpen ? (
+        <NoteComposer
+          label="Lead question note"
+          onAdd={async (noteText) => {
+            await onAddNote(question.id, noteText);
+            setNoteComposerOpen(false);
+          }}
+        />
+      ) : null}
+      <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
     </article>
   );
 }
@@ -1247,7 +1343,7 @@ function ReportCard({
   assignments,
   updatesByAssignment,
   onCreateAssignment,
-  onCloseAssignment,
+  onSetAssignmentClosed,
   onRemoveAssignment,
   onlyMineFilter,
 }: {
@@ -1262,7 +1358,7 @@ function ReportCard({
     assigneeIds: string[];
     relatedTask?: { description: string };
   }) => Promise<string>;
-  onCloseAssignment: (assignmentId: string) => void;
+  onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onlyMineFilter: boolean;
 }) {
@@ -1337,35 +1433,17 @@ function ReportCard({
 
   return (
     <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
-      <div className="group/reportHeader flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="break-words text-lg font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
             <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 gap-2 transition md:opacity-0 md:group-hover/reportHeader:opacity-100 md:group-focus-within/reportHeader:opacity-100">
-          <button
-            className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
-            type="button"
-            onClick={() => toggleComposer('question')}
-          >
-            Question
-          </button>
-          <button
-            className="rounded-md border border-attention-emphasis/60 bg-attention-muted px-2 py-1 text-xs font-medium text-attention-fg transition hover:border-attention-emphasis hover:bg-attention-emphasis/25"
-            type="button"
-            onClick={() => toggleComposer('note')}
-          >
-            Note
-          </button>
-          <button
-            className="rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
-            type="button"
-            onClick={() => toggleComposer('task')}
-          >
-            Task
-          </button>
+        <div className="flex shrink-0 gap-2">
+          <LeadActionButton kind="question" active={openComposer === 'question'} onClick={() => toggleComposer('question')} />
+          <LeadActionButton kind="note" active={openComposer === 'note'} onClick={() => toggleComposer('note')} />
+          <LeadActionButton kind="task" active={openComposer === 'task'} onClick={() => toggleComposer('task')} />
         </div>
       </div>
 
@@ -1450,7 +1528,15 @@ function ReportCard({
                 </div>
                 <div className="space-y-3 p-3">
                   {report.questions.map((question) => (
-                    <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
+                    <QuestionCard
+                      key={question.id}
+                      reportId={report.id}
+                      question={question}
+                      leadUserId={leadUserId}
+                      notes={notesByTarget.get(question.id) ?? []}
+                      onAddNote={handleAddNote}
+                      onRemoveNote={handleRemoveNote}
+                    />
                   ))}
                 </div>
               </section>
@@ -1462,7 +1548,7 @@ function ReportCard({
           assignments={assignments}
           assigneeId={report.userId}
           updatesByAssignment={updatesByAssignment}
-          onClose={onCloseAssignment}
+          onSetClosed={onSetAssignmentClosed}
           onRemove={onRemoveAssignment}
         />
       </div>
@@ -1477,7 +1563,7 @@ function AssignmentOnlyCard({
   assignments,
   updatesByAssignment,
   onCreateAssignment,
-  onCloseAssignment,
+  onSetAssignmentClosed,
   onRemoveAssignment,
 }: {
   userId: string;
@@ -1490,22 +1576,16 @@ function AssignmentOnlyCard({
     assigneeIds: string[];
     relatedTask?: { description: string };
   }) => Promise<string>;
-  onCloseAssignment: (assignmentId: string) => void;
+  onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
 
   return (
     <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
-      <div className="group/reportHeader flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+      <div className="flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
         <h2 className="min-w-0 break-words text-lg font-semibold text-fg">{developerName}</h2>
-        <button
-          className="shrink-0 md:opacity-0 md:group-hover/reportHeader:opacity-100 md:group-focus-within/reportHeader:opacity-100 rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
-          type="button"
-          onClick={() => setComposerOpen((current) => !current)}
-        >
-          Task
-        </button>
+        <LeadActionButton kind="task" active={composerOpen} onClick={() => setComposerOpen((current) => !current)} />
       </div>
 
       <div className="p-4">
@@ -1525,7 +1605,7 @@ function AssignmentOnlyCard({
           assignments={assignments}
           assigneeId={userId}
           updatesByAssignment={updatesByAssignment}
-          onClose={onCloseAssignment}
+          onSetClosed={onSetAssignmentClosed}
           onRemove={onRemoveAssignment}
         />
       </div>
@@ -1685,9 +1765,12 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     });
   }
 
-  function handleCloseAssignment(assignmentId: string) {
-    closeAssignment(assignmentId, normalizedSelectedDate).catch((error: unknown) => {
-      console.error('Failed to close assignment', error);
+  function handleSetAssignmentClosed(assignmentId: string, closed: boolean) {
+    const update = closed
+      ? closeAssignment(assignmentId, normalizedSelectedDate)
+      : reopenAssignment(assignmentId);
+    update.catch((error: unknown) => {
+      console.error(`Failed to ${closed ? 'close' : 'reopen'} assignment`, error);
     });
   }
 
@@ -1885,7 +1968,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   assignments={assignmentsByAssignee.get(entry.userId) ?? []}
                   updatesByAssignment={updatesByAssignment}
                   onCreateAssignment={handleCreateAssignment}
-                  onCloseAssignment={handleCloseAssignment}
+                  onSetAssignmentClosed={handleSetAssignmentClosed}
                   onRemoveAssignment={handleRemoveAssignment}
                   onlyMineFilter={onlyMineFilter}
                 />
@@ -1898,7 +1981,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   assignments={assignmentsByAssignee.get(entry.userId) ?? []}
                   updatesByAssignment={updatesByAssignment}
                   onCreateAssignment={handleCreateAssignment}
-                  onCloseAssignment={handleCloseAssignment}
+                  onSetAssignmentClosed={handleSetAssignmentClosed}
                   onRemoveAssignment={handleRemoveAssignment}
                 />
               ),

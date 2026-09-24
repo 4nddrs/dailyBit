@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -677,7 +678,9 @@ async function deleteLeadQuestionImages(reportId: string, questionId: string) {
 
 // Firestore never cascades deletes, and leadQuestions/leadNotes live in
 // report-level collections rather than under the task, so both are queried
-// by their task-reference field and deleted explicitly.
+// by their task-reference field and deleted explicitly. Lead notes can also
+// target a developer question (`targetTaskId` holds the question id), so the
+// same cleanup runs when a question is removed.
 async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
   const [questionSnapshots, noteSnapshots] = await Promise.all([
     getDocs(query(leadQuestionsCollection(reportId), where('taskId', '==', taskId))),
@@ -717,7 +720,12 @@ export async function removeSection(reportId: string, sectionId: string): Promis
         deleteTaskLeadArtifacts(reportId, taskSnapshot.id),
       ]),
     ),
-    ...questionSnapshots.docs.map((questionSnapshot) => deleteQuestionImages(reportId, questionSnapshot.id)),
+    ...questionSnapshots.docs.map((questionSnapshot) =>
+      Promise.all([
+        deleteQuestionImages(reportId, questionSnapshot.id),
+        deleteTaskLeadArtifacts(reportId, questionSnapshot.id),
+      ]),
+    ),
   ]);
   const batch = writeBatch(db);
 
@@ -839,7 +847,10 @@ async function deleteQuestionImages(reportId: string, questionId: string) {
 }
 
 export async function removeQuestion(reportId: string, questionId: string): Promise<void> {
-  await deleteQuestionImages(reportId, questionId);
+  await Promise.all([
+    deleteQuestionImages(reportId, questionId),
+    deleteTaskLeadArtifacts(reportId, questionId),
+  ]);
   await deleteDoc(questionDoc(reportId, questionId));
 }
 
@@ -1014,6 +1025,16 @@ export async function closeAssignment(assignmentId: string, closedDate: string):
   await updateDoc(assignmentDoc(assignmentId), {
     status: 'closed',
     closedDate,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// Undoes closeAssignment: the assignment becomes visible on every date again
+// from its `startDate`, so `closedDate` is dropped rather than kept stale.
+export async function reopenAssignment(assignmentId: string): Promise<void> {
+  await updateDoc(assignmentDoc(assignmentId), {
+    status: 'open',
+    closedDate: deleteField(),
     updatedAt: serverTimestamp(),
   });
 }
