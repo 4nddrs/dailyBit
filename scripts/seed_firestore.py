@@ -119,7 +119,7 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                             "order": 1,
                             "links": [{"label": "PR", "url": "https://github.com/example/dailybit/pull/12"}],
                         },
-                        {"id": "refactored-report-card-layout", "description": "Refactored report card layout", "order": 2},
+                        {"id": "refactored-report-card-layout", "description": "Refactored report card layout", "order": 3},
                     ],
                 },
                 {
@@ -220,6 +220,18 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                 "data": {
                     "questionText": "Ship the MVP this Friday or next Monday?",
                     "options": ["This Friday", "Next Monday", "Decide at standup"],
+                },
+            },
+            {
+                # A section question: anchored to "frontend" and interleaved
+                # with its tasks (order 2, between the date-picker task at
+                # order 1 and the now-bumped report-card task at order 3).
+                "path": f"reports/{sofia_today}/questions/frontend-review-approach",
+                "data": {
+                    "questionText": "Should the report card refactor land before or after the login polish ships?",
+                    "options": ["Before", "After", "Doesn't matter"],
+                    "sectionId": "frontend",
+                    "order": 2,
                 },
             },
             {

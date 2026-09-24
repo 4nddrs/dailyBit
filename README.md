@@ -105,6 +105,8 @@ reports/{userId}_{date}
 
 Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions, where each option's text may carry supporting `optionDetails[i].links` (parallel to `options`, only stored when at least one option has a link) and an `images` subcollection of compressed Base64 image data URLs tagged with the `optionIndex` they belong to; `leadNotes` are the lead's report-level or task-level notes; `leadQuestions` are the lead's report-level or per-task questions to the report owner (empty `taskId`/`sectionId` means the question is about the report as a whole), answered as free text or by picking one of several options. A free-text (`kind: 'text'`) answer may also include `answerLinks` and an `images` subcollection of compressed Base64 image data URLs, same shape as task images; an options answer stays a plain selected index, with no links or images.
 
+A dev question may optionally carry `sectionId` and `order`: when set, the question is anchored inside that section and interleaved with its tasks (tasks and questions share one `order` space per section, same as `sections/{sectionId}/tasks/{taskId}.order`); when omitted (or empty), the question is report-level and shown in the trailing "Questions to the lead" panel instead. No new Firestore rule is needed for these fields: `create`/`delete` on `questions/{questionId}` are already fully owner-controlled, and the report owner's `update` rule already allows any field except `selectedAnswer`/`answeredBy`/`answeredAt`, which already covers writing `order` when a section is reordered.
+
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
 ### 4. Suggested minimum security rules
@@ -299,6 +301,7 @@ Security intent:
 - Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
 - Caps task descriptions at 500 characters.
 - Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text, with its own supporting links and images, or by picking an option).
+- A question to the lead can be added either at the report level (trailing "Questions to the lead" panel) or from inside a section via its "Ask the lead" entry next to "Add task". A section question is interleaved with that section's tasks by shared `order` and can be moved up/down or dragged past a task, same as a task; it takes no letter of its own (tasks stay lettered `a, b, c…` over tasks only) and shows a small "Question" badge instead.
 - Shows an "Assigned by lead" block above the report when the developer has at least one assignment visible on the selected date, with a "Pending"/"Updated" pill per assignment; each is answered with its own daily text/links/images update, independent of the report (it works even with no report for that date).
 
 ### LeadView
@@ -307,7 +310,7 @@ Security intent:
 - Displays each developer's sections, tasks, links, Firestore-stored images, and questions in realtime.
 - Hovering a task reveals "Question" and "Note" buttons; a task can have several of each.
 - Lets the lead ask a developer a per-task question (free text or multiple choice) and leave per-task notes; a free-text answer's links and images show alongside its text.
-- Lets the lead answer developer questions.
+- Lets the lead answer developer questions, including a section question, answered right where it appears among that section's tasks; only report-level questions (no `sectionId`) show in the trailing "Questions from {developer}" block, which stays hidden when there are none.
 - Shows a "Team" list with the lead's developers, in the same order the reports appear; the lead can reorder it (drag-and-drop or up/down buttons), which also reorders the reports. Clicking a name scrolls to that developer's report.
 
 ## Data model
@@ -319,7 +322,7 @@ Security intent:
 | `reports/{reportId}/sections/{sectionId}` | Ordered group headings for a daily report. |
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `links` and `order`. |
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}/images/{imageId}` | Task image document with `imageBase64` data URL and `createdAt`; one doc per image, so the 1 MB limit applies per image doc. |
-| `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. `optionDetails?: { links }[]` is parallel to `options` (only stored when at least one option has a link). |
+| `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. `optionDetails?: { links }[]` is parallel to `options` (only stored when at least one option has a link). Optional `sectionId`/`order` anchor the question inside a section, interleaved with its tasks; omitted (or empty `sectionId`) means a report-level question. |
 | `reports/{reportId}/questions/{questionId}/images/{imageId}` | An option's image attachment: `{ imageBase64, optionIndex, createdAt }`; one doc per image, same one-doc-per-image shape as task images. |
 | `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
 | `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. A `'text'` answer may also include `answerLinks`. |
