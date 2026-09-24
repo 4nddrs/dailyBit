@@ -748,10 +748,10 @@ function LinkChips({
     <div className="flex flex-wrap gap-2">
       {links.map((link, index) => (
         <span
-          className="group/link inline-flex items-center gap-2 rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted"
+          className="group/link inline-flex items-center gap-2 rounded-full border border-accent-emphasis/60 bg-accent-muted px-3 py-1 text-xs font-medium text-accent-fg"
           key={`${link.url}-${index}`}
         >
-          <a className="max-w-[12rem] truncate hover:text-accent-fg" href={link.url} target="_blank" rel="noreferrer">
+          <a className="max-w-[12rem] truncate hover:underline" href={link.url} target="_blank" rel="noreferrer">
             {link.label || link.url}
           </a>
           <button

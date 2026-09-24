@@ -74,11 +74,14 @@ function PreviewTaskCard({
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? <PreviewTaskImages images={task.images} /> : null}
         <div className="min-w-0">
-          <p className="flex min-w-0 gap-1.5 text-sm font-medium leading-6 text-fg">
+          <div className="flex min-w-0 gap-1.5 text-sm font-medium leading-6 text-fg">
             <span className="shrink-0 font-semibold text-fg-muted tabular-nums">{letter}.</span>
-            <span className="min-w-0 break-words">{task.description}</span>
-          </p>
-          <LinkChips links={task.links} />
+            {/* Links share the text column so they indent with the description. */}
+            <div className="min-w-0">
+              <p className="break-words">{task.description}</p>
+              <LinkChips links={task.links} />
+            </div>
+          </div>
         </div>
       </div>
 

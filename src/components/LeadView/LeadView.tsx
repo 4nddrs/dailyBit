@@ -192,7 +192,7 @@ export function LinkChips({ links = [] }: { links?: TaskLink[] }) {
     <div className="mt-3 flex flex-wrap gap-2">
       {links.map((link, index) => (
         <a
-          className="max-w-full truncate rounded-full border border-line bg-canvas-subtle px-3 py-1 text-xs font-medium text-fg-muted transition hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg"
+          className="max-w-full truncate rounded-full border border-accent-emphasis/60 bg-accent-muted px-3 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
           href={link.url}
           key={`${link.url}-${index}`}
           rel="noreferrer"
@@ -949,10 +949,14 @@ function TaskCard({
 
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
-            <p className="flex min-w-0 gap-1.5 text-sm font-medium leading-6 text-fg">
+            <div className="flex min-w-0 gap-1.5 text-sm font-medium leading-6 text-fg">
               <span className="shrink-0 font-semibold text-fg-muted tabular-nums">{letter}.</span>
-              <span className="min-w-0 break-words">{task.description}</span>
-            </p>
+              {/* Links share the text column so they indent with the description. */}
+              <div className="min-w-0">
+                <p className="break-words">{task.description}</p>
+                <LinkChips links={task.links} />
+              </div>
+            </div>
             <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <button
                 className="rounded-md border border-done-emphasis/60 bg-done-muted px-2 py-1 text-xs font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
@@ -977,7 +981,6 @@ function TaskCard({
               </button>
             </div>
           </div>
-          <LinkChips links={task.links} />
         </div>
       </div>
 
