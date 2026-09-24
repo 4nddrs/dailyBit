@@ -238,7 +238,7 @@ def build_seed_data(lead_uid: str, lead_name: str, today: str, yesterday: str) -
                 "path": f"reports/{sofia_today}/questions/task-limit-ok",
                 "data": {
                     "questionText": "Is the 500-char task limit ok?",
-                    "options": ["Yes, keep it", "Raise to 200"],
+                    "options": ["Yes, keep it", "Raise to 1000"],
                     "selectedAnswer": 0,
                     "answeredBy": lead_uid,
                     "answeredAt": SERVER_TIMESTAMP,

@@ -1826,9 +1826,7 @@ function SectionCard({
 
   async function handleAddSectionQuestion(question: CreateQuestionInput) {
     const nextOrder = getNextOrder([...section.tasks, ...section.questions]);
-    const questionId = await onAddQuestion({ ...question, sectionId: section.id, order: nextOrder });
-    setOpenComposer(null);
-    return questionId;
+    return onAddQuestion({ ...question, sectionId: section.id, order: nextOrder });
   }
 
   async function persistItemOrder(nextKeys: string[]) {
@@ -1992,6 +1990,7 @@ function SectionCard({
             reportId={reportId}
             onAddQuestion={handleAddSectionQuestion}
             onCancel={() => setOpenComposer(null)}
+            onAdded={() => setOpenComposer(null)}
           />
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -2272,15 +2271,19 @@ function emptyComposerOption(): ComposerOption {
 }
 
 // `onCancel` is only passed where the composer is opened on demand (inside a
-// section); it adds a Cancel button, Escape-to-close and autofocus.
+// section); it adds a Cancel button, Escape-to-close and autofocus. `onAdded`
+// runs once the question and all its option images are saved, so a failed
+// image upload keeps the composer (and its error message) on screen.
 function QuestionComposer({
   reportId,
   onAddQuestion,
   onCancel,
+  onAdded,
 }: {
   reportId: string;
   onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
   onCancel?: () => void;
+  onAdded?: () => void;
 }) {
   const [questionText, setQuestionText] = useState('');
   const [options, setOptions] = useState<ComposerOption[]>([emptyComposerOption(), emptyComposerOption()]);
@@ -2348,8 +2351,10 @@ function QuestionComposer({
           } catch (caughtError) {
             console.error('Question option image upload failed', caughtError);
             setImageUploadError('Question added, but one or more images failed to upload.');
+            return;
           }
         }
+        onAdded?.();
       })(),
       'Question add failed',
     );
