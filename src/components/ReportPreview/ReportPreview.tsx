@@ -9,6 +9,7 @@ import {
   QuestionOptionList,
 } from '../LeadView/LeadView';
 import { taskLetter } from '../../utils/numbering';
+import { mergeSectionItems, taskLettersById } from '../../utils/sectionItems';
 import type {
   AssignmentUpdateWithImages,
   AssignmentWithId,
@@ -102,7 +103,13 @@ function PreviewSectionCard({
   notesByTask: Map<string, LeadNoteWithId[]>;
   questionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
-  const sortedTasks = useMemo(() => [...section.tasks].sort((a, b) => a.order - b.order), [section.tasks]);
+  // Same interleaved task/question ordering as Developer View and Lead View,
+  // so the lead's read-only preview matches exactly.
+  const mergedItems = useMemo(
+    () => mergeSectionItems(section.tasks, section.questions),
+    [section.tasks, section.questions],
+  );
+  const taskLetters = useMemo(() => taskLettersById(mergedItems, taskLetter), [mergedItems]);
 
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
@@ -113,16 +120,25 @@ function PreviewSectionCard({
         </h3>
       </div>
       <div className="divide-y divide-line">
-        {sortedTasks.length > 0 ? (
-          sortedTasks.map((task, taskIndex) => (
-            <PreviewTaskCard
-              key={task.id}
-              task={task}
-              letter={taskLetter(taskIndex)}
-              notes={notesByTask.get(task.id) ?? []}
-              questions={questionsByTask.get(task.id) ?? []}
-            />
-          ))
+        {mergedItems.length > 0 ? (
+          mergedItems.map((item) =>
+            item.kind === 'task' ? (
+              <PreviewTaskCard
+                key={`task-${item.id}`}
+                task={item.task}
+                letter={taskLetters.get(item.id) ?? ''}
+                notes={notesByTask.get(item.id) ?? []}
+                questions={questionsByTask.get(item.id) ?? []}
+              />
+            ) : (
+              <div className="px-4 py-3" key={`question-${item.id}`}>
+                <span className="mb-2 inline-flex items-center rounded-full border border-done-emphasis/60 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
+                  Question
+                </span>
+                <PreviewDevQuestionCard question={item.question} />
+              </div>
+            ),
+          )
         ) : (
           <p className="px-4 py-2 text-sm text-fg-muted">No tasks in this section.</p>
         )}

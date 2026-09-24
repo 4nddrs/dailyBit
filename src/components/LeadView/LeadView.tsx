@@ -20,6 +20,7 @@ import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import { taskLetter } from '../../utils/numbering';
+import { mergeSectionItems, taskLettersById } from '../../utils/sectionItems';
 import { orderDevelopers, orderReportsByTeam } from '../../utils/team';
 import type {
   AssignmentUpdateWithImages,
@@ -1036,6 +1037,7 @@ function SectionCard({
   questionsByTarget,
   allDevs,
   reportOwnerId,
+  leadUserId,
   onAddNote,
   onRemoveNote,
   onAddQuestion,
@@ -1049,6 +1051,7 @@ function SectionCard({
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
   allDevs: UserProfileWithId[];
   reportOwnerId: string;
+  leadUserId: string;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
   onAddQuestion: (
@@ -1063,6 +1066,15 @@ function SectionCard({
     relatedTask?: { description: string };
   }) => Promise<string>;
 }) {
+  // Section questions (dev-to-lead, answered in place here) are shown
+  // interleaved with tasks by shared `order`, same merge as Developer View
+  // and Report Preview. Lead View doesn't reorder them, so this is read-only.
+  const mergedItems = useMemo(
+    () => mergeSectionItems(section.tasks, section.questions),
+    [section.tasks, section.questions],
+  );
+  const taskLetters = useMemo(() => taskLettersById(mergedItems, taskLetter), [mergedItems]);
+
   return (
     <section className="rounded-md bg-canvas-subtle">
       <div className="px-4 py-3">
@@ -1072,25 +1084,34 @@ function SectionCard({
         </h3>
       </div>
       <div className="divide-y divide-line">
-        {section.tasks.length > 0 ? (
-          section.tasks.map((task, taskIndex) => (
-            <TaskCard
-              key={task.id}
-              reportId={reportId}
-              sectionId={section.id}
-              task={task}
-              letter={taskLetter(taskIndex)}
-              notes={notesByTarget.get(task.id) ?? []}
-              questions={questionsByTarget.get(task.id) ?? []}
-              allDevs={allDevs}
-              reportOwnerId={reportOwnerId}
-              onAddNote={onAddNote}
-              onRemoveNote={onRemoveNote}
-              onAddQuestion={onAddQuestion}
-              onRemoveQuestion={onRemoveQuestion}
-              onCreateAssignment={onCreateAssignment}
-            />
-          ))
+        {mergedItems.length > 0 ? (
+          mergedItems.map((item) =>
+            item.kind === 'task' ? (
+              <TaskCard
+                key={`task-${item.id}`}
+                reportId={reportId}
+                sectionId={section.id}
+                task={item.task}
+                letter={taskLetters.get(item.id) ?? ''}
+                notes={notesByTarget.get(item.id) ?? []}
+                questions={questionsByTarget.get(item.id) ?? []}
+                allDevs={allDevs}
+                reportOwnerId={reportOwnerId}
+                onAddNote={onAddNote}
+                onRemoveNote={onRemoveNote}
+                onAddQuestion={onAddQuestion}
+                onRemoveQuestion={onRemoveQuestion}
+                onCreateAssignment={onCreateAssignment}
+              />
+            ) : (
+              <div className="px-4 py-3" key={`question-${item.id}`}>
+                <span className="mb-2 inline-flex items-center rounded-full border border-done-emphasis/60 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
+                  Question
+                </span>
+                <QuestionCard reportId={reportId} question={item.question} leadUserId={leadUserId} />
+              </div>
+            ),
+          )
         ) : (
           <div className="px-4 py-2">
             <CompactEmptyState text="No tasks in this section." />
@@ -1299,7 +1320,11 @@ function ReportCard({
 
   const reportLevelNotes = notesByTarget.get('') ?? [];
   const reportLevelQuestions = questionsByTarget.get('') ?? [];
-  const devQuestionCount = report.questions?.length ?? 0;
+  // Dev questions live either report-level (`report.questions`) or anchored
+  // to a section (`section.questions`); the summary counts both.
+  const devQuestionCount =
+    (report.questions?.length ?? 0) +
+    report.sections.reduce((sum, section) => sum + section.questions.length, 0);
   const totalQuestionCount = devQuestionCount + leadQuestions.length;
   const summaryParts = [
     report.sections.length > 0
@@ -1400,6 +1425,7 @@ function ReportCard({
                     questionsByTarget={questionsByTarget}
                     allDevs={allDevs}
                     reportOwnerId={report.userId}
+                    leadUserId={leadUserId}
                     onAddNote={handleAddNote}
                     onRemoveNote={handleRemoveNote}
                     onAddQuestion={handleAddQuestion}
