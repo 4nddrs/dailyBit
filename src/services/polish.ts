@@ -61,5 +61,10 @@ export async function polishText({ kind, text, questionContext }: PolishTextInpu
     throw new PolishError('That text could not be polished. Try shortening it.');
   }
 
-  throw new PolishError('AI polish failed. Please try again.');
+  if (response.status === 404) {
+    throw new PolishError('AI polish is not available here. Run the app with `vercel dev`.');
+  }
+
+  const failure = (await response.json().catch(() => null)) as { error?: string } | null;
+  throw new PolishError(failure?.error ?? 'AI polish failed. Please try again.');
 }

@@ -247,6 +247,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
+  // A missing project id is a server misconfiguration, not an expired session.
+  if (!firebaseProjectId) {
+    console.error('FIREBASE_PROJECT_ID / VITE_FIREBASE_PROJECT_ID is not configured for this function.');
+    res.status(500).json({ error: 'AI polish is not configured on the server.' });
+    return;
+  }
+
   const token = extractBearerToken(req.headers.authorization);
   if (!token) {
     res.status(401).json({ error: 'Missing bearer token.' });
