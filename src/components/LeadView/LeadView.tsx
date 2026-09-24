@@ -1122,10 +1122,25 @@ function QuestionCard({
     }
   }
 
+  const isAnswered = question.selectedAnswer !== undefined;
+
   return (
-    <article className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
-      <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
-      <div className="mt-3 flex flex-wrap items-start gap-2">
+    <article className="rounded-md border border-line bg-canvas p-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <span
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+            isAnswered
+              ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+              : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
+          }`}
+        >
+          {isAnswered ? 'Answered' : 'Needs your answer'}
+        </span>
+      </div>
+
+      {/* One bordered row per option so each option's links and images stay visibly grouped. */}
+      <ol className="mt-3 space-y-2">
         {question.options.map((option, index) => {
           const selected = question.selectedAnswer === index;
           const links = question.optionDetails?.[index]?.links ?? [];
@@ -1133,29 +1148,48 @@ function QuestionCard({
           const hasAttachments = links.length > 0 || images.length > 0;
 
           return (
-            <div className="flex max-w-full flex-col gap-1.5" key={`${option}-${index}`}>
-              <button
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-wait disabled:opacity-60 ${
-                  selected
-                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                    : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
-                }`}
-                type="button"
-                disabled={submittingIndex !== null}
-                onClick={() => void handleAnswer(index)}
-              >
-                {submittingIndex === index ? 'Saving...' : `${getOptionLabel(index)}. ${option}`}
-              </button>
+            <li
+              className={`rounded-md border p-3 transition ${
+                selected ? 'border-success-emphasis bg-success-muted' : 'border-line bg-canvas-subtle'
+              }`}
+              key={`${option}-${index}`}
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    selected ? 'bg-success-emphasis text-white' : 'bg-neutral-muted text-fg'
+                  }`}
+                  aria-hidden="true"
+                >
+                  {getOptionLabel(index)}
+                </span>
+                <p className="min-w-0 flex-1 text-sm text-fg">{option}</p>
+                {selected ? (
+                  <span className="shrink-0 rounded-full border border-success-emphasis/40 px-2 py-0.5 text-xs font-medium text-success-fg">
+                    Selected
+                  </span>
+                ) : (
+                  <button
+                    className="shrink-0 rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg disabled:cursor-wait disabled:opacity-60"
+                    type="button"
+                    disabled={submittingIndex !== null}
+                    onClick={() => void handleAnswer(index)}
+                    aria-label={`Choose option ${getOptionLabel(index)}`}
+                  >
+                    {submittingIndex === index ? 'Saving...' : 'Choose'}
+                  </button>
+                )}
+              </div>
               {hasAttachments ? (
-                <div className="ml-1 space-y-1.5">
+                <div className="mt-2 space-y-2 pl-9">
                   <AnswerAttachmentImages images={images} />
                   <LinkChips links={links} />
                 </div>
               ) : null}
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ol>
       {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
     </article>
   );
@@ -1356,9 +1390,14 @@ function ReportCard({
             </div>
 
             {report.questions && report.questions.length > 0 ? (
-              <section className="mt-4 rounded-md bg-canvas-subtle p-4">
-                <h3 className="text-base font-semibold text-fg">Questions from {developerName}</h3>
-                <div className="mt-3 space-y-3">
+              <section className="mt-4 rounded-md border border-done-emphasis/40 bg-canvas-subtle">
+                <div className="flex items-center gap-2 border-b border-done-emphasis/30 px-4 py-2">
+                  <h3 className="text-base font-semibold text-done-fg">Questions from {developerName}</h3>
+                  <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg">
+                    {report.questions.length}
+                  </span>
+                </div>
+                <div className="space-y-3 p-3">
                   {report.questions.map((question) => (
                     <QuestionCard key={question.id} reportId={report.id} question={question} leadUserId={leadUserId} />
                   ))}
