@@ -63,6 +63,12 @@ export interface Question {
   selectedAnswer?: number;
   answeredBy?: string;
   answeredAt?: Timestamp;
+  // When set, the question is anchored inside that section and interleaved
+  // with its tasks by `order` (tasks and questions share one order space per
+  // section). Omitted (or empty) means a report-level question, shown in the
+  // trailing "Questions to the lead" panel instead.
+  sectionId?: string;
+  order?: number;
 }
 
 // Doc shape for `questions/{questionId}/images/{imageId}`: one image per
@@ -112,6 +118,10 @@ export interface TaskWithId extends Task {
 export interface SectionWithTasks extends Section {
   id: string;
   tasks: TaskWithId[];
+  // Dev questions anchored to this section (`Question.sectionId` matches),
+  // sorted by `order`. Report-level questions (no `sectionId`) live on
+  // `ReportTree.questions` instead.
+  questions: QuestionWithId[];
 }
 
 export interface QuestionWithId extends Question {
@@ -131,6 +141,8 @@ export interface LeadQuestionWithId extends LeadQuestion {
 export interface ReportTree extends Report {
   id: string;
   sections: SectionWithTasks[];
+  // Report-level dev questions only (no `sectionId`); a section's own
+  // questions live on that `SectionWithTasks.questions` instead.
   questions?: QuestionWithId[];
   notes?: LeadNoteWithId[];
   leadQuestions?: LeadQuestionWithId[];

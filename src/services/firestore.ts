@@ -47,9 +47,12 @@ import type {
 
 // `optionLinks[i]` are the links for `options[i]`, kept parallel by the
 // caller (the composer keeps per-option links aligned as options are added,
-// removed, and filtered before submit).
+// removed, and filtered before submit). `sectionId`/`order` are only passed
+// for a question added inside a section; a report-level question omits both.
 export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'> & {
   optionLinks?: TaskLink[][];
+  sectionId?: string;
+  order?: number;
 };
 export type CreateLeadNoteInput = Pick<LeadNote, 'noteText' | 'targetTaskId'>;
 export type CreateLeadQuestionInput = Pick<
@@ -339,6 +342,25 @@ export function subscribeReport(
       return;
     }
 
+    const questionTrees: QuestionWithId[] = Array.from(questionsBase.entries()).map(([id, question]) => ({
+      id,
+      ...question,
+      optionImages: [...(questionImages.get(id) ?? [])],
+    }));
+
+    // Split dev questions by `sectionId`: section questions are attached to
+    // their section below, and only the report-level ones (no `sectionId`)
+    // stay on the tree's own `questions` array.
+    const sectionQuestions = new Map<string, QuestionWithId[]>();
+    const reportLevelQuestions: QuestionWithId[] = [];
+    questionTrees.forEach((question) => {
+      if (question.sectionId) {
+        sectionQuestions.set(question.sectionId, [...(sectionQuestions.get(question.sectionId) ?? []), question]);
+      } else {
+        reportLevelQuestions.push(question);
+      }
+    });
+
     const sectionTrees: SectionWithTasks[] = Array.from(sections.entries())
       .map(([id, section]) => ({
         id,
@@ -349,14 +371,9 @@ export function subscribeReport(
             images: [...(taskImages.get(`${id}/${task.id}`) ?? [])],
           }))
           .sort((a, b) => a.order - b.order),
+        questions: [...(sectionQuestions.get(id) ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
       }))
       .sort((a, b) => a.order - b.order);
-
-    const questionTrees: QuestionWithId[] = Array.from(questionsBase.entries()).map(([id, question]) => ({
-      id,
-      ...question,
-      optionImages: [...(questionImages.get(id) ?? [])],
-    }));
 
     const leadQuestionTrees: LeadQuestionWithId[] = Array.from(leadQuestionsBase.entries()).map(
       ([id, leadQuestion]) => ({
@@ -370,7 +387,7 @@ export function subscribeReport(
       id: reportId,
       ...report,
       sections: sectionTrees,
-      questions: questionTrees,
+      questions: reportLevelQuestions,
       notes: [...notes],
       leadQuestions: leadQuestionTrees,
     });
@@ -600,6 +617,8 @@ export async function reorderSections(
 
 // Persists a new task order within one section in one batch, same shape as
 // `reorderSections`. Moving a task to a different section is out of scope.
+// Superseded by `reorderSectionItems` below (Developer View now reorders
+// tasks and section questions together); kept until that migration lands.
 export async function reorderTasks(
   reportId: string,
   sectionId: string,
@@ -608,6 +627,31 @@ export async function reorderTasks(
   const batch = writeBatch(db);
   orderedTaskIds.forEach((taskId, index) => {
     batch.update(taskDoc(reportId, sectionId, taskId), { order: index });
+  });
+  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
+export interface SectionOrderItem {
+  kind: 'task' | 'question';
+  id: string;
+}
+
+// Persists a new order for one section's tasks and its own questions
+// together, in a single batch: `order` is set to each item's index in
+// `orderedItems`, so callers pass the full desired interleaved order.
+// Replaces the previous tasks-only `reorderTasks`; moving an item to a
+// different section is out of scope.
+export async function reorderSectionItems(
+  reportId: string,
+  sectionId: string,
+  orderedItems: SectionOrderItem[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  orderedItems.forEach((item, index) => {
+    const ref =
+      item.kind === 'task' ? taskDoc(reportId, sectionId, item.id) : questionDoc(reportId, item.id);
+    batch.update(ref, { order: index });
   });
   batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
   await batch.commit();
@@ -672,19 +716,28 @@ async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
   }
 }
 
+// Removing a section must not orphan the questions anchored to it, so its
+// `questions` (queried by `sectionId`, same as `deleteTaskLeadArtifacts`
+// queries by `taskId`) are cleaned up the same way tasks are: images first,
+// then the docs themselves, all in the section's delete batch.
 export async function removeSection(reportId: string, sectionId: string): Promise<void> {
-  const taskSnapshots = await getDocs(tasksCollection(reportId, sectionId));
-  await Promise.all(
-    taskSnapshots.docs.map((taskSnapshot) =>
+  const [taskSnapshots, questionSnapshots] = await Promise.all([
+    getDocs(tasksCollection(reportId, sectionId)),
+    getDocs(query(questionsCollection(reportId), where('sectionId', '==', sectionId))),
+  ]);
+  await Promise.all([
+    ...taskSnapshots.docs.map((taskSnapshot) =>
       Promise.all([
         deleteTaskImages(reportId, sectionId, taskSnapshot.id),
         deleteTaskLeadArtifacts(reportId, taskSnapshot.id),
       ]),
     ),
-  );
+    ...questionSnapshots.docs.map((questionSnapshot) => deleteQuestionImages(reportId, questionSnapshot.id)),
+  ]);
   const batch = writeBatch(db);
 
   taskSnapshots.docs.forEach((taskSnapshot) => batch.delete(taskSnapshot.ref));
+  questionSnapshots.docs.forEach((questionSnapshot) => batch.delete(questionSnapshot.ref));
   batch.delete(sectionDoc(reportId, sectionId));
   batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
 
@@ -750,13 +803,20 @@ export async function addQuestion(
   reportId: string,
   question: CreateQuestionInput,
 ): Promise<string> {
-  const { questionText, options, optionLinks } = question;
+  const { questionText, options, optionLinks, sectionId, order } = question;
   const payload: Record<string, unknown> = { questionText, options };
 
   // Firestore rejects undefined field values, so `optionDetails` is only
   // included when at least one option actually has a link.
   if (optionLinks?.some((links) => links.length > 0)) {
     payload.optionDetails = options.map((_option, index) => ({ links: optionLinks[index] ?? [] }));
+  }
+
+  // Same undefined-field rule: `sectionId`/`order` are only written for a
+  // section question, so a report-level question keeps its previous shape.
+  if (sectionId) {
+    payload.sectionId = sectionId;
+    payload.order = order ?? 0;
   }
 
   const ref = await addDoc(questionsCollection(reportId), payload);
