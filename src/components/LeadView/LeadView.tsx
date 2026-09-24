@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState, useEffect, type ReactNode } from 'react';
+import { FormEvent, useCallback, useMemo, useState, useEffect, type ReactNode } from 'react';
 import {
   addLeadNote,
   addLeadQuestion,
@@ -12,6 +12,7 @@ import {
   removeLeadQuestion,
   saveTeamOrder,
 } from '../../services/firestore';
+import { EditableReport } from '../DeveloperView/DeveloperView';
 import { ImageLightbox } from '../ImageLightbox';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
@@ -141,6 +142,36 @@ function OnlyMineToggle({
   );
 }
 
+function EditModeToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-fg-muted">
+      Edit mode
+      <button
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition ${
+          checked ? 'border-accent-emphasis bg-accent-emphasis' : 'border-line bg-neutral-muted'
+        }`}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+      >
+        <span
+          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition ${
+            checked ? 'translate-x-4' : 'translate-x-1'
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+    </label>
+  );
+}
+
 function LeadHeader({
   date,
   onDateChange,
@@ -148,6 +179,8 @@ function LeadHeader({
   totalDeveloperCount,
   onlyMineFilter,
   onOnlyMineFilterChange,
+  editMode,
+  onEditModeChange,
 }: {
   date: string;
   onDateChange: (date: string) => void;
@@ -155,6 +188,8 @@ function LeadHeader({
   totalDeveloperCount: number;
   onlyMineFilter: boolean;
   onOnlyMineFilterChange: (checked: boolean) => void;
+  editMode: boolean;
+  onEditModeChange: (checked: boolean) => void;
 }) {
   return (
     <header className="rounded-md border border-line bg-canvas shadow-sm">
@@ -172,6 +207,7 @@ function LeadHeader({
             />
           </label>
           <OnlyMineToggle checked={onlyMineFilter} onChange={onOnlyMineFilterChange} />
+          <EditModeToggle checked={editMode} onChange={onEditModeChange} />
           <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
             {reportedCount}/{totalDeveloperCount} reported
           </span>
@@ -1346,6 +1382,8 @@ function ReportCard({
   onSetAssignmentClosed,
   onRemoveAssignment,
   onlyMineFilter,
+  date,
+  editMode,
 }: {
   report: ReportTree;
   developerName: string;
@@ -1361,8 +1399,14 @@ function ReportCard({
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onlyMineFilter: boolean;
+  date: string;
+  editMode: boolean;
 }) {
   const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | null>(null);
+
+  // The report already exists (this card only renders for a dev with one),
+  // so a lead edit never needs to create it.
+  const ensureReportExists = useCallback(async () => report.id, [report.id]);
 
   const notes = report.notes ?? [];
   const leadQuestions = report.leadQuestions ?? [];
@@ -1440,117 +1484,132 @@ function ReportCard({
             <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
         </div>
-        <div className="flex shrink-0 gap-2">
-          <LeadActionButton kind="question" active={openComposer === 'question'} onClick={() => toggleComposer('question')} />
-          <LeadActionButton kind="note" active={openComposer === 'note'} onClick={() => toggleComposer('note')} />
-          <LeadActionButton kind="task" active={openComposer === 'task'} onClick={() => toggleComposer('task')} />
-        </div>
+        {editMode ? null : (
+          <div className="flex shrink-0 gap-2">
+            <LeadActionButton kind="question" active={openComposer === 'question'} onClick={() => toggleComposer('question')} />
+            <LeadActionButton kind="note" active={openComposer === 'note'} onClick={() => toggleComposer('note')} />
+            <LeadActionButton kind="task" active={openComposer === 'task'} onClick={() => toggleComposer('task')} />
+          </div>
+        )}
       </div>
 
       <div className="p-4">
-        {openComposer === 'question' ? (
-          <LeadQuestionComposer
-            onAdd={async (input) => {
-              await handleAddQuestion('', '', input);
-              setOpenComposer(null);
-            }}
+        {editMode ? (
+          <EditableReport
+            reportId={report.id}
+            reportTree={report}
+            date={date}
+            ownerUserId={report.userId}
+            assignments={assignments}
+            ensureReportExists={ensureReportExists}
           />
-        ) : null}
-        {openComposer === 'note' ? (
-          <NoteComposer
-            label="Lead report note"
-            onAdd={async (noteText) => {
-              await handleAddNote('', noteText);
-              setOpenComposer(null);
-            }}
-          />
-        ) : null}
-        {openComposer === 'task' ? (
-          <AssignmentComposer
-            devs={allDevs}
-            preselectedDevId={report.userId}
-            onAssign={onCreateAssignment}
-            onDone={(assignmentId) => {
-              setOpenComposer(null);
-              revealAssignment(assignmentId, report.userId);
-            }}
-          />
-        ) : null}
-
-        {onlyMineFilter ? (
-          <>
-            <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
-            <LeadTaskQuestionsOnly
-              sections={report.sections}
-              questionsByTarget={questionsByTarget}
-              onRemove={handleRemoveQuestion}
-            />
-          </>
         ) : (
           <>
-            <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
-            <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
-
-            <div className="mt-3 space-y-3">
-              {report.sections.length > 0 ? (
-                report.sections.map((section, sectionIndex) => (
-                  <SectionCard
-                    key={section.id}
-                    reportId={report.id}
-                    section={section}
-                    number={sectionIndex + 1}
-                    notesByTarget={notesByTarget}
-                    questionsByTarget={questionsByTarget}
-                    allDevs={allDevs}
-                    reportOwnerId={report.userId}
-                    leadUserId={leadUserId}
-                    onAddNote={handleAddNote}
-                    onRemoveNote={handleRemoveNote}
-                    onAddQuestion={handleAddQuestion}
-                    onRemoveQuestion={handleRemoveQuestion}
-                    onCreateAssignment={onCreateAssignment}
-                  />
-                ))
-              ) : (
-                <CompactEmptyState text="No tasks reported yet." />
-              )}
-            </div>
-
-            {report.questions && report.questions.length > 0 ? (
-              <section className="mt-4 rounded-md border border-done-emphasis/40 bg-canvas-subtle">
-                <div className="flex items-center gap-2 border-b border-done-emphasis/30 px-4 py-2">
-                  <h3 className="min-w-0 break-words text-base font-semibold text-done-fg">
-                    Questions from {developerName}
-                  </h3>
-                  <span className="shrink-0 rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg">
-                    {report.questions.length}
-                  </span>
-                </div>
-                <div className="space-y-3 p-3">
-                  {report.questions.map((question) => (
-                    <QuestionCard
-                      key={question.id}
-                      reportId={report.id}
-                      question={question}
-                      leadUserId={leadUserId}
-                      notes={notesByTarget.get(question.id) ?? []}
-                      onAddNote={handleAddNote}
-                      onRemoveNote={handleRemoveNote}
-                    />
-                  ))}
-                </div>
-              </section>
+            {openComposer === 'question' ? (
+              <LeadQuestionComposer
+                onAdd={async (input) => {
+                  await handleAddQuestion('', '', input);
+                  setOpenComposer(null);
+                }}
+              />
             ) : null}
+            {openComposer === 'note' ? (
+              <NoteComposer
+                label="Lead report note"
+                onAdd={async (noteText) => {
+                  await handleAddNote('', noteText);
+                  setOpenComposer(null);
+                }}
+              />
+            ) : null}
+            {openComposer === 'task' ? (
+              <AssignmentComposer
+                devs={allDevs}
+                preselectedDevId={report.userId}
+                onAssign={onCreateAssignment}
+                onDone={(assignmentId) => {
+                  setOpenComposer(null);
+                  revealAssignment(assignmentId, report.userId);
+                }}
+              />
+            ) : null}
+
+            {onlyMineFilter ? (
+              <>
+                <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+                <LeadTaskQuestionsOnly
+                  sections={report.sections}
+                  questionsByTarget={questionsByTarget}
+                  onRemove={handleRemoveQuestion}
+                />
+              </>
+            ) : (
+              <>
+                <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+                <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
+
+                <div className="mt-3 space-y-3">
+                  {report.sections.length > 0 ? (
+                    report.sections.map((section, sectionIndex) => (
+                      <SectionCard
+                        key={section.id}
+                        reportId={report.id}
+                        section={section}
+                        number={sectionIndex + 1}
+                        notesByTarget={notesByTarget}
+                        questionsByTarget={questionsByTarget}
+                        allDevs={allDevs}
+                        reportOwnerId={report.userId}
+                        leadUserId={leadUserId}
+                        onAddNote={handleAddNote}
+                        onRemoveNote={handleRemoveNote}
+                        onAddQuestion={handleAddQuestion}
+                        onRemoveQuestion={handleRemoveQuestion}
+                        onCreateAssignment={onCreateAssignment}
+                      />
+                    ))
+                  ) : (
+                    <CompactEmptyState text="No tasks reported yet." />
+                  )}
+                </div>
+
+                {report.questions && report.questions.length > 0 ? (
+                  <section className="mt-4 rounded-md border border-done-emphasis/40 bg-canvas-subtle">
+                    <div className="flex items-center gap-2 border-b border-done-emphasis/30 px-4 py-2">
+                      <h3 className="min-w-0 break-words text-base font-semibold text-done-fg">
+                        Questions from {developerName}
+                      </h3>
+                      <span className="shrink-0 rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg">
+                        {report.questions.length}
+                      </span>
+                    </div>
+                    <div className="space-y-3 p-3">
+                      {report.questions.map((question) => (
+                        <QuestionCard
+                          key={question.id}
+                          reportId={report.id}
+                          question={question}
+                          leadUserId={leadUserId}
+                          notes={notesByTarget.get(question.id) ?? []}
+                          onAddNote={handleAddNote}
+                          onRemoveNote={handleRemoveNote}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </>
+            )}
+
+            <LeadAssignmentsBox
+              assignments={assignments}
+              assigneeId={report.userId}
+              updatesByAssignment={updatesByAssignment}
+              onSetClosed={onSetAssignmentClosed}
+              onRemove={onRemoveAssignment}
+            />
           </>
         )}
-
-        <LeadAssignmentsBox
-          assignments={assignments}
-          assigneeId={report.userId}
-          updatesByAssignment={updatesByAssignment}
-          onSetClosed={onSetAssignmentClosed}
-          onRemove={onRemoveAssignment}
-        />
       </div>
     </article>
   );
@@ -1565,6 +1624,7 @@ function AssignmentOnlyCard({
   onCreateAssignment,
   onSetAssignmentClosed,
   onRemoveAssignment,
+  editMode,
 }: {
   userId: string;
   developerName: string;
@@ -1578,6 +1638,7 @@ function AssignmentOnlyCard({
   }) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
+  editMode: boolean;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
 
@@ -1589,6 +1650,10 @@ function AssignmentOnlyCard({
       </div>
 
       <div className="p-4">
+        {editMode ? (
+          <p className="mb-3 text-xs text-fg-muted">No report to edit yet.</p>
+        ) : null}
+
         {composerOpen ? (
           <AssignmentComposer
             devs={allDevs}
@@ -1735,6 +1800,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   const totalDeveloperCount = devs.length;
   const [developerNames, setDeveloperNames] = useState<Record<string, string>>({});
   const [onlyMineFilter, setOnlyMineFilter] = useState(() => loadOnlyMineFilter());
+  const [editMode, setEditMode] = useState(false);
 
   function handleOnlyMineFilterChange(next: boolean) {
     setOnlyMineFilter(next);
@@ -1937,6 +2003,8 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         totalDeveloperCount={totalDeveloperCount}
         onlyMineFilter={onlyMineFilter}
         onOnlyMineFilterChange={handleOnlyMineFilterChange}
+        editMode={editMode}
+        onEditModeChange={setEditMode}
       />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
@@ -1971,6 +2039,8 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onSetAssignmentClosed={handleSetAssignmentClosed}
                   onRemoveAssignment={handleRemoveAssignment}
                   onlyMineFilter={onlyMineFilter}
+                  date={normalizedSelectedDate}
+                  editMode={editMode}
                 />
               ) : (
                 <AssignmentOnlyCard
@@ -1983,6 +2053,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onCreateAssignment={handleCreateAssignment}
                   onSetAssignmentClosed={handleSetAssignmentClosed}
                   onRemoveAssignment={handleRemoveAssignment}
+                  editMode={editMode}
                 />
               ),
             )
