@@ -2504,14 +2504,7 @@ function QuestionsPanel({
   // null means "not toggled yet": the panel then starts open only when there
   // are questions, so answers from the lead are never hidden by default.
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
-  const [showComposer, setShowComposer] = useState(false);
   const expanded = expandedOverride ?? questions.length > 0;
-
-  async function handleAddQuestion(question: CreateQuestionInput) {
-    const questionId = await onAddQuestion(question);
-    setShowComposer(false);
-    return questionId;
-  }
 
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
@@ -2550,30 +2543,13 @@ function QuestionsPanel({
 
       {expanded ? (
         <div className="space-y-3 p-4" id="report-questions-panel">
-          {questions.length > 0 ? (
-            questions.map((question) => <QuestionCard key={question.id} reportId={reportId} question={question} />)
-          ) : (
-            <p className="text-sm text-fg-muted">
-              Ask a general question that isn&apos;t tied to a section. Use multiple choice for a fast answer.
-            </p>
-          )}
-
-          {showComposer ? (
-            <QuestionComposer
-              reportId={reportId}
-              onAddQuestion={handleAddQuestion}
-              onCancel={() => setShowComposer(false)}
-            />
-          ) : (
-            <button
-              className="inline-flex items-center gap-1.5 rounded-md border border-done-emphasis/60 bg-done-muted px-3 py-1.5 text-sm font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
-              type="button"
-              onClick={() => setShowComposer(true)}
-            >
-              <span aria-hidden="true">?</span>
-              Ask the lead
-            </button>
-          )}
+          <p className="text-sm text-fg-muted">
+            Ask a general question that isn&apos;t tied to a section. Use multiple choice for a fast answer.
+          </p>
+          <QuestionComposer reportId={reportId} onAddQuestion={onAddQuestion} />
+          {questions.map((question) => (
+            <QuestionCard key={question.id} reportId={reportId} question={question} />
+          ))}
         </div>
       ) : null}
     </section>
