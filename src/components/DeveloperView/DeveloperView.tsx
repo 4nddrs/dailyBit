@@ -46,6 +46,7 @@ import type {
   LeadNoteWithId,
   LeadQuestionWithId,
   QuestionWithId,
+  ReportTree,
   Section,
   SectionWithTasks,
   TaskLink,
@@ -2561,20 +2562,27 @@ function QuestionsPanel({
   );
 }
 
-export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
-  // null means "follow today"; picking today's date again returns to that mode.
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const { reportTree, reportId, loading, date, ensureReportExists } = useMyReport(userId, selectedDate);
-  const { assignments } = useMyAssignments(userId, date);
-  const [previewAsLead, setPreviewAsLead] = useState(() => loadPreviewAsLead());
-  const handleDateChange = (nextDate: string) =>
-    setSelectedDate(nextDate === todayDateString() ? null : nextDate);
+interface EditableReportProps {
+  reportId: string;
+  reportTree: ReportTree;
+  date: string;
+  ownerUserId: string;
+  assignments: AssignmentWithId[];
+  ensureReportExists: () => Promise<string>;
+}
 
-  function handlePreviewAsLeadChange(next: boolean) {
-    setPreviewAsLead(next);
-    persistPreviewAsLead(next);
-  }
-
+// The editable body of a report: assignments, lead notes/questions, sections
+// with tasks, and the report-level questions panel. Shared by `DeveloperView`
+// (a developer editing their own report) and `LeadView`'s edit mode (a lead
+// editing a developer's report in place).
+export function EditableReport({
+  reportId,
+  reportTree,
+  date,
+  ownerUserId,
+  assignments,
+  ensureReportExists,
+}: EditableReportProps) {
   // The report document only exists once the developer actually adds
   // content, so every write that could be the first one on an empty report
   // (adding a section, or a dev question when there are none yet) creates it
@@ -2598,28 +2606,75 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
 
   const leadNotesByTask = useMemo(() => {
     const grouped = new Map<string, LeadNoteWithId[]>();
-    (reportTree?.notes ?? []).forEach((note) => {
+    (reportTree.notes ?? []).forEach((note) => {
       if (!note.targetTaskId) {
         return;
       }
       grouped.set(note.targetTaskId, [...(grouped.get(note.targetTaskId) ?? []), note]);
     });
     return grouped;
-  }, [reportTree?.notes]);
+  }, [reportTree.notes]);
 
   const leadQuestionsByTask = useMemo(() => {
     const grouped = new Map<string, LeadQuestionWithId[]>();
-    (reportTree?.leadQuestions ?? []).forEach((question) => {
+    (reportTree.leadQuestions ?? []).forEach((question) => {
       grouped.set(question.taskId, [...(grouped.get(question.taskId) ?? []), question]);
     });
     return grouped;
-  }, [reportTree?.leadQuestions]);
+  }, [reportTree.leadQuestions]);
 
   const reportLevelLeadNotes = useMemo(
-    () => (reportTree?.notes ?? []).filter((note) => !note.targetTaskId),
-    [reportTree?.notes],
+    () => (reportTree.notes ?? []).filter((note) => !note.targetTaskId),
+    [reportTree.notes],
   );
   const reportLevelLeadQuestions = leadQuestionsByTask.get('') ?? [];
+
+  return (
+    <>
+      <AssignmentsBox assignments={assignments} userId={ownerUserId} date={date} />
+      {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
+        <section className="rounded-md border border-line bg-canvas shadow-sm">
+          <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+            <h2 className="text-lg font-semibold text-fg">From the lead</h2>
+          </div>
+          <div className="p-4">
+            <LeadNotesReadOnly notes={reportLevelLeadNotes} />
+            {reportLevelLeadQuestions.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {reportLevelLeadQuestions.map((question) => (
+                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+      <SectionsList
+        reportId={reportId}
+        sections={reportTree.sections}
+        leadNotesByTask={leadNotesByTask}
+        leadQuestionsByTask={leadQuestionsByTask}
+        onAddSection={handleAddSection}
+        onAddQuestion={handleAddQuestion}
+      />
+      <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
+    </>
+  );
+}
+
+export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
+  // null means "follow today"; picking today's date again returns to that mode.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const { reportTree, reportId, loading, date, ensureReportExists } = useMyReport(userId, selectedDate);
+  const { assignments } = useMyAssignments(userId, date);
+  const [previewAsLead, setPreviewAsLead] = useState(() => loadPreviewAsLead());
+  const handleDateChange = (nextDate: string) =>
+    setSelectedDate(nextDate === todayDateString() ? null : nextDate);
+
+  function handlePreviewAsLeadChange(next: boolean) {
+    setPreviewAsLead(next);
+    persistPreviewAsLead(next);
+  }
 
   if (loading || !reportId) {
     return (
@@ -2667,35 +2722,14 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
       {previewAsLead ? (
         <ReportPreview reportTree={reportTree} developerId={userId} date={date} assignments={assignments} />
       ) : (
-        <>
-          <AssignmentsBox assignments={assignments} userId={userId} date={date} />
-          {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
-            <section className="rounded-md border border-line bg-canvas shadow-sm">
-              <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-                <h2 className="text-lg font-semibold text-fg">From the lead</h2>
-              </div>
-              <div className="p-4">
-                <LeadNotesReadOnly notes={reportLevelLeadNotes} />
-                {reportLevelLeadQuestions.length > 0 ? (
-                  <div className="mt-3 space-y-3">
-                    {reportLevelLeadQuestions.map((question) => (
-                      <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-          <SectionsList
-            reportId={reportId}
-            sections={reportTree.sections}
-            leadNotesByTask={leadNotesByTask}
-            leadQuestionsByTask={leadQuestionsByTask}
-            onAddSection={handleAddSection}
-            onAddQuestion={handleAddQuestion}
-          />
-          <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
-        </>
+        <EditableReport
+          reportId={reportId}
+          reportTree={reportTree}
+          date={date}
+          ownerUserId={userId}
+          assignments={assignments}
+          ensureReportExists={ensureReportExists}
+        />
       )}
     </div>
   );

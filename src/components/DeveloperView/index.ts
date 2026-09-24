@@ -1,1 +1,1 @@
-export { DeveloperView } from './DeveloperView';
+export { DeveloperView, EditableReport } from './DeveloperView';
