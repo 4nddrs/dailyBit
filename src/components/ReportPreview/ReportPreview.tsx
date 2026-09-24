@@ -74,9 +74,9 @@ function PreviewTaskCard({
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? <PreviewTaskImages images={task.images} /> : null}
         <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-fg">
-            <span className="mr-1.5 font-semibold text-fg-muted tabular-nums">{letter}.</span>
-            {task.description}
+          <p className="flex min-w-0 gap-1.5 text-sm font-medium leading-6 text-fg">
+            <span className="shrink-0 font-semibold text-fg-muted tabular-nums">{letter}.</span>
+            <span className="min-w-0 break-words">{task.description}</span>
           </p>
           <LinkChips links={task.links} />
         </div>
@@ -104,9 +104,9 @@ function PreviewSectionCard({
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-        <h3 className="text-lg font-semibold text-fg">
-          <span className="mr-1.5 text-fg-muted tabular-nums">{number}.</span>
-          {section.title}
+        <h3 className="flex min-w-0 gap-1.5 text-lg font-semibold text-fg">
+          <span className="shrink-0 text-fg-muted tabular-nums">{number}.</span>
+          <span className="min-w-0 break-words">{section.title}</span>
         </h3>
       </div>
       <div className="divide-y divide-line">
@@ -136,7 +136,7 @@ function PreviewDevQuestionCard({ question }: { question: QuestionWithId }) {
   return (
     <article className="rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
             isAnswered
@@ -183,7 +183,7 @@ function PreviewAssignmentRow({
 
   return (
     <div className="border-l-2 border-accent-emphasis px-4 py-3">
-      <p className="text-sm font-medium text-fg">{assignment.description}</p>
+      <p className="break-words text-sm font-medium text-fg">{assignment.description}</p>
       <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
       {assignment.relatedTask ? (
         <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>

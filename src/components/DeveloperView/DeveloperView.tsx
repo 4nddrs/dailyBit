@@ -245,9 +245,9 @@ function Header({
   return (
     <header className="rounded-md border border-line bg-canvas shadow-sm">
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-fg">{formatDisplayDate(date)}</h1>
-          <p className="mt-1 text-sm text-fg-muted">{developerName}</p>
+          <p className="mt-1 break-words text-sm text-fg-muted">{developerName}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm font-medium text-fg">
@@ -985,7 +985,7 @@ function AssignmentRow({
   return (
     <div className="group/task border-l-2 border-accent-emphasis px-4 py-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium text-fg">{assignment.description}</p>
+        <p className="min-w-0 break-words text-sm font-medium text-fg">{assignment.description}</p>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
             hasUpdateContent
@@ -1045,7 +1045,7 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
     <div className="mt-3 space-y-2">
       {notes.map((note) => (
         <p
-          className="rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm leading-6 text-attention-fg"
+          className="break-words rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm leading-6 text-attention-fg"
           key={note.id}
         >
           {note.noteText}
@@ -1178,7 +1178,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
   return (
     <article className="group/task rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         {isText ? (
           <CardToolbar>
             <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />
@@ -1213,14 +1213,14 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
       {!editing && isAnswered ? (
         <div className="mt-2">
           {isText ? (
-            <p className="rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+            <p className="break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
               {question.answerText}
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(question.options ?? []).map((option, index) => (
                 <span
-                  className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  className={`max-w-full break-words rounded-full border px-3 py-1 text-xs font-medium ${
                     question.selectedAnswer === index
                       ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
                       : 'border-line bg-canvas-subtle text-fg-muted'
@@ -1276,7 +1276,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
         <div className="mt-2 flex flex-wrap gap-2">
           {(question.options ?? []).map((option, index) => (
             <button
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+              className={`max-w-full break-words rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
                 question.selectedAnswer === index
                   ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
                   : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
@@ -2151,7 +2151,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
   return (
     <article className="group/question rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         <div className="flex shrink-0 items-center gap-2">
           <span
             className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
