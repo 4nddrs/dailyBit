@@ -1125,23 +1125,34 @@ function QuestionCard({
   return (
     <article className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
       <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-start gap-2">
         {question.options.map((option, index) => {
           const selected = question.selectedAnswer === index;
+          const links = question.optionDetails?.[index]?.links ?? [];
+          const images = question.optionImages.filter((image) => image.optionIndex === index);
+          const hasAttachments = links.length > 0 || images.length > 0;
+
           return (
-            <button
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-wait disabled:opacity-60 ${
-                selected
-                  ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                  : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
-              }`}
-              key={`${option}-${index}`}
-              type="button"
-              disabled={submittingIndex !== null}
-              onClick={() => void handleAnswer(index)}
-            >
-              {submittingIndex === index ? 'Saving...' : `${getOptionLabel(index)}. ${option}`}
-            </button>
+            <div className="flex max-w-full flex-col gap-1.5" key={`${option}-${index}`}>
+              <button
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-wait disabled:opacity-60 ${
+                  selected
+                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                    : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
+                }`}
+                type="button"
+                disabled={submittingIndex !== null}
+                onClick={() => void handleAnswer(index)}
+              >
+                {submittingIndex === index ? 'Saving...' : `${getOptionLabel(index)}. ${option}`}
+              </button>
+              {hasAttachments ? (
+                <div className="ml-1 space-y-1.5">
+                  <AnswerAttachmentImages images={images} />
+                  <LinkChips links={links} />
+                </div>
+              ) : null}
+            </div>
           );
         })}
       </div>

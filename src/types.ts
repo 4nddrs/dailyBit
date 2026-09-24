@@ -49,12 +49,29 @@ export interface TaskImageWithId {
   imageBase64: string;
 }
 
+export interface QuestionOptionDetail {
+  links: TaskLink[];
+}
+
 export interface Question {
   questionText: string;
   options: string[];
+  // Parallel to `options` (never a nested array, since Firestore forbids
+  // those): optionDetails[i].links are the links attached to options[i].
+  // Only written when at least one option actually has a link.
+  optionDetails?: QuestionOptionDetail[];
   selectedAnswer?: number;
   answeredBy?: string;
   answeredAt?: Timestamp;
+}
+
+// Doc shape for `questions/{questionId}/images/{imageId}`: one image per
+// doc, tagged with the option it belongs to (mirrors TaskImage plus the
+// option index).
+export interface QuestionOptionImage {
+  imageBase64: string;
+  optionIndex: number;
+  createdAt: Timestamp;
 }
 
 export interface LeadNote {
@@ -99,6 +116,7 @@ export interface SectionWithTasks extends Section {
 
 export interface QuestionWithId extends Question {
   id: string;
+  optionImages: Array<TaskImageWithId & { optionIndex: number }>;
 }
 
 export interface LeadNoteWithId extends LeadNote {

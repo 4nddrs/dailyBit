@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { subscribeAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
-import { AssignmentUpdateDisplay, LeadNoteBlock, LeadQuestionBlock, LinkChips } from '../LeadView/LeadView';
+import {
+  AnswerAttachmentImages,
+  AssignmentUpdateDisplay,
+  LeadNoteBlock,
+  LeadQuestionBlock,
+  LinkChips,
+} from '../LeadView/LeadView';
 import { taskLetter } from '../../utils/numbering';
 import type {
   AssignmentUpdateWithImages,
@@ -136,19 +142,32 @@ function PreviewDevQuestionCard({ question }: { question: QuestionWithId }) {
   return (
     <article className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
       <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {question.options.map((option, index) => (
-          <span
-            className={`rounded-full border px-3 py-1 text-xs font-medium ${
-              question.selectedAnswer === index
-                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                : 'border-line bg-canvas-subtle text-fg-muted'
-            }`}
-            key={`${option}-${index}`}
-          >
-            {getOptionLabel(index)}. {option}
-          </span>
-        ))}
+      <div className="mt-3 flex flex-wrap items-start gap-2">
+        {question.options.map((option, index) => {
+          const links = question.optionDetails?.[index]?.links ?? [];
+          const images = question.optionImages.filter((image) => image.optionIndex === index);
+          const hasAttachments = links.length > 0 || images.length > 0;
+
+          return (
+            <div className="flex max-w-full flex-col gap-1.5" key={`${option}-${index}`}>
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  question.selectedAnswer === index
+                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                    : 'border-line bg-canvas-subtle text-fg-muted'
+                }`}
+              >
+                {getOptionLabel(index)}. {option}
+              </span>
+              {hasAttachments ? (
+                <div className="ml-1 space-y-1.5">
+                  <AnswerAttachmentImages images={images} />
+                  <LinkChips links={links} />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
       {!isAnswered ? (
         <p className="mt-2 text-xs font-semibold text-attention-fg">Pending the lead’s answer</p>

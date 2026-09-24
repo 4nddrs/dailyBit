@@ -13,6 +13,7 @@ import {
   addAssignmentUpdateImage,
   addLeadQuestionAnswerImage,
   addQuestion,
+  addQuestionOptionImage,
   addSection,
   addTask,
   addTaskImage,
@@ -31,6 +32,7 @@ import {
   updateTask,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
+import { AnswerAttachmentImages, LinkChips as ReadOnlyLinkChips } from '../LeadView/LeadView';
 import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
@@ -1853,15 +1855,23 @@ function QuestionOptionRow({
   label,
   value,
   questionText,
+  links,
+  images,
   canRemove,
   onChange,
+  onLinksChange,
+  onImagesChange,
   onRemove,
 }: {
   label: string;
   value: string;
   questionText: string;
+  links: TaskLink[];
+  images: Array<{ id: string; imageBase64: string }>;
   canRemove: boolean;
   onChange: (value: string) => void;
+  onLinksChange: (links: TaskLink[]) => void;
+  onImagesChange: (images: Array<{ id: string; imageBase64: string }>) => void;
   onRemove: () => void;
 }) {
   // The question is sent as context so the option is polished as an answer to it.
@@ -1870,6 +1880,32 @@ function QuestionOptionRow({
     questionContext: questionText.trim() || undefined,
     onUse: onChange,
   });
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const nextImageId = useRef(0);
+
+  async function handleImageSelected(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    setImageError(null);
+    try {
+      const imageBase64 = await compressTaskImage(file);
+      onImagesChange([...images, { id: `local-${nextImageId.current++}`, imageBase64 }]);
+    } catch (caughtError) {
+      console.error('Option image add failed', caughtError);
+      setImageError(caughtError instanceof Error ? caughtError.message : 'Image could not be added.');
+    }
+  }
+
+  function handleRemoveImage(imageId: string) {
+    onImagesChange(images.filter((image) => image.id !== imageId));
+  }
+
+  function handleRemoveLink(index: number) {
+    onLinksChange(links.filter((_, linkIndex) => linkIndex !== index));
+  }
 
   return (
     <div>
@@ -1882,6 +1918,18 @@ function QuestionOptionRow({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={`Option ${label}`}
+        />
+        <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />
+        <IconButton icon={<ImageIcon />} label="Add image" onClick={() => fileInputRef.current?.click()} />
+        <input
+          ref={fileInputRef}
+          className="hidden"
+          type="file"
+          accept="image/*"
+          onChange={(event) => {
+            void handleImageSelected(event.target.files?.[0]);
+            event.target.value = '';
+          }}
         />
         <PolishButton
           disabled={!value.trim()}
@@ -1904,17 +1952,46 @@ function QuestionOptionRow({
         onUse={optionPolish.useSuggestion}
         onDismiss={optionPolish.dismiss}
       />
+      {showLinkForm ? (
+        <div className="ml-10 mt-2">
+          <LinkForm onAdd={(link) => onLinksChange([...links, link])} onClose={() => setShowLinkForm(false)} />
+        </div>
+      ) : null}
+      {images.length > 0 || links.length > 0 || imageError ? (
+        <div className="ml-10 mt-2 space-y-2">
+          <AttachmentImages images={images} onRemove={handleRemoveImage} altText={`Option ${label} attachment`} />
+          <LinkChips links={links} onRemove={handleRemoveLink} />
+          {imageError ? (
+            <p className="text-xs font-medium text-danger-fg" role="alert">
+              {imageError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
+interface ComposerOption {
+  text: string;
+  links: TaskLink[];
+  images: Array<{ id: string; imageBase64: string }>;
+}
+
+function emptyComposerOption(): ComposerOption {
+  return { text: '', links: [], images: [] };
+}
+
 function QuestionComposer({
+  reportId,
   onAddQuestion,
 }: {
-  onAddQuestion: (question: CreateQuestionInput) => Promise<unknown>;
+  reportId: string;
+  onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
 }) {
   const [questionText, setQuestionText] = useState('');
-  const [options, setOptions] = useState(['', '']);
+  const [options, setOptions] = useState<ComposerOption[]>([emptyComposerOption(), emptyComposerOption()]);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const questionPolish = usePolishAction({
     kind: 'question',
     onUse: (suggestion) => setQuestionText(suggestion),
@@ -1922,7 +1999,19 @@ function QuestionComposer({
 
   function updateOption(index: number, value: string) {
     setOptions((currentOptions) =>
-      currentOptions.map((option, optionIndex) => (optionIndex === index ? value : option)),
+      currentOptions.map((option, optionIndex) => (optionIndex === index ? { ...option, text: value } : option)),
+    );
+  }
+
+  function updateOptionLinks(index: number, links: TaskLink[]) {
+    setOptions((currentOptions) =>
+      currentOptions.map((option, optionIndex) => (optionIndex === index ? { ...option, links } : option)),
+    );
+  }
+
+  function updateOptionImages(index: number, images: ComposerOption['images']) {
+    setOptions((currentOptions) =>
+      currentOptions.map((option, optionIndex) => (optionIndex === index ? { ...option, images } : option)),
     );
   }
 
@@ -1936,21 +2025,43 @@ function QuestionComposer({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = questionText.trim();
-    const trimmedOptions = options.map((option) => option.trim()).filter(Boolean);
+    const nonEmptyOptions = options.filter((option) => option.text.trim());
 
-    if (!trimmedQuestion || trimmedOptions.length < QUESTION_OPTION_MINIMUM) {
+    if (!trimmedQuestion || nonEmptyOptions.length < QUESTION_OPTION_MINIMUM) {
       return;
     }
 
+    setImageUploadError(null);
+
     runSafely(
-      onAddQuestion({
-        questionText: trimmedQuestion,
-        options: trimmedOptions,
-      }),
+      (async () => {
+        const questionId = await onAddQuestion({
+          questionText: trimmedQuestion,
+          options: nonEmptyOptions.map((option) => option.text.trim()),
+          optionLinks: nonEmptyOptions.map((option) => option.links),
+        });
+
+        // The question is created first so it stays created even if an
+        // option image upload below fails.
+        const uploads = nonEmptyOptions.flatMap((option, optionIndex) =>
+          option.images.map((image) =>
+            addQuestionOptionImage(reportId, questionId, optionIndex, image.imageBase64),
+          ),
+        );
+
+        if (uploads.length > 0) {
+          try {
+            await Promise.all(uploads);
+          } catch (caughtError) {
+            console.error('Question option image upload failed', caughtError);
+            setImageUploadError('Question added, but one or more images failed to upload.');
+          }
+        }
+      })(),
       'Question add failed',
     );
     setQuestionText('');
-    setOptions(['', '']);
+    setOptions([emptyComposerOption(), emptyComposerOption()]);
     questionPolish.dismiss();
   }
 
@@ -1986,28 +2097,40 @@ function QuestionComposer({
           <QuestionOptionRow
             key={index}
             label={optionLabels[index]}
-            value={option}
+            value={option.text}
             questionText={questionText}
+            links={option.links}
+            images={option.images}
             canRemove={options.length > QUESTION_OPTION_MINIMUM}
             onChange={(value) => updateOption(index, value)}
+            onLinksChange={(links) => updateOptionLinks(index, links)}
+            onImagesChange={(images) => updateOptionImages(index, images)}
             onRemove={() => removeOption(index)}
           />
         ))}
       </div>
+
+      {imageUploadError ? (
+        <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
+          {imageUploadError}
+        </p>
+      ) : null}
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-between">
         <button
           className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="button"
           disabled={options.length >= QUESTION_OPTION_LIMIT}
-          onClick={() => setOptions((currentOptions) => [...currentOptions, ''])}
+          onClick={() => setOptions((currentOptions) => [...currentOptions, emptyComposerOption()])}
         >
           Add option
         </button>
         <button
           className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
-          disabled={!questionText.trim() || options.filter((option) => option.trim()).length < QUESTION_OPTION_MINIMUM}
+          disabled={
+            !questionText.trim() || options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM
+          }
         >
           Add question
         </button>
@@ -2037,19 +2160,32 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
           Remove
         </button>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {question.options.map((option, index) => (
-          <span
-            className={`rounded-full border px-3 py-1 text-xs font-medium ${
-              question.selectedAnswer === index
-                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                : 'border-line bg-canvas-subtle text-fg-muted'
-            }`}
-            key={`${option}-${index}`}
-          >
-            {optionLabels[index]}. {option}
-          </span>
-        ))}
+      <div className="mt-3 flex flex-wrap items-start gap-2">
+        {question.options.map((option, index) => {
+          const links = question.optionDetails?.[index]?.links ?? [];
+          const images = question.optionImages.filter((image) => image.optionIndex === index);
+          const hasAttachments = links.length > 0 || images.length > 0;
+
+          return (
+            <div className="flex max-w-full flex-col gap-1.5" key={`${option}-${index}`}>
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                  question.selectedAnswer === index
+                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                    : 'border-line bg-canvas-subtle text-fg-muted'
+                }`}
+              >
+                {optionLabels[index]}. {option}
+              </span>
+              {hasAttachments ? (
+                <div className="ml-1 space-y-1.5">
+                  <AnswerAttachmentImages images={images} />
+                  <ReadOnlyLinkChips links={links} />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </article>
   );
@@ -2062,7 +2198,7 @@ function QuestionsPanel({
 }: {
   reportId: string;
   questions?: QuestionWithId[];
-  onAddQuestion: (question: CreateQuestionInput) => Promise<unknown>;
+  onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
 }) {
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
@@ -2077,7 +2213,7 @@ function QuestionsPanel({
         <p className="text-sm text-fg-muted">Use multiple choice when you need a fast answer.</p>
 
         <div className="mt-3">
-          <QuestionComposer onAddQuestion={onAddQuestion} />
+          <QuestionComposer reportId={reportId} onAddQuestion={onAddQuestion} />
         </div>
 
         <div className="mt-4 space-y-3">

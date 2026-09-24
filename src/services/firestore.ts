@@ -27,6 +27,7 @@ import type {
   LeadQuestion,
   LeadQuestionWithId,
   Question,
+  QuestionOptionImage,
   QuestionWithId,
   Report,
   ReportSummary,
@@ -44,7 +45,12 @@ import type {
   UserRole,
 } from '../types';
 
-export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'>;
+// `optionLinks[i]` are the links for `options[i]`, kept parallel by the
+// caller (the composer keeps per-option links aligned as options are added,
+// removed, and filtered before submit).
+export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'> & {
+  optionLinks?: TaskLink[][];
+};
 export type CreateLeadNoteInput = Pick<LeadNote, 'noteText' | 'targetTaskId'>;
 export type CreateLeadQuestionInput = Pick<
   LeadQuestion,
@@ -122,6 +128,14 @@ function questionsCollection(reportId: string) {
 
 function questionDoc(reportId: string, questionId: string) {
   return doc(questionsCollection(reportId), questionId);
+}
+
+function questionImagesCollection(reportId: string, questionId: string) {
+  return collection(questionDoc(reportId, questionId), collections.images);
+}
+
+function questionImageDoc(reportId: string, questionId: string, imageId: string) {
+  return doc(questionImagesCollection(reportId, questionId), imageId);
 }
 
 function leadNotesCollection(reportId: string) {
@@ -309,7 +323,9 @@ export function subscribeReport(
   const sections = new Map<string, Section>();
   const tasks = new Map<string, Array<Task & { id: string }>>();
   const taskImages = new Map<string, TaskImageWithId[]>();
-  const questions: QuestionWithId[] = [];
+  const questionsBase = new Map<string, Question>();
+  const questionImages = new Map<string, Array<TaskImageWithId & { optionIndex: number }>>();
+  const questionImageUnsubscribes = new Map<string, Unsubscribe>();
   const notes: LeadNoteWithId[] = [];
   const leadQuestionsBase = new Map<string, LeadQuestion>();
   const leadQuestionImages = new Map<string, TaskImageWithId[]>();
@@ -336,6 +352,12 @@ export function subscribeReport(
       }))
       .sort((a, b) => a.order - b.order);
 
+    const questionTrees: QuestionWithId[] = Array.from(questionsBase.entries()).map(([id, question]) => ({
+      id,
+      ...question,
+      optionImages: [...(questionImages.get(id) ?? [])],
+    }));
+
     const leadQuestionTrees: LeadQuestionWithId[] = Array.from(leadQuestionsBase.entries()).map(
       ([id, leadQuestion]) => ({
         id,
@@ -348,7 +370,7 @@ export function subscribeReport(
       id: reportId,
       ...report,
       sections: sectionTrees,
-      questions: [...questions],
+      questions: questionTrees,
       notes: [...notes],
       leadQuestions: leadQuestionTrees,
     });
@@ -442,13 +464,45 @@ export function subscribeReport(
   });
 
   const questionsUnsubscribe = onSnapshot(questionsCollection(reportId), (snapshot) => {
-    questions.length = 0;
+    const nextQuestionIds = new Set<string>();
+
     snapshot.docs.forEach((questionSnapshot) => {
-      questions.push({
-        id: questionSnapshot.id,
-        ...(questionSnapshot.data() as Question),
-      });
+      const questionId = questionSnapshot.id;
+      nextQuestionIds.add(questionId);
+      questionsBase.set(questionId, questionSnapshot.data() as Question);
+
+      if (!questionImageUnsubscribes.has(questionId)) {
+        const imagesQuery = query(
+          questionImagesCollection(reportId, questionId),
+          orderBy('createdAt', 'asc'),
+        );
+        const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+          questionImages.set(
+            questionId,
+            imageSnapshot.docs.map((imageDocument) => {
+              const image = imageDocument.data() as QuestionOptionImage;
+              return {
+                id: imageDocument.id,
+                imageBase64: image.imageBase64,
+                optionIndex: image.optionIndex,
+              };
+            }),
+          );
+          emit();
+        });
+        questionImageUnsubscribes.set(questionId, unsubscribeImages);
+      }
     });
+
+    Array.from(questionsBase.keys()).forEach((questionId) => {
+      if (!nextQuestionIds.has(questionId)) {
+        questionsBase.delete(questionId);
+        questionImages.delete(questionId);
+        questionImageUnsubscribes.get(questionId)?.();
+        questionImageUnsubscribes.delete(questionId);
+      }
+    });
+
     emit();
   });
 
@@ -510,6 +564,7 @@ export function subscribeReport(
     leadQuestionsUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
     imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    questionImageUnsubscribes.forEach((unsubscribe) => unsubscribe());
     leadQuestionImageUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
@@ -695,13 +750,52 @@ export async function addQuestion(
   reportId: string,
   question: CreateQuestionInput,
 ): Promise<string> {
-  const ref = await addDoc(questionsCollection(reportId), question);
+  const { questionText, options, optionLinks } = question;
+  const payload: Record<string, unknown> = { questionText, options };
+
+  // Firestore rejects undefined field values, so `optionDetails` is only
+  // included when at least one option actually has a link.
+  if (optionLinks?.some((links) => links.length > 0)) {
+    payload.optionDetails = options.map((_option, index) => ({ links: optionLinks[index] ?? [] }));
+  }
+
+  const ref = await addDoc(questionsCollection(reportId), payload);
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
   return ref.id;
 }
 
-export function removeQuestion(reportId: string, questionId: string): Promise<void> {
-  return deleteDoc(questionDoc(reportId, questionId));
+export async function addQuestionOptionImage(
+  reportId: string,
+  questionId: string,
+  optionIndex: number,
+  imageBase64: string,
+): Promise<string> {
+  const ref = await addDoc(questionImagesCollection(reportId, questionId), {
+    imageBase64,
+    optionIndex,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+// Firestore never cascades deletes into subcollections, so a question's
+// option images must be removed explicitly, before its own doc, same as
+// deleteTaskImages/deleteLeadQuestionImages above.
+async function deleteQuestionImages(reportId: string, questionId: string) {
+  const imageSnapshots = await getDocs(questionImagesCollection(reportId, questionId));
+
+  for (let start = 0; start < imageSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    imageSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((imageSnapshot) => batch.delete(imageSnapshot.ref));
+    await batch.commit();
+  }
+}
+
+export async function removeQuestion(reportId: string, questionId: string): Promise<void> {
+  await deleteQuestionImages(reportId, questionId);
+  await deleteDoc(questionDoc(reportId, questionId));
 }
 
 export async function answerQuestion(
