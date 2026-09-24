@@ -615,23 +615,6 @@ export async function reorderSections(
   await batch.commit();
 }
 
-// Persists a new task order within one section in one batch, same shape as
-// `reorderSections`. Moving a task to a different section is out of scope.
-// Superseded by `reorderSectionItems` below (Developer View now reorders
-// tasks and section questions together); kept until that migration lands.
-export async function reorderTasks(
-  reportId: string,
-  sectionId: string,
-  orderedTaskIds: string[],
-): Promise<void> {
-  const batch = writeBatch(db);
-  orderedTaskIds.forEach((taskId, index) => {
-    batch.update(taskDoc(reportId, sectionId, taskId), { order: index });
-  });
-  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
-  await batch.commit();
-}
-
 export interface SectionOrderItem {
   kind: 'task' | 'question';
   id: string;

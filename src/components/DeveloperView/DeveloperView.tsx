@@ -26,8 +26,8 @@ import {
   removeTask,
   removeTaskImage,
   renameSection,
+  reorderSectionItems,
   reorderSections,
-  reorderTasks,
   saveAssignmentUpdate,
   subscribeAssignmentUpdate,
   updateTask,
@@ -38,7 +38,7 @@ import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
 import { PolishError, polishText } from '../../services/polish';
-import type { CreateQuestionInput } from '../../services/firestore';
+import type { CreateQuestionInput, SectionOrderItem } from '../../services/firestore';
 import type { PolishKind } from '../../services/polish';
 import type {
   AssignmentUpdateWithImages,
@@ -55,13 +55,16 @@ import { todayDateString } from '../../types';
 
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { taskLetter } from '../../utils/numbering';
+import { mergeSectionItems, taskLettersById, type SectionItem } from '../../utils/sectionItems';
 const QUESTION_OPTION_LIMIT = 6;
 const QUESTION_OPTION_MINIMUM = 2;
 const MAX_IMAGE_SIDE = 1024;
 const MAX_IMAGE_DATA_URL_LENGTH = 900_000;
 const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
 const SECTION_DRAG_TYPE = 'application/x-dailybit-section';
-const TASK_DRAG_TYPE = 'application/x-dailybit-task';
+// Carries `{ sectionId, kind: 'task' | 'question', id }`: tasks and section
+// questions share one drag type so either can be dropped on the other.
+const SECTION_ITEM_DRAG_TYPE = 'application/x-dailybit-section-item';
 const PREVIEW_AS_LEAD_STORAGE_KEY = 'developerView.previewAsLead';
 
 function loadPreviewAsLead(): boolean {
@@ -132,8 +135,24 @@ function formatDisplayDate(dateString?: string): string {
   }).format(new Date(`${dateString}T00:00:00`));
 }
 
-function getNextOrder(items: Array<{ order: number }>): number {
-  return items.length === 0 ? 0 : Math.max(...items.map((item) => item.order)) + 1;
+// `order` is optional here only so a section's questions (whose `order` type
+// is optional on `Question`) can be mixed in with its tasks when computing
+// the next slot for a new task or question.
+function getNextOrder(items: Array<{ order?: number }>): number {
+  return items.length === 0 ? 0 : Math.max(...items.map((item) => item.order ?? -1)) + 1;
+}
+
+// Drag payload shared by tasks and section questions (see
+// SECTION_ITEM_DRAG_TYPE); `key` is the composite `${kind}:${id}` used by the
+// section's item-order state.
+interface SectionDragPayload {
+  sectionId: string;
+  kind: 'task' | 'question';
+  id: string;
+}
+
+function sectionItemKey(item: Pick<SectionDragPayload, 'kind' | 'id'>): string {
+  return `${item.kind}:${item.id}`;
 }
 
 function isValidUrl(value: string): boolean {
@@ -1398,7 +1417,7 @@ function TaskCard({
   isLast: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
-  onReorderDrop: (draggedTaskId: string, targetTaskId: string) => void;
+  onReorderDrop: (draggedKey: string, targetKey: string) => void;
 }) {
   const [description, setDescription] = useState(task.description);
   const [uploading, setUploading] = useState(false);
@@ -1461,7 +1480,8 @@ function TaskCard({
   }
 
   function handleDragStart(event: DragEvent<HTMLElement>) {
-    event.dataTransfer.setData(TASK_DRAG_TYPE, JSON.stringify({ sectionId, taskId: task.id }));
+    const payload: SectionDragPayload = { sectionId, kind: 'task', id: task.id };
+    event.dataTransfer.setData(SECTION_ITEM_DRAG_TYPE, JSON.stringify(payload));
     event.dataTransfer.effectAllowed = 'move';
     setIsDragging(true);
   }
@@ -1474,14 +1494,15 @@ function TaskCard({
   function handleDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
-    const raw = event.dataTransfer.getData(TASK_DRAG_TYPE);
+    const raw = event.dataTransfer.getData(SECTION_ITEM_DRAG_TYPE);
     if (!raw) {
       return;
     }
     try {
-      const parsed = JSON.parse(raw) as { sectionId: string; taskId: string };
-      if (parsed.sectionId === sectionId && parsed.taskId !== task.id) {
-        onReorderDrop(parsed.taskId, task.id);
+      const parsed = JSON.parse(raw) as SectionDragPayload;
+      const targetKey = sectionItemKey({ kind: 'task', id: task.id });
+      if (parsed.sectionId === sectionId && sectionItemKey(parsed) !== targetKey) {
+        onReorderDrop(sectionItemKey(parsed), targetKey);
       }
     } catch {
       // A malformed or unrelated drag payload (e.g. a section drag): ignore.
@@ -1614,6 +1635,109 @@ function TaskCard({
   );
 }
 
+// A section question interleaved with tasks: same move-up/down + drag chrome
+// as TaskCard, but reuses QuestionCard (defined below) for the question's own
+// rendering/removal instead of forking it. Questions take no letter, so a
+// small "Question" badge stands in for TaskCard's letter column.
+function SectionQuestionCard({
+  reportId,
+  sectionId,
+  question,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+  onReorderDrop,
+}: {
+  reportId: string;
+  sectionId: string;
+  question: QuestionWithId;
+  isFirst: boolean;
+  isLast: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onReorderDrop: (draggedKey: string, targetKey: string) => void;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragArmed, setDragArmed] = useState(false);
+
+  function handleDragStart(event: DragEvent<HTMLElement>) {
+    const payload: SectionDragPayload = { sectionId, kind: 'question', id: question.id };
+    event.dataTransfer.setData(SECTION_ITEM_DRAG_TYPE, JSON.stringify(payload));
+    event.dataTransfer.effectAllowed = 'move';
+    setIsDragging(true);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    const raw = event.dataTransfer.getData(SECTION_ITEM_DRAG_TYPE);
+    if (!raw) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw) as SectionDragPayload;
+      const targetKey = sectionItemKey({ kind: 'question', id: question.id });
+      if (parsed.sectionId === sectionId && sectionItemKey(parsed) !== targetKey) {
+        onReorderDrop(sectionItemKey(parsed), targetKey);
+      }
+    } catch {
+      // A malformed or unrelated drag payload (e.g. a section drag): ignore.
+    }
+  }
+
+  function handleDragEnd() {
+    setIsDragging(false);
+    setDragArmed(false);
+  }
+
+  return (
+    <div
+      className={`group/task flex items-start gap-3 px-4 py-3 transition ${isDragging ? 'opacity-50' : ''}`}
+      draggable={dragArmed}
+      onPointerUp={() => setDragArmed(false)}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onDragEnd={handleDragEnd}
+    >
+      <span
+        className="mt-2 shrink-0 cursor-grab select-none text-fg-muted"
+        aria-hidden="true"
+        title="Drag to reorder"
+        onPointerDown={() => setDragArmed(true)}
+      >
+        ⋮⋮
+      </span>
+      <div className="min-w-0 flex-1">
+        <span className="mb-2 inline-flex items-center rounded-full border border-done-emphasis/60 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
+          Question
+        </span>
+        <QuestionCard reportId={reportId} question={question} />
+      </div>
+      <CardToolbar>
+        <IconButton
+          icon={<span aria-hidden="true">↑</span>}
+          label="Move question up"
+          onClick={onMoveUp}
+          disabled={isFirst}
+        />
+        <IconButton
+          icon={<span aria-hidden="true">↓</span>}
+          label="Move question down"
+          onClick={onMoveDown}
+          disabled={isLast}
+        />
+      </CardToolbar>
+    </div>
+  );
+}
+
 function SectionCard({
   reportId,
   section,
@@ -1625,6 +1749,7 @@ function SectionCard({
   onMoveUp,
   onMoveDown,
   onReorderDrop,
+  onAddQuestion,
 }: {
   reportId: string;
   section: SectionWithTasks;
@@ -1636,60 +1761,80 @@ function SectionCard({
   onMoveUp: () => void;
   onMoveDown: () => void;
   onReorderDrop: (draggedSectionId: string, targetSectionId: string) => void;
+  onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragArmed, setDragArmed] = useState(false);
-  const [taskOrderOverride, setTaskOrderOverride] = useState<string[] | null>(null);
-  const [taskOrderError, setTaskOrderError] = useState<string | null>(null);
+  const [itemOrderOverride, setItemOrderOverride] = useState<string[] | null>(null);
+  const [itemOrderError, setItemOrderError] = useState<string | null>(null);
+  const [showQuestionComposer, setShowQuestionComposer] = useState(false);
+
+  const mergedItems = useMemo(
+    () => mergeSectionItems(section.tasks, section.questions),
+    [section.tasks, section.questions],
+  );
 
   // Reset the optimistic override once the source data it was derived from
-  // (the task ids under this section) changes underneath it.
-  const taskIdsKey = section.tasks.map((task) => task.id).join(',');
+  // (the task/question ids under this section) changes underneath it.
+  const itemIdsKey = mergedItems.map(sectionItemKey).join(',');
   useEffect(() => {
-    setTaskOrderOverride(null);
-  }, [taskIdsKey]);
+    setItemOrderOverride(null);
+  }, [itemIdsKey]);
 
-  const displayedTasks = useMemo(() => {
-    if (!taskOrderOverride) {
-      return section.tasks;
+  const displayedItems = useMemo(() => {
+    if (!itemOrderOverride) {
+      return mergedItems;
     }
 
-    const taskById = new Map(section.tasks.map((task) => [task.id, task]));
-    const overridden = taskOrderOverride
-      .map((id) => taskById.get(id))
-      .filter((task): task is TaskWithId => Boolean(task));
-    const overriddenIds = new Set(overridden.map((task) => task.id));
-    const missing = section.tasks.filter((task) => !overriddenIds.has(task.id));
+    const itemByKey = new Map(mergedItems.map((item) => [sectionItemKey(item), item]));
+    const overridden = itemOrderOverride
+      .map((key) => itemByKey.get(key))
+      .filter((item): item is SectionItem => Boolean(item));
+    const overriddenKeys = new Set(overridden.map(sectionItemKey));
+    const missing = mergedItems.filter((item) => !overriddenKeys.has(sectionItemKey(item)));
 
     return [...overridden, ...missing];
-  }, [taskOrderOverride, section.tasks]);
+  }, [itemOrderOverride, mergedItems]);
 
-  async function persistTaskOrder(nextIds: string[]) {
-    const previousIds = displayedTasks.map((task) => task.id);
-    setTaskOrderOverride(nextIds);
-    setTaskOrderError(null);
+  const taskLetters = useMemo(() => taskLettersById(displayedItems, taskLetter), [displayedItems]);
+
+  async function handleAddSectionQuestion(question: CreateQuestionInput) {
+    const nextOrder = getNextOrder([...section.tasks, ...section.questions]);
+    const questionId = await onAddQuestion({ ...question, sectionId: section.id, order: nextOrder });
+    setShowQuestionComposer(false);
+    return questionId;
+  }
+
+  async function persistItemOrder(nextKeys: string[]) {
+    const previousKeys = displayedItems.map(sectionItemKey);
+    setItemOrderOverride(nextKeys);
+    setItemOrderError(null);
     try {
-      await reorderTasks(reportId, section.id, nextIds);
+      const orderedItems: SectionOrderItem[] = nextKeys.map((key) => {
+        const [kind, id] = key.split(':') as ['task' | 'question', string];
+        return { kind, id };
+      });
+      await reorderSectionItems(reportId, section.id, orderedItems);
     } catch (error) {
-      console.error('Task reorder failed', error);
-      setTaskOrderOverride(previousIds);
-      setTaskOrderError('Order could not be saved. Please try again.');
+      console.error('Section item reorder failed', error);
+      setItemOrderOverride(previousKeys);
+      setItemOrderError('Order could not be saved. Please try again.');
     }
   }
 
-  function handleMoveTask(taskId: string, direction: 'up' | 'down') {
-    const ids = displayedTasks.map((task) => task.id);
-    const next = reorderedIdsForMove(ids, taskId, direction);
+  function handleMoveItem(key: string, direction: 'up' | 'down') {
+    const keys = displayedItems.map(sectionItemKey);
+    const next = reorderedIdsForMove(keys, key, direction);
     if (next) {
-      void persistTaskOrder(next);
+      void persistItemOrder(next);
     }
   }
 
-  function handleTaskReorderDrop(draggedTaskId: string, targetTaskId: string) {
-    const ids = displayedTasks.map((task) => task.id);
-    const next = reorderedIdsForDrag(ids, draggedTaskId, targetTaskId);
+  function handleItemReorderDrop(draggedKey: string, targetKey: string) {
+    const keys = displayedItems.map(sectionItemKey);
+    const next = reorderedIdsForDrag(keys, draggedKey, targetKey);
     if (next) {
-      void persistTaskOrder(next);
+      void persistItemOrder(next);
     }
   }
 
@@ -1767,37 +1912,68 @@ function SectionCard({
         </button>
       </div>
 
-      {taskOrderError ? (
+      {itemOrderError ? (
         <p className="px-4 py-2 text-xs font-medium text-danger-fg" role="alert">
-          {taskOrderError}
+          {itemOrderError}
         </p>
       ) : null}
 
       <div className="divide-y divide-line">
-        {displayedTasks.length > 0 ? (
-          displayedTasks.map((task, taskIndex) => (
-            <TaskCard
-              key={task.id}
-              reportId={reportId}
-              sectionId={section.id}
-              task={task}
-              letter={taskLetter(taskIndex)}
-              leadNotes={leadNotesByTask.get(task.id) ?? []}
-              leadQuestions={leadQuestionsByTask.get(task.id) ?? []}
-              isFirst={taskIndex === 0}
-              isLast={taskIndex === displayedTasks.length - 1}
-              onMoveUp={() => handleMoveTask(task.id, 'up')}
-              onMoveDown={() => handleMoveTask(task.id, 'down')}
-              onReorderDrop={handleTaskReorderDrop}
-            />
-          ))
+        {displayedItems.length > 0 ? (
+          displayedItems.map((item, itemIndex) =>
+            item.kind === 'task' ? (
+              <TaskCard
+                key={`task-${item.id}`}
+                reportId={reportId}
+                sectionId={section.id}
+                task={item.task}
+                letter={taskLetters.get(item.id) ?? ''}
+                leadNotes={leadNotesByTask.get(item.id) ?? []}
+                leadQuestions={leadQuestionsByTask.get(item.id) ?? []}
+                isFirst={itemIndex === 0}
+                isLast={itemIndex === displayedItems.length - 1}
+                onMoveUp={() => handleMoveItem(sectionItemKey(item), 'up')}
+                onMoveDown={() => handleMoveItem(sectionItemKey(item), 'down')}
+                onReorderDrop={handleItemReorderDrop}
+              />
+            ) : (
+              <SectionQuestionCard
+                key={`question-${item.id}`}
+                reportId={reportId}
+                sectionId={section.id}
+                question={item.question}
+                isFirst={itemIndex === 0}
+                isLast={itemIndex === displayedItems.length - 1}
+                onMoveUp={() => handleMoveItem(sectionItemKey(item), 'up')}
+                onMoveDown={() => handleMoveItem(sectionItemKey(item), 'down')}
+                onReorderDrop={handleItemReorderDrop}
+              />
+            ),
+          )
         ) : (
-          <EmptyState title="No tasks yet" description="Add one crisp update. Keep it short so the lead can scan it quickly." />
+          <EmptyState
+            title="Nothing here yet"
+            description="Add a task, or ask the lead a question. Keep it short so it's easy to scan."
+          />
         )}
       </div>
 
-      <div className="border-t border-line px-4 py-3">
-        <AddTaskForm reportId={reportId} section={section} />
+      <div className="space-y-3 border-t border-line px-4 py-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <AddTaskForm reportId={reportId} section={section} />
+          </div>
+          <button
+            className="shrink-0 rounded-md border border-done-emphasis/60 bg-done-muted px-3 py-1.5 text-sm font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
+            type="button"
+            onClick={() => setShowQuestionComposer((current) => !current)}
+          >
+            {showQuestionComposer ? 'Cancel question' : 'Ask the lead'}
+          </button>
+        </div>
+        {showQuestionComposer ? (
+          <QuestionComposer reportId={reportId} onAddQuestion={handleAddSectionQuestion} />
+        ) : null}
       </div>
     </section>
   );
@@ -1809,12 +1985,14 @@ function SectionsList({
   leadNotesByTask,
   leadQuestionsByTask,
   onAddSection,
+  onAddQuestion,
 }: {
   reportId: string;
   sections: SectionWithTasks[];
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
   onAddSection: (section: Section) => Promise<unknown>;
+  onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
 }) {
   const sortedSections = useMemo(
     () => [...sections].sort((a, b) => a.order - b.order),
@@ -1909,6 +2087,7 @@ function SectionsList({
               onMoveUp={() => handleMoveSection(section.id, 'up')}
               onMoveDown={() => handleMoveSection(section.id, 'down')}
               onReorderDrop={handleSectionReorderDrop}
+              onAddQuestion={onAddQuestion}
             />
           ))
         ) : (
@@ -2421,6 +2600,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
             leadNotesByTask={leadNotesByTask}
             leadQuestionsByTask={leadQuestionsByTask}
             onAddSection={handleAddSection}
+            onAddQuestion={handleAddQuestion}
           />
           <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
         </>
