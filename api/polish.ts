@@ -149,20 +149,23 @@ function validateBody(raw: unknown): ValidationResult {
 // Answers to the lead's questions are first checked for relevance: an answer
 // that has nothing to do with the question is rejected instead of polished.
 const RELEVANCE_INSTRUCTIONS = [
-  "Before rewriting, judge whether the developer's answer is related to the question, even partially or indirectly.",
+  "Before rewriting, judge whether the developer's text is a plausible answer to the question, even partially or indirectly.",
+  'A text that does not answer what the question asks (for example, an object when the question asks for a color) is NOT related.',
   "Be lenient: short, partial, or not-yet-known answers that still address the question count as related.",
   'Respond ONLY with a JSON object of the form {"relevant": boolean, "suggestion": string}.',
   'If the answer is not related to the question, set "relevant" to false and "suggestion" to an empty string.',
 ].join(' ');
 
-const OFF_TOPIC_MESSAGE =
-  "Your answer doesn't seem to address the question. Please rewrite it and try again.";
+const OFF_TOPIC_MESSAGES: Partial<Record<PolishKind, string>> = {
+  answer: "Your answer doesn't seem to address the question. Please rewrite it and try again.",
+  option: "This option doesn't seem to answer the question. Please rewrite it and try again.",
+};
 
 function needsRelevanceCheck(kind: PolishKind, questionContext: string | undefined): boolean {
-  return kind === 'answer' && Boolean(questionContext);
+  return (kind === 'answer' || kind === 'option') && Boolean(questionContext);
 }
 
-function parseRelevanceResult(content: string): string {
+function parseRelevanceResult(kind: PolishKind, content: string): string {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -171,7 +174,7 @@ function parseRelevanceResult(content: string): string {
   }
   const result = parsed as { relevant?: unknown; suggestion?: unknown };
   if (result.relevant === false) {
-    throw new PolishError(422, OFF_TOPIC_MESSAGE);
+    throw new PolishError(422, OFF_TOPIC_MESSAGES[kind] ?? 'The text does not match the question.');
   }
   if (typeof result.suggestion !== 'string' || result.suggestion.trim().length === 0) {
     throw new PolishError(500, 'AI polish returned an unexpected response.');
@@ -328,7 +331,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   try {
     const checkRelevance = needsRelevanceCheck(kind, questionContext);
     const content = await requestPolishedText(messages, checkRelevance);
-    const rawSuggestion = checkRelevance ? parseRelevanceResult(content) : content;
+    const rawSuggestion = checkRelevance ? parseRelevanceResult(kind, content) : content;
     const suggestion = enforceLimit(rawSuggestion, KIND_LIMITS[kind]);
     res.status(200).json({ suggestion });
   } catch (error) {
