@@ -949,9 +949,9 @@ function TaskCard({
 
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
-            <p className="min-w-0 break-words text-sm font-medium leading-6 text-fg">
-              <span className="mr-1.5 font-semibold text-fg-muted tabular-nums">{letter}.</span>
-              {task.description}
+            <p className="flex min-w-0 gap-1.5 text-sm font-medium leading-6 text-fg">
+              <span className="shrink-0 font-semibold text-fg-muted tabular-nums">{letter}.</span>
+              <span className="min-w-0 break-words">{task.description}</span>
             </p>
             <div className="flex shrink-0 gap-2 opacity-100 transition md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <button
@@ -1063,9 +1063,9 @@ function SectionCard({
   return (
     <section className="rounded-md bg-canvas-subtle">
       <div className="px-4 py-3">
-        <h3 className="break-words text-base font-semibold text-fg">
-          <span className="mr-1.5 text-fg-muted tabular-nums">{number}.</span>
-          {section.title}
+        <h3 className="flex min-w-0 gap-1.5 text-base font-semibold text-fg">
+          <span className="shrink-0 text-fg-muted tabular-nums">{number}.</span>
+          <span className="min-w-0 break-words">{section.title}</span>
         </h3>
       </div>
       <div className="divide-y divide-line">
