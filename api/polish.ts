@@ -252,7 +252,7 @@ async function requestPolishedText(
         model,
         messages,
         temperature: 0.2,
-        max_tokens: 200,
+        max_tokens: 300,
         ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: controller.signal,
