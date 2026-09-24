@@ -1,10 +1,11 @@
 import {
   DragEvent,
   FormEvent,
-  KeyboardEvent,
   ReactNode,
+  TextareaHTMLAttributes,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -398,12 +399,13 @@ function AddTaskForm({
   }
 
   return (
-    <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSubmit}>
-      <input
-        className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+    <form className="flex flex-col gap-2 sm:flex-row sm:items-start" onSubmit={handleSubmit}>
+      <TaskTextarea
+        className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm leading-5 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
         value={description}
-        onChange={(event) => setDescription(event.target.value)}
-        placeholder="Add a short task, then press Enter"
+        onValueChange={setDescription}
+        onEnter={(field) => field.form?.requestSubmit()}
+        placeholder="Add a task, then press Enter"
         maxLength={TASK_DESCRIPTION_LIMIT}
         aria-label="New task description"
       />
@@ -469,6 +471,56 @@ function IconButton({
     >
       {icon}
     </button>
+  );
+}
+
+type TaskTextareaProps = Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  'value' | 'onChange' | 'onKeyDown' | 'rows'
+> & {
+  value: string;
+  onValueChange: (value: string) => void;
+  onEnter: (field: HTMLTextAreaElement) => void;
+};
+
+// Task text wraps and grows with its content so long descriptions stay
+// readable while typing. Task text is still a single paragraph: Enter runs
+// `onEnter` instead of inserting a newline, and pasted line breaks become spaces.
+function TaskTextarea({ value, onValueChange, onEnter, className = '', ...props }: TaskTextareaProps) {
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+
+  const fitHeight = useCallback(() => {
+    const field = fieldRef.current;
+    if (!field) {
+      return;
+    }
+    field.style.height = 'auto';
+    // scrollHeight excludes the border, which border-box sizing counts.
+    field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
+  }, []);
+
+  useLayoutEffect(fitHeight, [fitHeight, value]);
+
+  useEffect(() => {
+    window.addEventListener('resize', fitHeight);
+    return () => window.removeEventListener('resize', fitHeight);
+  }, [fitHeight]);
+
+  return (
+    <textarea
+      {...props}
+      ref={fieldRef}
+      rows={1}
+      className={`block resize-none overflow-hidden ${className}`}
+      value={value}
+      onChange={(event) => onValueChange(event.target.value.replace(/\r?\n/g, ' '))}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          onEnter(event.currentTarget);
+        }
+      }}
+    />
   );
 }
 
@@ -893,16 +945,12 @@ function AssignmentUpdateEditor({
       <div className="flex items-start gap-3">
         <label className="block min-w-0 flex-1 text-xs font-semibold uppercase tracking-wide text-fg">
           Your update
-          <input
-            className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          <TaskTextarea
+            className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm normal-case leading-5 tracking-normal text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             value={text}
-            onChange={(event) => setText(event.target.value)}
+            onValueChange={setText}
             onBlur={persistText}
-            onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-              if (event.key === 'Enter') {
-                event.currentTarget.blur();
-              }
-            }}
+            onEnter={(field) => field.blur()}
             maxLength={TASK_DESCRIPTION_LIMIT}
             placeholder="What did you do on this assignment today?"
           />
@@ -1451,20 +1499,16 @@ function TaskCard({
         <div className="min-w-0 flex-1">
           <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
             Task
-            <span className="mt-2 flex items-center gap-2">
-            <span className="w-6 shrink-0 text-sm font-semibold normal-case tracking-normal text-fg-muted tabular-nums">
+            <span className="mt-2 flex items-start gap-2">
+            <span className="w-6 shrink-0 pt-1.5 text-sm font-semibold leading-5 normal-case tracking-normal text-fg-muted tabular-nums">
               {letter}.
             </span>
-            <input
-              className="w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            <TaskTextarea
+              className="w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm normal-case leading-5 tracking-normal text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onValueChange={setDescription}
               onBlur={persistDescription}
-              onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-                if (event.key === 'Enter') {
-                  event.currentTarget.blur();
-                }
-              }}
+              onEnter={(field) => field.blur()}
               maxLength={TASK_DESCRIPTION_LIMIT}
             />
             </span>
