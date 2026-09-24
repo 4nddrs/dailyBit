@@ -225,7 +225,7 @@ export function LeadNoteBlock({
           className="flex items-start justify-between gap-3 rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm text-attention-fg"
           key={note.id}
         >
-          <p className="leading-6">{note.noteText}</p>
+          <p className="min-w-0 break-words leading-6">{note.noteText}</p>
           {onRemove ? (
             <button
               className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-attention-fg transition hover:bg-danger-muted hover:text-danger-fg"
@@ -296,9 +296,9 @@ export function LeadQuestionItem({
 
   return (
     <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
-      {context ? <p className="mb-1 text-xs font-medium text-fg-muted">{context}</p> : null}
+      {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
       <div className="flex items-start justify-between gap-3">
-        <p className="font-semibold leading-6 text-done-fg">{question.questionText}</p>
+        <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
         {onRemove ? (
           <button
             className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg"
@@ -314,7 +314,7 @@ export function LeadQuestionItem({
         <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
       ) : question.kind === 'text' ? (
         <>
-          <p className="mt-2 rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+          <p className="mt-2 break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
             {question.answerText}
           </p>
           <LinkChips links={question.answerLinks} />
@@ -324,7 +324,7 @@ export function LeadQuestionItem({
         <div className="mt-2 flex flex-wrap gap-2">
           {(question.options ?? []).map((option, index) => (
             <span
-              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              className={`max-w-full break-words rounded-full border px-3 py-1 text-xs font-medium ${
                 question.selectedAnswer === index
                   ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
                   : 'border-line bg-canvas-subtle text-fg-muted'
@@ -684,15 +684,16 @@ function AssignmentComposer({
         <div className="mt-2 flex flex-wrap gap-2">
           {devs.map((dev) => (
             <label
-              className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas px-3 py-1 text-xs font-medium text-fg"
+              className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-canvas px-3 py-1 text-xs font-medium text-fg"
               key={dev.id}
             >
               <input
+                className="shrink-0"
                 type="checkbox"
                 checked={assigneeIds.includes(dev.id)}
                 onChange={() => toggleAssignee(dev.id)}
               />
-              {dev.name}
+              <span className="min-w-0 break-words">{dev.name}</span>
             </label>
           ))}
         </div>
@@ -785,7 +786,7 @@ function LeadAssignmentRow({
     <article id={`assignment-${assignment.id}-${assigneeId}`} className="group/assignmentRow scroll-mt-4 px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium leading-6 text-fg">{assignment.description}</p>
+          <p className="break-words text-sm font-medium leading-6 text-fg">{assignment.description}</p>
           <p className="mt-1 text-xs text-fg-muted">
             Assigned {assignment.startDate}
             {otherAssigneeCount > 0
@@ -948,7 +949,7 @@ function TaskCard({
 
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
-            <p className="text-sm font-medium leading-6 text-fg">
+            <p className="min-w-0 break-words text-sm font-medium leading-6 text-fg">
               <span className="mr-1.5 font-semibold text-fg-muted tabular-nums">{letter}.</span>
               {task.description}
             </p>
@@ -1062,7 +1063,7 @@ function SectionCard({
   return (
     <section className="rounded-md bg-canvas-subtle">
       <div className="px-4 py-3">
-        <h3 className="text-base font-semibold text-fg">
+        <h3 className="break-words text-base font-semibold text-fg">
           <span className="mr-1.5 text-fg-muted tabular-nums">{number}.</span>
           {section.title}
         </h3>
@@ -1131,7 +1132,7 @@ export function QuestionOptionList({
               >
                 {getOptionLabel(index)}
               </span>
-              <p className="min-w-0 flex-1 text-sm text-fg">{option}</p>
+              <p className="min-w-0 flex-1 break-words text-sm text-fg">{option}</p>
               {renderAction?.(index, selected)}
             </div>
             {hasAttachments ? (
@@ -1177,7 +1178,7 @@ function QuestionCard({
   return (
     <article className="rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
             isAnswered
@@ -1309,8 +1310,8 @@ function ReportCard({
   return (
     <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
       <div className="group/reportHeader flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
+        <div className="min-w-0">
+          <h2 className="break-words text-lg font-semibold text-fg">{developerName}</h2>
           {summaryParts.length > 0 ? (
             <p className="mt-0.5 text-xs text-fg-muted">{summaryParts.join(' · ')}</p>
           ) : null}
@@ -1411,8 +1412,10 @@ function ReportCard({
             {report.questions && report.questions.length > 0 ? (
               <section className="mt-4 rounded-md border border-done-emphasis/40 bg-canvas-subtle">
                 <div className="flex items-center gap-2 border-b border-done-emphasis/30 px-4 py-2">
-                  <h3 className="text-base font-semibold text-done-fg">Questions from {developerName}</h3>
-                  <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg">
+                  <h3 className="min-w-0 break-words text-base font-semibold text-done-fg">
+                    Questions from {developerName}
+                  </h3>
+                  <span className="shrink-0 rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg">
                     {report.questions.length}
                   </span>
                 </div>
@@ -1466,9 +1469,9 @@ function AssignmentOnlyCard({
   return (
     <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
       <div className="group/reportHeader flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
-        <h2 className="text-lg font-semibold text-fg">{developerName}</h2>
+        <h2 className="min-w-0 break-words text-lg font-semibold text-fg">{developerName}</h2>
         <button
-          className="md:opacity-0 md:group-hover/reportHeader:opacity-100 md:group-focus-within/reportHeader:opacity-100 rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
+          className="shrink-0 md:opacity-0 md:group-hover/reportHeader:opacity-100 md:group-focus-within/reportHeader:opacity-100 rounded-md border border-accent-emphasis/60 bg-accent-muted px-2 py-1 text-xs font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
           type="button"
           onClick={() => setComposerOpen((current) => !current)}
         >
