@@ -18,11 +18,16 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type {
+  Assignment,
+  AssignmentUpdate,
+  AssignmentUpdateWithImages,
+  AssignmentWithId,
   LeadNote,
   LeadNoteWithId,
   LeadQuestion,
   LeadQuestionWithId,
   Question,
+  QuestionOptionImage,
   QuestionWithId,
   Report,
   ReportSummary,
@@ -32,6 +37,7 @@ import type {
   Task,
   TaskImage,
   TaskImageWithId,
+  TaskLink,
   TaskWithId,
   TeamOrder,
   UserProfile,
@@ -39,13 +45,20 @@ import type {
   UserRole,
 } from '../types';
 
-export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'>;
+// `optionLinks[i]` are the links for `options[i]`, kept parallel by the
+// caller (the composer keeps per-option links aligned as options are added,
+// removed, and filtered before submit).
+export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'> & {
+  optionLinks?: TaskLink[][];
+};
 export type CreateLeadNoteInput = Pick<LeadNote, 'noteText' | 'targetTaskId'>;
 export type CreateLeadQuestionInput = Pick<
   LeadQuestion,
   'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options'
 >;
-export type AnswerLeadQuestionInput = { answerText: string } | { selectedAnswer: number };
+export type AnswerLeadQuestionInput =
+  | { answerText: string; answerLinks?: TaskLink[] }
+  | { selectedAnswer: number };
 
 const collections = {
   users: 'users',
@@ -57,7 +70,15 @@ const collections = {
   leadNotes: 'leadNotes',
   leadQuestions: 'leadQuestions',
   settings: 'settings',
+  assignments: 'assignments',
+  updates: 'updates',
 } as const;
+
+export type CreateAssignmentInput = Pick<
+  Assignment,
+  'description' | 'assigneeIds' | 'createdBy' | 'startDate' | 'relatedTask'
+>;
+export type SaveAssignmentUpdateInput = { text?: string; links?: TaskLink[] };
 
 const TEAM_SETTINGS_DOC_ID = 'team';
 
@@ -109,6 +130,14 @@ function questionDoc(reportId: string, questionId: string) {
   return doc(questionsCollection(reportId), questionId);
 }
 
+function questionImagesCollection(reportId: string, questionId: string) {
+  return collection(questionDoc(reportId, questionId), collections.images);
+}
+
+function questionImageDoc(reportId: string, questionId: string, imageId: string) {
+  return doc(questionImagesCollection(reportId, questionId), imageId);
+}
+
 function leadNotesCollection(reportId: string) {
   return collection(reportDoc(reportId), collections.leadNotes);
 }
@@ -125,8 +154,55 @@ function leadQuestionDoc(reportId: string, questionId: string) {
   return doc(leadQuestionsCollection(reportId), questionId);
 }
 
+function leadQuestionImagesCollection(reportId: string, questionId: string) {
+  return collection(leadQuestionDoc(reportId, questionId), collections.images);
+}
+
+function leadQuestionImageDoc(reportId: string, questionId: string, imageId: string) {
+  return doc(leadQuestionImagesCollection(reportId, questionId), imageId);
+}
+
+function assignmentsCollection() {
+  return collection(db, collections.assignments);
+}
+
+function assignmentDoc(assignmentId: string) {
+  return doc(assignmentsCollection(), assignmentId);
+}
+
+function assignmentUpdatesCollection(assignmentId: string) {
+  return collection(assignmentDoc(assignmentId), collections.updates);
+}
+
+export function assignmentUpdateIdFor(assigneeId: string, date: string): string {
+  return `${assigneeId}_${date}`;
+}
+
+function assignmentUpdateDocById(assignmentId: string, updateId: string) {
+  return doc(assignmentUpdatesCollection(assignmentId), updateId);
+}
+
+function assignmentUpdateDoc(assignmentId: string, assigneeId: string, date: string) {
+  return assignmentUpdateDocById(assignmentId, assignmentUpdateIdFor(assigneeId, date));
+}
+
+function assignmentUpdateImagesCollection(assignmentId: string, updateId: string) {
+  return collection(assignmentUpdateDocById(assignmentId, updateId), collections.images);
+}
+
+function assignmentUpdateImageDoc(assignmentId: string, updateId: string, imageId: string) {
+  return doc(assignmentUpdateImagesCollection(assignmentId, updateId), imageId);
+}
+
 function toReportSummary(id: string, data: Report): ReportSummary {
   return { id, ...data };
+}
+
+// Firestore reads always resolve `Timestamp` fields (never a pending
+// server-timestamp sentinel), so this is only used to sort already-fetched
+// documents, never as a write-time guard.
+function timestampMillis(value: Assignment['createdAt'] | undefined): number {
+  return value ? value.toMillis() : 0;
 }
 
 export async function ensureUserDoc(
@@ -247,9 +323,13 @@ export function subscribeReport(
   const sections = new Map<string, Section>();
   const tasks = new Map<string, Array<Task & { id: string }>>();
   const taskImages = new Map<string, TaskImageWithId[]>();
-  const questions: QuestionWithId[] = [];
+  const questionsBase = new Map<string, Question>();
+  const questionImages = new Map<string, Array<TaskImageWithId & { optionIndex: number }>>();
+  const questionImageUnsubscribes = new Map<string, Unsubscribe>();
   const notes: LeadNoteWithId[] = [];
-  const leadQuestions: LeadQuestionWithId[] = [];
+  const leadQuestionsBase = new Map<string, LeadQuestion>();
+  const leadQuestionImages = new Map<string, TaskImageWithId[]>();
+  const leadQuestionImageUnsubscribes = new Map<string, Unsubscribe>();
   const taskUnsubscribes = new Map<string, Unsubscribe>();
   const imageUnsubscribes = new Map<string, Unsubscribe>();
 
@@ -272,13 +352,27 @@ export function subscribeReport(
       }))
       .sort((a, b) => a.order - b.order);
 
+    const questionTrees: QuestionWithId[] = Array.from(questionsBase.entries()).map(([id, question]) => ({
+      id,
+      ...question,
+      optionImages: [...(questionImages.get(id) ?? [])],
+    }));
+
+    const leadQuestionTrees: LeadQuestionWithId[] = Array.from(leadQuestionsBase.entries()).map(
+      ([id, leadQuestion]) => ({
+        id,
+        ...leadQuestion,
+        answerImages: [...(leadQuestionImages.get(id) ?? [])],
+      }),
+    );
+
     callback({
       id: reportId,
       ...report,
       sections: sectionTrees,
-      questions: [...questions],
+      questions: questionTrees,
       notes: [...notes],
-      leadQuestions: [...leadQuestions],
+      leadQuestions: leadQuestionTrees,
     });
   };
 
@@ -370,13 +464,45 @@ export function subscribeReport(
   });
 
   const questionsUnsubscribe = onSnapshot(questionsCollection(reportId), (snapshot) => {
-    questions.length = 0;
+    const nextQuestionIds = new Set<string>();
+
     snapshot.docs.forEach((questionSnapshot) => {
-      questions.push({
-        id: questionSnapshot.id,
-        ...(questionSnapshot.data() as Question),
-      });
+      const questionId = questionSnapshot.id;
+      nextQuestionIds.add(questionId);
+      questionsBase.set(questionId, questionSnapshot.data() as Question);
+
+      if (!questionImageUnsubscribes.has(questionId)) {
+        const imagesQuery = query(
+          questionImagesCollection(reportId, questionId),
+          orderBy('createdAt', 'asc'),
+        );
+        const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+          questionImages.set(
+            questionId,
+            imageSnapshot.docs.map((imageDocument) => {
+              const image = imageDocument.data() as QuestionOptionImage;
+              return {
+                id: imageDocument.id,
+                imageBase64: image.imageBase64,
+                optionIndex: image.optionIndex,
+              };
+            }),
+          );
+          emit();
+        });
+        questionImageUnsubscribes.set(questionId, unsubscribeImages);
+      }
     });
+
+    Array.from(questionsBase.keys()).forEach((questionId) => {
+      if (!nextQuestionIds.has(questionId)) {
+        questionsBase.delete(questionId);
+        questionImages.delete(questionId);
+        questionImageUnsubscribes.get(questionId)?.();
+        questionImageUnsubscribes.delete(questionId);
+      }
+    });
+
     emit();
   });
 
@@ -392,13 +518,41 @@ export function subscribeReport(
   });
 
   const leadQuestionsUnsubscribe = onSnapshot(leadQuestionsCollection(reportId), (snapshot) => {
-    leadQuestions.length = 0;
+    const nextQuestionIds = new Set<string>();
+
     snapshot.docs.forEach((leadQuestionSnapshot) => {
-      leadQuestions.push({
-        id: leadQuestionSnapshot.id,
-        ...(leadQuestionSnapshot.data() as LeadQuestion),
-      });
+      const questionId = leadQuestionSnapshot.id;
+      nextQuestionIds.add(questionId);
+      leadQuestionsBase.set(questionId, leadQuestionSnapshot.data() as LeadQuestion);
+
+      if (!leadQuestionImageUnsubscribes.has(questionId)) {
+        const imagesQuery = query(
+          leadQuestionImagesCollection(reportId, questionId),
+          orderBy('createdAt', 'asc'),
+        );
+        const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+          leadQuestionImages.set(
+            questionId,
+            imageSnapshot.docs.map((imageDocument) => {
+              const image = imageDocument.data() as TaskImage;
+              return { id: imageDocument.id, imageBase64: image.imageBase64 };
+            }),
+          );
+          emit();
+        });
+        leadQuestionImageUnsubscribes.set(questionId, unsubscribeImages);
+      }
     });
+
+    Array.from(leadQuestionsBase.keys()).forEach((questionId) => {
+      if (!nextQuestionIds.has(questionId)) {
+        leadQuestionsBase.delete(questionId);
+        leadQuestionImages.delete(questionId);
+        leadQuestionImageUnsubscribes.get(questionId)?.();
+        leadQuestionImageUnsubscribes.delete(questionId);
+      }
+    });
+
     emit();
   });
 
@@ -410,6 +564,8 @@ export function subscribeReport(
     leadQuestionsUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
     imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    questionImageUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    leadQuestionImageUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
 
@@ -426,6 +582,35 @@ export async function renameSection(
 ): Promise<void> {
   await updateDoc(sectionDoc(reportId, sectionId), { title });
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
+}
+
+// Persists a new section order in one batch: `order` is set to each id's
+// index in `orderedSectionIds`, so callers pass the full desired order.
+export async function reorderSections(
+  reportId: string,
+  orderedSectionIds: string[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  orderedSectionIds.forEach((sectionId, index) => {
+    batch.update(sectionDoc(reportId, sectionId), { order: index });
+  });
+  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
+// Persists a new task order within one section in one batch, same shape as
+// `reorderSections`. Moving a task to a different section is out of scope.
+export async function reorderTasks(
+  reportId: string,
+  sectionId: string,
+  orderedTaskIds: string[],
+): Promise<void> {
+  const batch = writeBatch(db);
+  orderedTaskIds.forEach((taskId, index) => {
+    batch.update(taskDoc(reportId, sectionId, taskId), { order: index });
+  });
+  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
+  await batch.commit();
 }
 
 // Firestore write batches accept at most 500 operations.
@@ -446,6 +631,21 @@ async function deleteTaskImages(reportId: string, sectionId: string, taskId: str
   }
 }
 
+// Firestore never cascades deletes into subcollections, so a lead question's
+// answer images must be removed explicitly, before its own doc, same as
+// deleteTaskImages above.
+async function deleteLeadQuestionImages(reportId: string, questionId: string) {
+  const imageSnapshots = await getDocs(leadQuestionImagesCollection(reportId, questionId));
+
+  for (let start = 0; start < imageSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    imageSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((imageSnapshot) => batch.delete(imageSnapshot.ref));
+    await batch.commit();
+  }
+}
+
 // Firestore never cascades deletes, and leadQuestions/leadNotes live in
 // report-level collections rather than under the task, so both are queried
 // by their task-reference field and deleted explicitly.
@@ -454,6 +654,13 @@ async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
     getDocs(query(leadQuestionsCollection(reportId), where('taskId', '==', taskId))),
     getDocs(query(leadNotesCollection(reportId), where('targetTaskId', '==', taskId))),
   ]);
+
+  await Promise.all(
+    questionSnapshots.docs.map((questionSnapshot) =>
+      deleteLeadQuestionImages(reportId, questionSnapshot.id),
+    ),
+  );
+
   const docsToDelete = [...questionSnapshots.docs, ...noteSnapshots.docs];
 
   for (let start = 0; start < docsToDelete.length; start += MAX_BATCH_DELETES) {
@@ -543,13 +750,52 @@ export async function addQuestion(
   reportId: string,
   question: CreateQuestionInput,
 ): Promise<string> {
-  const ref = await addDoc(questionsCollection(reportId), question);
+  const { questionText, options, optionLinks } = question;
+  const payload: Record<string, unknown> = { questionText, options };
+
+  // Firestore rejects undefined field values, so `optionDetails` is only
+  // included when at least one option actually has a link.
+  if (optionLinks?.some((links) => links.length > 0)) {
+    payload.optionDetails = options.map((_option, index) => ({ links: optionLinks[index] ?? [] }));
+  }
+
+  const ref = await addDoc(questionsCollection(reportId), payload);
   await updateDoc(reportDoc(reportId), { updatedAt: serverTimestamp() });
   return ref.id;
 }
 
-export function removeQuestion(reportId: string, questionId: string): Promise<void> {
-  return deleteDoc(questionDoc(reportId, questionId));
+export async function addQuestionOptionImage(
+  reportId: string,
+  questionId: string,
+  optionIndex: number,
+  imageBase64: string,
+): Promise<string> {
+  const ref = await addDoc(questionImagesCollection(reportId, questionId), {
+    imageBase64,
+    optionIndex,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+// Firestore never cascades deletes into subcollections, so a question's
+// option images must be removed explicitly, before its own doc, same as
+// deleteTaskImages/deleteLeadQuestionImages above.
+async function deleteQuestionImages(reportId: string, questionId: string) {
+  const imageSnapshots = await getDocs(questionImagesCollection(reportId, questionId));
+
+  for (let start = 0; start < imageSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    imageSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((imageSnapshot) => batch.delete(imageSnapshot.ref));
+    await batch.commit();
+  }
+}
+
+export async function removeQuestion(reportId: string, questionId: string): Promise<void> {
+  await deleteQuestionImages(reportId, questionId);
+  await deleteDoc(questionDoc(reportId, questionId));
 }
 
 export async function answerQuestion(
@@ -607,19 +853,53 @@ export async function addLeadQuestion(
   return ref.id;
 }
 
-export function removeLeadQuestion(reportId: string, questionId: string): Promise<void> {
-  return deleteDoc(leadQuestionDoc(reportId, questionId));
+export async function removeLeadQuestion(reportId: string, questionId: string): Promise<void> {
+  await deleteLeadQuestionImages(reportId, questionId);
+  await deleteDoc(leadQuestionDoc(reportId, questionId));
 }
 
+// Firestore rejects undefined field values, so `answerLinks` is only included
+// when the caller actually passed it.
 export async function answerLeadQuestion(
   reportId: string,
   questionId: string,
   answer: AnswerLeadQuestionInput,
 ): Promise<void> {
-  await updateDoc(leadQuestionDoc(reportId, questionId), {
-    ...answer,
-    answeredAt: serverTimestamp(),
+  const payload: Record<string, unknown> = { answeredAt: serverTimestamp() };
+
+  if ('selectedAnswer' in answer) {
+    payload.selectedAnswer = answer.selectedAnswer;
+  } else {
+    payload.answerText = answer.answerText;
+    if (answer.answerLinks !== undefined) {
+      payload.answerLinks = answer.answerLinks;
+    }
+  }
+
+  await updateDoc(leadQuestionDoc(reportId, questionId), payload);
+}
+
+// Mirrors addTaskImage: an image on an otherwise-unanswered text question
+// counts as answering it, so this also stamps `answeredAt`.
+export async function addLeadQuestionAnswerImage(
+  reportId: string,
+  questionId: string,
+  imageBase64: string,
+): Promise<string> {
+  const ref = await addDoc(leadQuestionImagesCollection(reportId, questionId), {
+    imageBase64,
+    createdAt: serverTimestamp(),
   });
+  await updateDoc(leadQuestionDoc(reportId, questionId), { answeredAt: serverTimestamp() });
+  return ref.id;
+}
+
+export function removeLeadQuestionAnswerImage(
+  reportId: string,
+  questionId: string,
+  imageId: string,
+): Promise<void> {
+  return deleteDoc(leadQuestionImageDoc(reportId, questionId, imageId));
 }
 
 export function subscribeReportsByDate(
@@ -635,4 +915,348 @@ export function subscribeReportsByDate(
 
     callback(reports);
   });
+}
+
+// A task the lead assigns to one or more developers. It stays visible on
+// every date from `startDate` up to (and including) `closedDate`, or forever
+// while `status` is `'open'`. Independent of `reports`: an assignee answers
+// it daily even on a date with no report of their own.
+export function isAssignmentVisibleOn(
+  assignment: Pick<Assignment, 'startDate' | 'status' | 'closedDate'>,
+  date: string,
+): boolean {
+  if (assignment.startDate > date) {
+    return false;
+  }
+
+  return assignment.status === 'open' || (assignment.closedDate ?? '') >= date;
+}
+
+export async function createAssignment(input: CreateAssignmentInput): Promise<string> {
+  const description = input.description.trim();
+  const assigneeIds = Array.from(new Set(input.assigneeIds.filter(Boolean)));
+
+  if (!description) {
+    throw new Error('An assignment needs a description.');
+  }
+
+  if (assigneeIds.length === 0) {
+    throw new Error('An assignment needs at least one assignee.');
+  }
+
+  // Firestore rejects undefined field values, so `relatedTask` is only
+  // included when the caller actually passed one.
+  const payload: Record<string, unknown> = {
+    description,
+    assigneeIds,
+    createdBy: input.createdBy,
+    startDate: input.startDate,
+    status: 'open',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (input.relatedTask !== undefined) {
+    payload.relatedTask = input.relatedTask;
+  }
+
+  const ref = await addDoc(assignmentsCollection(), payload);
+
+  return ref.id;
+}
+
+export async function closeAssignment(assignmentId: string, closedDate: string): Promise<void> {
+  await updateDoc(assignmentDoc(assignmentId), {
+    status: 'closed',
+    closedDate,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// Mirrors deleteTaskImages/removeSection above: Firestore never cascades
+// deletes, so every update doc's images are removed first (batched under the
+// 500-op write-batch limit), then the update docs, then the assignment doc.
+async function deleteAssignmentUpdateImages(assignmentId: string, updateId: string) {
+  const imageSnapshots = await getDocs(assignmentUpdateImagesCollection(assignmentId, updateId));
+
+  for (let start = 0; start < imageSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    imageSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((imageSnapshot) => batch.delete(imageSnapshot.ref));
+    await batch.commit();
+  }
+}
+
+export async function removeAssignment(assignmentId: string): Promise<void> {
+  const updateSnapshots = await getDocs(assignmentUpdatesCollection(assignmentId));
+
+  await Promise.all(
+    updateSnapshots.docs.map((updateSnapshot) =>
+      deleteAssignmentUpdateImages(assignmentId, updateSnapshot.id),
+    ),
+  );
+
+  for (let start = 0; start < updateSnapshots.docs.length; start += MAX_BATCH_DELETES) {
+    const batch = writeBatch(db);
+    updateSnapshots.docs
+      .slice(start, start + MAX_BATCH_DELETES)
+      .forEach((updateSnapshot) => batch.delete(updateSnapshot.ref));
+    await batch.commit();
+  }
+
+  await deleteDoc(assignmentDoc(assignmentId));
+}
+
+// No composite index: `assigneeIds` is filtered server-side (a single
+// array-contains query), and visibility (`startDate`/`status`/`closedDate`)
+// is filtered client-side so this never needs a range filter alongside it.
+export function subscribeAssignmentsForAssignee(
+  uid: string,
+  date: string,
+  callback: (assignments: AssignmentWithId[]) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  const assignmentsQuery = query(
+    assignmentsCollection(),
+    where('assigneeIds', 'array-contains', uid),
+  );
+
+  return onSnapshot(
+    assignmentsQuery,
+    (snapshot) => {
+      const visible = snapshot.docs
+        .map((assignmentSnapshot) => ({
+          id: assignmentSnapshot.id,
+          ...(assignmentSnapshot.data() as Assignment),
+        }))
+        .filter((assignment) => isAssignmentVisibleOn(assignment, date))
+        .sort((a, b) => timestampMillis(a.createdAt) - timestampMillis(b.createdAt));
+
+      callback(visible);
+    },
+    onError,
+  );
+}
+
+// Lead-only: reads every assignment (no `assigneeIds` filter is possible for
+// "any assignee"), so visibility is filtered entirely client-side to avoid a
+// composite index.
+export function subscribeAssignmentsForDate(
+  date: string,
+  callback: (assignments: AssignmentWithId[]) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  return onSnapshot(
+    assignmentsCollection(),
+    (snapshot) => {
+      const visible = snapshot.docs
+        .map((assignmentSnapshot) => ({
+          id: assignmentSnapshot.id,
+          ...(assignmentSnapshot.data() as Assignment),
+        }))
+        .filter((assignment) => isAssignmentVisibleOn(assignment, date))
+        .sort((a, b) => timestampMillis(a.createdAt) - timestampMillis(b.createdAt));
+
+      callback(visible);
+    },
+    onError,
+  );
+}
+
+// The one assignee/date update doc, plus its images. Emits null while the
+// doc doesn't exist yet (the assignee hasn't written anything for this date).
+export function subscribeAssignmentUpdate(
+  assignmentId: string,
+  assigneeId: string,
+  date: string,
+  callback: (update: AssignmentUpdateWithImages | null) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  const updateId = assignmentUpdateIdFor(assigneeId, date);
+  const updateRef = assignmentUpdateDocById(assignmentId, updateId);
+
+  let updateData: AssignmentUpdate | null = null;
+  let images: TaskImageWithId[] = [];
+  let imagesUnsubscribe: Unsubscribe | undefined;
+
+  const emit = () => {
+    if (!updateData) {
+      callback(null);
+      return;
+    }
+
+    callback({ id: updateId, ...updateData, images: [...images] });
+  };
+
+  const docUnsubscribe = onSnapshot(
+    updateRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        updateData = null;
+        images = [];
+        imagesUnsubscribe?.();
+        imagesUnsubscribe = undefined;
+        emit();
+        return;
+      }
+
+      updateData = snapshot.data() as AssignmentUpdate;
+
+      if (!imagesUnsubscribe) {
+        const imagesQuery = query(
+          assignmentUpdateImagesCollection(assignmentId, updateId),
+          orderBy('createdAt', 'asc'),
+        );
+        imagesUnsubscribe = onSnapshot(imagesQuery, (imageSnapshot) => {
+          images = imageSnapshot.docs.map((imageSnapshotDoc) => {
+            const image = imageSnapshotDoc.data() as TaskImage;
+            return { id: imageSnapshotDoc.id, imageBase64: image.imageBase64 };
+          });
+          emit();
+        });
+      }
+
+      emit();
+    },
+    onError,
+  );
+
+  return () => {
+    docUnsubscribe();
+    imagesUnsubscribe?.();
+  };
+}
+
+// Lead-only: every assignee's update doc for one assignment/date, with each
+// update's images managed the same way subscribeReport manages task images.
+export function subscribeAssignmentUpdatesForDate(
+  assignmentId: string,
+  date: string,
+  callback: (updates: AssignmentUpdateWithImages[]) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  const updates = new Map<string, AssignmentUpdate>();
+  const updateImages = new Map<string, TaskImageWithId[]>();
+  const imageUnsubscribes = new Map<string, Unsubscribe>();
+
+  const emit = () => {
+    const results = Array.from(updates.entries()).map(([id, data]) => ({
+      id,
+      ...data,
+      images: [...(updateImages.get(id) ?? [])],
+    }));
+    callback(results);
+  };
+
+  const updatesQuery = query(assignmentUpdatesCollection(assignmentId), where('date', '==', date));
+  const updatesUnsubscribe = onSnapshot(
+    updatesQuery,
+    (snapshot) => {
+      const nextIds = new Set<string>();
+
+      snapshot.docs.forEach((updateSnapshot) => {
+        const updateId = updateSnapshot.id;
+        nextIds.add(updateId);
+        updates.set(updateId, updateSnapshot.data() as AssignmentUpdate);
+
+        if (!imageUnsubscribes.has(updateId)) {
+          const imagesQuery = query(
+            assignmentUpdateImagesCollection(assignmentId, updateId),
+            orderBy('createdAt', 'asc'),
+          );
+          const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+            updateImages.set(
+              updateId,
+              imageSnapshot.docs.map((imageSnapshotDoc) => {
+                const image = imageSnapshotDoc.data() as TaskImage;
+                return { id: imageSnapshotDoc.id, imageBase64: image.imageBase64 };
+              }),
+            );
+            emit();
+          });
+          imageUnsubscribes.set(updateId, unsubscribeImages);
+        }
+      });
+
+      Array.from(updates.keys()).forEach((updateId) => {
+        if (!nextIds.has(updateId)) {
+          updates.delete(updateId);
+          updateImages.delete(updateId);
+          imageUnsubscribes.get(updateId)?.();
+          imageUnsubscribes.delete(updateId);
+        }
+      });
+
+      emit();
+    },
+    onError,
+  );
+
+  return () => {
+    updatesUnsubscribe();
+    imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
+  };
+}
+
+// setDoc merge so the first write creates the doc and later writes never
+// clobber fields the caller didn't pass; `createdAt` is only set once, read
+// back via getDoc first since merge would otherwise reset it every write.
+// Firestore rejects undefined field values, so `text`/`links` are only
+// included when the caller actually passed them.
+export async function saveAssignmentUpdate(
+  assignmentId: string,
+  assigneeId: string,
+  date: string,
+  input: SaveAssignmentUpdateInput,
+): Promise<void> {
+  const ref = assignmentUpdateDoc(assignmentId, assigneeId, date);
+  const existing = await getDoc(ref);
+
+  const payload: Record<string, unknown> = {
+    assigneeId,
+    date,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (input.text !== undefined) {
+    payload.text = input.text;
+  }
+
+  if (input.links !== undefined) {
+    payload.links = input.links;
+  }
+
+  if (!existing.exists()) {
+    payload.createdAt = serverTimestamp();
+  }
+
+  await setDoc(ref, payload, { merge: true });
+}
+
+// Ensures the update doc exists first so its `images` subcollection has a
+// readable parent under the Firestore rules (mirrors ensureReport/addTaskImage).
+export async function addAssignmentUpdateImage(
+  assignmentId: string,
+  assigneeId: string,
+  date: string,
+  imageBase64: string,
+): Promise<string> {
+  await saveAssignmentUpdate(assignmentId, assigneeId, date, {});
+  const updateId = assignmentUpdateIdFor(assigneeId, date);
+  const ref = await addDoc(assignmentUpdateImagesCollection(assignmentId, updateId), {
+    imageBase64,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export function removeAssignmentUpdateImage(
+  assignmentId: string,
+  assigneeId: string,
+  date: string,
+  imageId: string,
+): Promise<void> {
+  const updateId = assignmentUpdateIdFor(assigneeId, date);
+  return deleteDoc(assignmentUpdateImageDoc(assignmentId, updateId, imageId));
 }

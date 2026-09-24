@@ -49,12 +49,29 @@ export interface TaskImageWithId {
   imageBase64: string;
 }
 
+export interface QuestionOptionDetail {
+  links: TaskLink[];
+}
+
 export interface Question {
   questionText: string;
   options: string[];
+  // Parallel to `options` (never a nested array, since Firestore forbids
+  // those): optionDetails[i].links are the links attached to options[i].
+  // Only written when at least one option actually has a link.
+  optionDetails?: QuestionOptionDetail[];
   selectedAnswer?: number;
   answeredBy?: string;
   answeredAt?: Timestamp;
+}
+
+// Doc shape for `questions/{questionId}/images/{imageId}`: one image per
+// doc, tagged with the option it belongs to (mirrors TaskImage plus the
+// option index).
+export interface QuestionOptionImage {
+  imageBase64: string;
+  optionIndex: number;
+  createdAt: Timestamp;
 }
 
 export interface LeadNote {
@@ -72,6 +89,7 @@ export interface LeadQuestion {
   kind: LeadQuestionKind;
   options?: string[];
   answerText?: string;
+  answerLinks?: TaskLink[];
   selectedAnswer?: number;
   answeredAt?: Timestamp;
   createdAt: Timestamp;
@@ -98,6 +116,7 @@ export interface SectionWithTasks extends Section {
 
 export interface QuestionWithId extends Question {
   id: string;
+  optionImages: Array<TaskImageWithId & { optionIndex: number }>;
 }
 
 export interface LeadNoteWithId extends LeadNote {
@@ -106,6 +125,7 @@ export interface LeadNoteWithId extends LeadNote {
 
 export interface LeadQuestionWithId extends LeadQuestion {
   id: string;
+  answerImages: TaskImageWithId[];
 }
 
 export interface ReportTree extends Report {
@@ -118,6 +138,38 @@ export interface ReportTree extends Report {
 
 export interface ReportSummary extends Report {
   id: string;
+}
+
+export type AssignmentStatus = 'open' | 'closed';
+
+export interface Assignment {
+  description: string;
+  assigneeIds: string[];
+  createdBy: string;
+  startDate: string;
+  status: AssignmentStatus;
+  closedDate?: string;
+  relatedTask?: { description: string };
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface AssignmentWithId extends Assignment {
+  id: string;
+}
+
+export interface AssignmentUpdate {
+  assigneeId: string;
+  date: string;
+  text?: string;
+  links: TaskLink[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface AssignmentUpdateWithImages extends AssignmentUpdate {
+  id: string;
+  images: TaskImageWithId[];
 }
 
 export function todayDateString(date = new Date()): string {

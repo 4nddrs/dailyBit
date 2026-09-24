@@ -35,6 +35,7 @@ npm run dev
 | `npm run build` | Run TypeScript checks and build the production bundle. |
 | `npm run preview` | Preview the built production bundle locally. |
 | `npm run typecheck` | Run `tsc --noEmit`. |
+| `npm run typecheck:api` | Type-check the `api/` Vercel Functions (`tsc --noEmit -p tsconfig.api.json`). |
 
 ## Configuration
 
@@ -96,11 +97,13 @@ reports/{userId}_{date}
     tasks/{taskId}
       images/{imageId}
   questions/{questionId}
+    images/{imageId}
   leadNotes/{noteId}
   leadQuestions/{questionId}
+    images/{imageId}
 ```
 
-Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions; `leadNotes` are the lead's report-level or task-level notes; `leadQuestions` are the lead's report-level or per-task questions to the report owner (empty `taskId`/`sectionId` means the question is about the report as a whole), answered as free text or by picking one of several options.
+Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions, where each option's text may carry supporting `optionDetails[i].links` (parallel to `options`, only stored when at least one option has a link) and an `images` subcollection of compressed Base64 image data URLs tagged with the `optionIndex` they belong to; `leadNotes` are the lead's report-level or task-level notes; `leadQuestions` are the lead's report-level or per-task questions to the report owner (empty `taskId`/`sectionId` means the question is about the report as a whole), answered as free text or by picking one of several options. A free-text (`kind: 'text'`) answer may also include `answerLinks` and an `images` subcollection of compressed Base64 image data URLs, same shape as task images; an options answer stays a plain selected index, with no links or images.
 
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
@@ -181,6 +184,15 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['selectedAnswer', 'answeredBy', 'answeredAt'])
         );
+
+        // An option's image attachments; same read/write shape as task
+        // images, and the report owner deletes them so removeQuestion can
+        // cascade.
+        match /images/{imageId} {
+          allow read: if ownsExistingReport(reportId) || isLead();
+          allow create: if ownsExistingReport(reportId);
+          allow delete: if ownsExistingReport(reportId);
+        }
       }
 
       // The report owner may delete lead notes/questions so that removing one of
@@ -198,14 +210,59 @@ service cloud.firestore {
         allow update: if isLead() || (
           ownsExistingReport(reportId) &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['answerText', 'selectedAnswer', 'answeredAt'])
+            .hasOnly(['answerText', 'selectedAnswer', 'answeredAt', 'answerLinks'])
         );
+
+        // A text answer's image attachments; same read/write shape as task
+        // images, plus a lead delete so removeLeadQuestion can cascade.
+        match /images/{imageId} {
+          allow read: if ownsExistingReport(reportId) || isLead();
+          allow create: if ownsExistingReport(reportId);
+          allow delete: if isLead() || ownsExistingReport(reportId);
+        }
       }
     }
 
     match /settings/{docId} {
       allow read: if isLead();
       allow write: if isLead();
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isLead()
+        || (signedIn() && request.auth.uid in resource.data.assigneeIds);
+      allow create, update, delete: if isLead();
+
+      match /updates/{updateId} {
+        // The update doc id is `${assigneeId}_${date}`, so its prefix proves
+        // ownership without a parent lookup when the doc doesn't exist yet
+        // (the assignee's first write of the day).
+        allow read: if isLead()
+          || (signedIn()
+              && (resource == null
+                  ? updateId.matches(request.auth.uid + '_.*')
+                  : resource.data.assigneeId == request.auth.uid));
+        allow create, update: if signedIn()
+          && request.resource.data.assigneeId == request.auth.uid
+          && updateId.matches(request.auth.uid + '_.*')
+          && request.auth.uid in
+            get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds;
+        // The lead also needs delete here so removeAssignment's cascade can
+        // clean up every assignee's updates, not only its own.
+        allow delete: if isLead()
+          || (signedIn() && resource.data.assigneeId == request.auth.uid);
+
+        match /images/{imageId} {
+          allow read: if isLead()
+            || (signedIn() && updateId.matches(request.auth.uid + '_.*'));
+          allow create, update: if signedIn()
+            && updateId.matches(request.auth.uid + '_.*')
+            && request.auth.uid in
+              get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds;
+          allow delete: if isLead()
+            || (signedIn() && updateId.matches(request.auth.uid + '_.*'));
+        }
+      }
     }
   }
 }
@@ -217,14 +274,22 @@ Security intent:
 - Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
-- Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`.
-- Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, and `answeredAt`.
+- Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`. A dev question's option image attachments follow the same read shape as task images: only the report owner creates or deletes them, since `removeQuestion` also cascades to them.
+- Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`. A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner creates them (attaching an image to their own answer) and either the report owner or the lead can delete them, since `removeLeadQuestion` also cascades to them.
 - Only users with `role: 'lead'` can read or write `settings/team`, which stores the lead's chosen developer ordering for the "Team" list and the reports rollup.
 - Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
+- Only users with `role: 'lead'` can create, update, or delete `assignments`; an assignee can only read the assignments that list their uid in `assigneeIds`.
+- An assignee can create or update only their own `updates` doc (id `${assigneeId}_${date}`), and only while they're still listed in the parent assignment's `assigneeIds`; the lead can read and delete any assignee's `updates`/`images` so `removeAssignment` can cascade-delete them.
 
 > **Note:** the lead's private-notes collection was renamed to `leadNotes`, and the old team-wide prompts collection was removed in favor of per-task `leadQuestions`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or lead notes/questions will be rejected.
 >
 > **Note:** the `settings/team` rule is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or saving the lead's team order will be rejected.
+>
+> **Note:** the `assignments` collection (and its `updates`/`images` subcollections) is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or creating/answering lead assignments will be rejected.
+>
+> **Note:** `leadQuestions.answerLinks` and the `leadQuestions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without them, redeploy the rules above before using this build, or saving link/image attachments on a text answer will be rejected.
+>
+> **Note:** `questions.optionDetails` and the `questions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without the `questions/{questionId}/images` match block, redeploy the rules above before using this build, or attaching a link/image to a dev question's option will be rejected.
 
 ## Usage
 
@@ -233,14 +298,15 @@ Security intent:
 - Creates the report document for the selected date on the developer's first write (adding a main title, or a question to the lead when there are none yet) — opening or viewing a date never creates a report.
 - Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
 - Keeps task descriptions short with a 140-character limit.
-- Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text or by picking an option).
+- Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text, with its own supporting links and images, or by picking an option).
+- Shows an "Assigned by lead" block above the report when the developer has at least one assignment visible on the selected date, with a "Pending"/"Updated" pill per assignment; each is answered with its own daily text/links/images update, independent of the report (it works even with no report for that date).
 
 ### LeadView
 
 - Shows a date-based rollup of submitted reports, including reported count for the team.
 - Displays each developer's sections, tasks, links, Firestore-stored images, and questions in realtime.
 - Hovering a task reveals "Question" and "Note" buttons; a task can have several of each.
-- Lets the lead ask a developer a per-task question (free text or multiple choice) and leave per-task notes.
+- Lets the lead ask a developer a per-task question (free text or multiple choice) and leave per-task notes; a free-text answer's links and images show alongside its text.
 - Lets the lead answer developer questions.
 - Shows a "Team" list with the lead's developers, in the same order the reports appear; the lead can reorder it (drag-and-drop or up/down buttons), which also reorders the reports. Clicking a name scrolls to that developer's report.
 
@@ -253,10 +319,38 @@ Security intent:
 | `reports/{reportId}/sections/{sectionId}` | Ordered group headings for a daily report. |
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}` | Short task updates with optional `links` and `order`. |
 | `reports/{reportId}/sections/{sectionId}/tasks/{taskId}/images/{imageId}` | Task image document with `imageBase64` data URL and `createdAt`; one doc per image, so the 1 MB limit applies per image doc. |
-| `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. |
+| `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. `optionDetails?: { links }[]` is parallel to `options` (only stored when at least one option has a link). |
+| `reports/{reportId}/questions/{questionId}/images/{imageId}` | An option's image attachment: `{ imageBase64, optionIndex, createdAt }`; one doc per image, same one-doc-per-image shape as task images. |
 | `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
-| `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. |
+| `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. A `'text'` answer may also include `answerLinks`. |
+| `reports/{reportId}/leadQuestions/{questionId}/images/{imageId}` | Image attached to a `'text'` lead question's answer; same one-doc-per-image shape as task images. |
 | `settings/team` | The lead's saved developer ordering: `{ memberOrder: string[], updatedAt }`, where `memberOrder` is an ordered list of developer uids. Drives both the "Team" list and the reports rollup order in LeadView. |
+| `assignments/{assignmentId}` | A lead-created task assigned to one or more developers: `{ description, assigneeIds, createdBy, startDate, status: 'open' | 'closed', closedDate?, createdAt, updatedAt }`. Visible on a date when `startDate <= date` and the assignment is still `'open'` or `closedDate >= date`. Independent of `reports`. |
+| `assignments/{assignmentId}/updates/{assigneeId}_{date}` | One assignee's daily answer to an assignment: `{ assigneeId, date, text?, links, createdAt, updatedAt }`. |
+| `assignments/{assignmentId}/updates/{updateId}/images/{imageId}` | Update image document with `imageBase64` data URL and `createdAt`, same one-doc-per-image shape as task images. |
+
+## AI polish
+
+DeveloperView has a "Polish with AI" (sparkle) action next to a task description, the dev→lead question text, a lead question's free-text answer, and an assignment's daily update text. It sends the current field text to the `api/polish` Vercel Function, which asks OpenAI to rewrite it into a clear, English, stand-up-ready sentence while keeping every concrete fact (ticket IDs, names, numbers, link text). The suggestion is shown inline with "Use" and "Keep mine"; nothing is ever auto-replaced.
+
+### How it works
+
+- The client (`src/services/polish.ts`) reads the signed-in developer's Firebase ID token and calls `POST /api/polish` with `{ kind, text, questionContext? }`.
+- `api/polish.ts` is a Vercel Function (Node runtime). It verifies the ID token against Google's public JWKS (no Firebase Admin SDK needed), validates and length-limits the input, applies a simple per-user rate limit, and calls the OpenAI Chat Completions API with a fixed system prompt per `kind` (`task`, `question`, `answer`, or `option` — an answer choice of a multiple-choice question, polished with the question as context). For `answer` and `option`, the model first checks that the text actually answers the question (JSON mode); an unrelated answer or option returns `422` with a "doesn't seem to address the question" message instead of a suggestion.
+- The OpenAI API key never leaves the server: it is read from `OPENAI_API_KEY` and is never echoed back to the client, logged, or included in error responses.
+- `npm run dev` (Vite only) does not serve `/api/*`. Test this feature locally with `vercel dev` instead, which runs both the Vite app and the Vercel Functions together.
+
+### Configuration (Vercel project)
+
+| Env var | Required | Notes |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Yes | Server-only secret. **Never** prefix it with `VITE_`, or it would be bundled into the client. Add it with `vercel env add OPENAI_API_KEY production --type secret` (repeat for `preview`/`development` as needed). |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4.1-nano`. Set to override the model. |
+| `FIREBASE_PROJECT_ID` | No | Falls back to `VITE_FIREBASE_PROJECT_ID` if unset; only needed if the server should use a different project id than the client. |
+
+### Cost note
+
+`gpt-4.1-nano` is a small, non-reasoning model; each polish call is capped at `max_tokens: 200` with `temperature: 0.2`, so a typical request costs a small fraction of a cent. The per-user rate limit (30 requests / 10 minutes, per serverless instance, best effort) is an additional abuse guard, not a budget control.
 
 ## Roles
 
