@@ -34,7 +34,9 @@ import { ImageLightbox } from '../ImageLightbox';
 import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
+import { PolishError, polishText } from '../../services/polish';
 import type { CreateQuestionInput } from '../../services/firestore';
+import type { PolishKind } from '../../services/polish';
 import type {
   AssignmentUpdateWithImages,
   AssignmentWithId,
@@ -476,6 +478,136 @@ function CardToolbar({ children }: { children: ReactNode }) {
   );
 }
 
+function SparkleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+      <path d="M8 1a.75.75 0 0 1 .728.568l.65 2.598a3.75 3.75 0 0 0 2.706 2.706l2.598.65a.75.75 0 0 1 0 1.456l-2.598.65a3.75 3.75 0 0 0-2.706 2.706l-.65 2.598a.75.75 0 0 1-1.456 0l-.65-2.598a3.75 3.75 0 0 0-2.706-2.706l-2.598-.65a.75.75 0 0 1 0-1.456l2.598-.65a3.75 3.75 0 0 0 2.706-2.706l.65-2.598A.75.75 0 0 1 8 1Z" />
+    </svg>
+  );
+}
+
+/**
+ * Shared state machine for a single "Polish with AI" action: calls the
+ * `/api/polish` client service for `text`, then hands the result to `onUse`
+ * only when the developer explicitly accepts it (never auto-replaces).
+ */
+function usePolishAction({
+  kind,
+  questionContext,
+  onUse,
+}: {
+  kind: PolishKind;
+  questionContext?: string;
+  onUse: (suggestion: string) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function trigger(text: string) {
+    const trimmedText = text.trim();
+    if (!trimmedText || loading) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSuggestion(null);
+    try {
+      const result = await polishText({ kind, text: trimmedText, questionContext });
+      setSuggestion(result);
+    } catch (caughtError) {
+      console.error('AI polish failed', caughtError);
+      setError(caughtError instanceof PolishError ? caughtError.message : 'AI polish failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function useSuggestion() {
+    if (suggestion) {
+      onUse(suggestion);
+    }
+    setSuggestion(null);
+    setError(null);
+  }
+
+  function dismiss() {
+    setSuggestion(null);
+    setError(null);
+  }
+
+  return { loading, suggestion, error, trigger, useSuggestion, dismiss };
+}
+
+function PolishButton({
+  disabled,
+  loading,
+  onClick,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <IconButton
+      icon={<SparkleIcon />}
+      label={loading ? 'Polishing with AI' : 'Polish with AI'}
+      onClick={onClick}
+      disabled={disabled || loading}
+    />
+  );
+}
+
+function PolishSuggestionPanel({
+  loading,
+  suggestion,
+  error,
+  onUse,
+  onDismiss,
+}: {
+  loading: boolean;
+  suggestion: string | null;
+  error: string | null;
+  onUse: () => void;
+  onDismiss: () => void;
+}) {
+  if (!loading && !suggestion && !error) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-accent-emphasis/40 bg-accent-muted p-2 text-sm" role="status">
+      {loading ? (
+        <p className="text-fg-muted">Polishing with AI...</p>
+      ) : error ? (
+        <p className="font-medium text-danger-fg" role="alert">
+          {error}
+        </p>
+      ) : (
+        <>
+          <p className="text-fg">{suggestion}</p>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+              type="button"
+              onClick={onDismiss}
+            >
+              Keep mine
+            </button>
+            <button
+              className="rounded-md border border-white/15 bg-accent-emphasis px-2 py-1 text-xs font-medium text-white transition hover:bg-accent-emphasis/80"
+              type="button"
+              onClick={onUse}
+            >
+              Use
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AttachmentImages({
   images,
   onRemove,
@@ -680,6 +812,16 @@ function AssignmentUpdateEditor({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [showLinkForm, setShowLinkForm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const updatePolish = usePolishAction({
+    kind: 'task',
+    onUse: (suggestion) => {
+      setText(suggestion);
+      runSafely(
+        saveAssignmentUpdate(assignmentId, assigneeId, date, { text: suggestion }),
+        'Assignment update save failed',
+      );
+    },
+  });
 
   useEffect(() => {
     setText(update?.text ?? '');
@@ -764,11 +906,24 @@ function AssignmentUpdateEditor({
             label={uploading ? 'Processing image' : 'Add image'}
             onClick={() => fileInputRef.current?.click()}
           />
+          <PolishButton
+            disabled={!text.trim()}
+            loading={updatePolish.loading}
+            onClick={() => void updatePolish.trigger(text)}
+          />
         </CardToolbar>
       </div>
       <p className={`mt-1 text-right text-xs font-medium ${counterColor}`}>
         {text.length}/{TASK_DESCRIPTION_LIMIT}
       </p>
+
+      <PolishSuggestionPanel
+        loading={updatePolish.loading}
+        suggestion={updatePolish.suggestion}
+        error={updatePolish.error}
+        onUse={updatePolish.useSuggestion}
+        onDismiss={updatePolish.dismiss}
+      />
 
       <input
         ref={fileInputRef}
@@ -906,6 +1061,11 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const answerPolish = usePolishAction({
+    kind: 'answer',
+    questionContext: question.questionText,
+    onUse: (suggestion) => void handleUseAnswerSuggestion(suggestion),
+  });
 
   useEffect(() => {
     setAnswerText(question.answerText ?? '');
@@ -930,6 +1090,21 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
     setAnswerError(null);
     try {
       await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer, answerLinks });
+      setEditing(false);
+    } catch (caughtError) {
+      console.error('Lead question answer failed', caughtError);
+      setAnswerError('Answer could not be saved. Please try again.');
+    } finally {
+      setSubmittingText(false);
+    }
+  }
+
+  async function handleUseAnswerSuggestion(suggestion: string) {
+    setAnswerText(suggestion);
+    setSubmittingText(true);
+    setAnswerError(null);
+    try {
+      await answerLeadQuestion(reportId, question.id, { answerText: suggestion, answerLinks });
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1059,11 +1234,25 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
         </div>
       ) : isText ? (
         <form className="mt-2" onSubmit={handleTextSubmit}>
-          <textarea
-            className="min-h-16 w-full resize-y rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-            value={answerText}
-            onChange={(event) => setAnswerText(event.target.value)}
-            placeholder="Type your answer"
+          <div className="flex items-start gap-2">
+            <textarea
+              className="min-h-16 min-w-0 flex-1 resize-y rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+              value={answerText}
+              onChange={(event) => setAnswerText(event.target.value)}
+              placeholder="Type your answer"
+            />
+            <PolishButton
+              disabled={!answerText.trim()}
+              loading={answerPolish.loading}
+              onClick={() => void answerPolish.trigger(answerText)}
+            />
+          </div>
+          <PolishSuggestionPanel
+            loading={answerPolish.loading}
+            suggestion={answerPolish.suggestion}
+            error={answerPolish.error}
+            onUse={answerPolish.useSuggestion}
+            onDismiss={answerPolish.dismiss}
           />
           <div className="mt-2 flex justify-end">
             <button
@@ -1143,6 +1332,13 @@ function TaskCard({
   const [isDragging, setIsDragging] = useState(false);
   const [dragArmed, setDragArmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const descriptionPolish = usePolishAction({
+    kind: 'task',
+    onUse: (suggestion) => {
+      setDescription(suggestion);
+      runSafely(updateTask(reportId, sectionId, task.id, { description: suggestion }), 'Task update failed');
+    },
+  });
 
   useEffect(() => {
     setDescription(task.description);
@@ -1288,6 +1484,11 @@ function TaskCard({
             label={uploading ? 'Processing image' : 'Add image'}
             onClick={() => fileInputRef.current?.click()}
           />
+          <PolishButton
+            disabled={!description.trim()}
+            loading={descriptionPolish.loading}
+            onClick={() => void descriptionPolish.trigger(description)}
+          />
           <IconButton
             icon={<TrashIcon />}
             label="Remove task"
@@ -1296,6 +1497,14 @@ function TaskCard({
           />
         </CardToolbar>
       </div>
+
+      <PolishSuggestionPanel
+        loading={descriptionPolish.loading}
+        suggestion={descriptionPolish.suggestion}
+        error={descriptionPolish.error}
+        onUse={descriptionPolish.useSuggestion}
+        onDismiss={descriptionPolish.dismiss}
+      />
 
       <input
         ref={fileInputRef}
@@ -1647,6 +1856,10 @@ function QuestionComposer({
 }) {
   const [questionText, setQuestionText] = useState('');
   const [options, setOptions] = useState(['', '']);
+  const questionPolish = usePolishAction({
+    kind: 'question',
+    onUse: (suggestion) => setQuestionText(suggestion),
+  });
 
   function updateOption(index: number, value: string) {
     setOptions((currentOptions) =>
@@ -1679,19 +1892,35 @@ function QuestionComposer({
     );
     setQuestionText('');
     setOptions(['', '']);
+    questionPolish.dismiss();
   }
 
   return (
     <form className="rounded-md border-l-2 border-done-emphasis bg-done-muted p-4" onSubmit={handleSubmit}>
-      <label className="block text-sm font-medium text-done-fg">
-        Question for the lead
-        <input
-          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-          value={questionText}
-          onChange={(event) => setQuestionText(event.target.value)}
-          placeholder="What should the lead decide?"
+      <div className="flex items-start gap-2">
+        <label className="block min-w-0 flex-1 text-sm font-medium text-done-fg">
+          Question for the lead
+          <input
+            className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+            value={questionText}
+            onChange={(event) => setQuestionText(event.target.value)}
+            placeholder="What should the lead decide?"
+          />
+        </label>
+        <PolishButton
+          disabled={!questionText.trim()}
+          loading={questionPolish.loading}
+          onClick={() => void questionPolish.trigger(questionText)}
         />
-      </label>
+      </div>
+
+      <PolishSuggestionPanel
+        loading={questionPolish.loading}
+        suggestion={questionPolish.suggestion}
+        error={questionPolish.error}
+        onUse={questionPolish.useSuggestion}
+        onDismiss={questionPolish.dismiss}
+      />
 
       <div className="mt-3 space-y-2">
         {options.map((option, index) => (

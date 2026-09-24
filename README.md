@@ -35,6 +35,7 @@ npm run dev
 | `npm run build` | Run TypeScript checks and build the production bundle. |
 | `npm run preview` | Preview the built production bundle locally. |
 | `npm run typecheck` | Run `tsc --noEmit`. |
+| `npm run typecheck:api` | Type-check the `api/` Vercel Functions (`tsc --noEmit -p tsconfig.api.json`). |
 
 ## Configuration
 
@@ -314,6 +315,29 @@ Security intent:
 | `assignments/{assignmentId}` | A lead-created task assigned to one or more developers: `{ description, assigneeIds, createdBy, startDate, status: 'open' | 'closed', closedDate?, createdAt, updatedAt }`. Visible on a date when `startDate <= date` and the assignment is still `'open'` or `closedDate >= date`. Independent of `reports`. |
 | `assignments/{assignmentId}/updates/{assigneeId}_{date}` | One assignee's daily answer to an assignment: `{ assigneeId, date, text?, links, createdAt, updatedAt }`. |
 | `assignments/{assignmentId}/updates/{updateId}/images/{imageId}` | Update image document with `imageBase64` data URL and `createdAt`, same one-doc-per-image shape as task images. |
+
+## AI polish
+
+DeveloperView has a "Polish with AI" (sparkle) action next to a task description, the dev→lead question text, a lead question's free-text answer, and an assignment's daily update text. It sends the current field text to the `api/polish` Vercel Function, which asks OpenAI to rewrite it into a clear, English, stand-up-ready sentence while keeping every concrete fact (ticket IDs, names, numbers, link text). The suggestion is shown inline with "Use" and "Keep mine"; nothing is ever auto-replaced.
+
+### How it works
+
+- The client (`src/services/polish.ts`) reads the signed-in developer's Firebase ID token and calls `POST /api/polish` with `{ kind, text, questionContext? }`.
+- `api/polish.ts` is a Vercel Function (Node runtime). It verifies the ID token against Google's public JWKS (no Firebase Admin SDK needed), validates and length-limits the input, applies a simple per-user rate limit, and calls the OpenAI Chat Completions API with a fixed system prompt per `kind` (`task`, `question`, or `answer`).
+- The OpenAI API key never leaves the server: it is read from `OPENAI_API_KEY` and is never echoed back to the client, logged, or included in error responses.
+- `npm run dev` (Vite only) does not serve `/api/*`. Test this feature locally with `vercel dev` instead, which runs both the Vite app and the Vercel Functions together.
+
+### Configuration (Vercel project)
+
+| Env var | Required | Notes |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | Yes | Server-only secret. **Never** prefix it with `VITE_`, or it would be bundled into the client. Add it with `vercel env add OPENAI_API_KEY production --type secret` (repeat for `preview`/`development` as needed). |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4.1-nano`. Set to override the model. |
+| `FIREBASE_PROJECT_ID` | No | Falls back to `VITE_FIREBASE_PROJECT_ID` if unset; only needed if the server should use a different project id than the client. |
+
+### Cost note
+
+`gpt-4.1-nano` is a small, non-reasoning model; each polish call is capped at `max_tokens: 200` with `temperature: 0.2`, so a typical request costs a small fraction of a cent. The per-user rate limit (30 requests / 10 minutes, per serverless instance, best effort) is an additional abuse guard, not a budget control.
 
 ## Roles
 
