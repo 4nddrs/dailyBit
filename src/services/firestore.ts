@@ -349,12 +349,14 @@ export function subscribeReport(
     }));
 
     // Split dev questions by `sectionId`: section questions are attached to
-    // their section below, and only the report-level ones (no `sectionId`)
-    // stay on the tree's own `questions` array.
+    // their section below, and only the report-level ones stay on the tree's
+    // own `questions` array. A question whose section is missing (e.g. a
+    // section delete that only partly finished) falls back to report level
+    // so it never silently disappears.
     const sectionQuestions = new Map<string, QuestionWithId[]>();
     const reportLevelQuestions: QuestionWithId[] = [];
     questionTrees.forEach((question) => {
-      if (question.sectionId) {
+      if (question.sectionId && sections.has(question.sectionId)) {
         sectionQuestions.set(question.sectionId, [...(sectionQuestions.get(question.sectionId) ?? []), question]);
       } else {
         reportLevelQuestions.push(question);

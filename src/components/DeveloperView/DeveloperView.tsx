@@ -410,7 +410,8 @@ function AddTaskForm({
       addTask(reportId, section.id, {
         description: trimmedDescription,
         links: [],
-        order: getNextOrder(section.tasks),
+        // Tasks and section questions share one order space per section.
+        order: getNextOrder([...section.tasks, ...section.questions]),
       }),
       'Task add failed',
     );
