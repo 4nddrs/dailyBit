@@ -149,13 +149,13 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
             <span className="text-fg-muted">/</span>
             <span className="text-fg-muted">{viewName}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-fg-muted">{profile?.name ?? 'DailyBit user'}</span>
-            <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="min-w-0 break-words text-sm text-fg-muted">{profile?.name ?? 'DailyBit user'}</span>
+            <span className="shrink-0 rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
               {profile?.role ?? 'loading...'}
             </span>
             <button
-              className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+              className="shrink-0 rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
               type="button"
               onClick={() => void signOut()}
             >
@@ -192,7 +192,7 @@ export default function App() {
       <main className="flex min-h-screen items-center justify-center bg-canvas-inset px-4 py-10">
         <section className="w-full max-w-lg rounded-md border border-danger-emphasis/50 bg-danger-muted p-4 shadow-sm">
           <h1 className="text-lg font-semibold text-danger-fg">Could not load your profile</h1>
-          <p className="mt-4 text-sm leading-6 text-fg">{profileError}</p>
+          <p className="mt-4 break-words text-sm leading-6 text-fg">{profileError}</p>
           <p className="mt-3 text-sm leading-6 text-fg-muted">
             Check that the Firestore database exists and its rules allow authenticated reads of the
             users collection, then reload.
