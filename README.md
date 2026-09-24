@@ -323,7 +323,7 @@ DeveloperView has a "Polish with AI" (sparkle) action next to a task description
 ### How it works
 
 - The client (`src/services/polish.ts`) reads the signed-in developer's Firebase ID token and calls `POST /api/polish` with `{ kind, text, questionContext? }`.
-- `api/polish.ts` is a Vercel Function (Node runtime). It verifies the ID token against Google's public JWKS (no Firebase Admin SDK needed), validates and length-limits the input, applies a simple per-user rate limit, and calls the OpenAI Chat Completions API with a fixed system prompt per `kind` (`task`, `question`, `answer`, or `option` — an answer choice of a multiple-choice question, polished with the question as context).
+- `api/polish.ts` is a Vercel Function (Node runtime). It verifies the ID token against Google's public JWKS (no Firebase Admin SDK needed), validates and length-limits the input, applies a simple per-user rate limit, and calls the OpenAI Chat Completions API with a fixed system prompt per `kind` (`task`, `question`, `answer`, or `option` — an answer choice of a multiple-choice question, polished with the question as context). For `answer`, the model first checks that the developer's answer relates to the lead's question (JSON mode); an unrelated answer returns `422` with a "doesn't seem to address the question" message instead of a suggestion.
 - The OpenAI API key never leaves the server: it is read from `OPENAI_API_KEY` and is never echoed back to the client, logged, or included in error responses.
 - `npm run dev` (Vite only) does not serve `/api/*`. Test this feature locally with `vercel dev` instead, which runs both the Vite app and the Vercel Functions together.
 

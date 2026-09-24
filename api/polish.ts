@@ -146,12 +146,47 @@ function validateBody(raw: unknown): ValidationResult {
   };
 }
 
+// Answers to the lead's questions are first checked for relevance: an answer
+// that has nothing to do with the question is rejected instead of polished.
+const RELEVANCE_INSTRUCTIONS = [
+  "Before rewriting, judge whether the developer's answer is related to the question, even partially or indirectly.",
+  "Be lenient: short, partial, or not-yet-known answers that still address the question count as related.",
+  'Respond ONLY with a JSON object of the form {"relevant": boolean, "suggestion": string}.',
+  'If the answer is not related to the question, set "relevant" to false and "suggestion" to an empty string.',
+].join(' ');
+
+const OFF_TOPIC_MESSAGE =
+  "Your answer doesn't seem to address the question. Please rewrite it and try again.";
+
+function needsRelevanceCheck(kind: PolishKind, questionContext: string | undefined): boolean {
+  return kind === 'answer' && Boolean(questionContext);
+}
+
+function parseRelevanceResult(content: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new PolishError(500, 'AI polish returned an unexpected response.');
+  }
+  const result = parsed as { relevant?: unknown; suggestion?: unknown };
+  if (result.relevant === false) {
+    throw new PolishError(422, OFF_TOPIC_MESSAGE);
+  }
+  if (typeof result.suggestion !== 'string' || result.suggestion.trim().length === 0) {
+    throw new PolishError(500, 'AI polish returned an unexpected response.');
+  }
+  return result.suggestion;
+}
+
 function buildMessages(
   kind: PolishKind,
   text: string,
   questionContext: string | undefined,
 ): Array<{ role: 'system' | 'user'; content: string }> {
-  const systemContent = `${BASE_SYSTEM_PROMPT} ${KIND_INSTRUCTIONS[kind]}`;
+  const systemContent = `${BASE_SYSTEM_PROMPT} ${KIND_INSTRUCTIONS[kind]}${
+    needsRelevanceCheck(kind, questionContext) ? ` ${RELEVANCE_INSTRUCTIONS}` : ''
+  }`;
   let userContent = `Text to rewrite:\n"""${text}"""`;
   if (kind === 'answer' && questionContext) {
     userContent = `Question from the lead: "${questionContext}"\n\nDeveloper's answer to rewrite:\n"""${text}"""`;
@@ -190,6 +225,7 @@ class PolishError extends Error {
 
 async function requestPolishedText(
   messages: Array<{ role: 'system' | 'user'; content: string }>,
+  jsonMode = false,
 ): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -214,6 +250,7 @@ async function requestPolishedText(
         messages,
         temperature: 0.2,
         max_tokens: 200,
+        ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: controller.signal,
     });
@@ -289,7 +326,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   const messages = buildMessages(kind, text, questionContext);
 
   try {
-    const rawSuggestion = await requestPolishedText(messages);
+    const checkRelevance = needsRelevanceCheck(kind, questionContext);
+    const content = await requestPolishedText(messages, checkRelevance);
+    const rawSuggestion = checkRelevance ? parseRelevanceResult(content) : content;
     const suggestion = enforceLimit(rawSuggestion, KIND_LIMITS[kind]);
     res.status(200).json({ suggestion });
   } catch (error) {
