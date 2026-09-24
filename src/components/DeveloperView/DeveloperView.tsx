@@ -1535,6 +1535,17 @@ function TaskCard({
           <p className={`mt-1 text-right text-xs font-medium ${counterColor}`}>
             {description.length}/{TASK_DESCRIPTION_LIMIT}
           </p>
+          {/* ml-8 matches the letter column (w-6 + gap-2) so attachments line up with the task field. */}
+          <div className="ml-8">
+            <TaskAttachments
+              images={task.images}
+              onRemoveImage={handleRemoveImage}
+              imageAlt="Task attachment preview"
+              links={links}
+              onRemoveLink={(index) => updateLinks(links.filter((_, linkIndex) => linkIndex !== index))}
+              error={uploadError}
+            />
+          </div>
         </div>
         <CardToolbar>
           <IconButton
@@ -1590,15 +1601,6 @@ function TaskCard({
           <LinkForm onAdd={(link) => updateLinks([...links, link])} onClose={() => setShowLinkForm(false)} />
         </div>
       ) : null}
-
-      <TaskAttachments
-        images={task.images}
-        onRemoveImage={handleRemoveImage}
-        imageAlt="Task attachment preview"
-        links={links}
-        onRemoveLink={(index) => updateLinks(links.filter((_, linkIndex) => linkIndex !== index))}
-        error={uploadError}
-      />
 
       <LeadNotesReadOnly notes={leadNotes} />
       {leadQuestions.length > 0 ? (
