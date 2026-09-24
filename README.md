@@ -157,26 +157,33 @@ service cloud.firestore {
             && (resource == null || resource.data.userId == request.auth.uid));
       allow list: if isLead();
       allow create: if isOwnReportCreate();
-      allow update, delete: if ownsExistingReport(reportId);
+      // A lead editing a developer's report in place (see "Lead edit mode"
+      // below) only ever touches `updatedAt`, the same field every dev write
+      // below stamps on its parent report; report creation stays owner-only.
+      allow update: if ownsExistingReport(reportId) || (
+        isLead() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
+      );
+      allow delete: if ownsExistingReport(reportId);
 
       match /sections/{sectionId} {
         allow read: if ownsExistingReport(reportId) || isLead();
-        allow write: if ownsExistingReport(reportId);
+        allow write: if ownsExistingReport(reportId) || isLead();
 
         match /tasks/{taskId} {
           allow read: if ownsExistingReport(reportId) || isLead();
-          allow write: if ownsExistingReport(reportId);
+          allow write: if ownsExistingReport(reportId) || isLead();
 
           match /images/{imageId} {
             allow read: if ownsExistingReport(reportId) || isLead();
-            allow write: if ownsExistingReport(reportId);
+            allow write: if ownsExistingReport(reportId) || isLead();
           }
         }
       }
 
       match /questions/{questionId} {
         allow read: if ownsExistingReport(reportId) || isLead();
-        allow create, delete: if ownsExistingReport(reportId);
+        allow create, delete: if ownsExistingReport(reportId) || isLead();
         allow update: if (
           ownsExistingReport(reportId) &&
           !request.resource.data.diff(resource.data).affectedKeys()
@@ -184,16 +191,16 @@ service cloud.firestore {
         ) || (
           isLead() &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['selectedAnswer', 'answeredBy', 'answeredAt'])
+            .hasOnly(['selectedAnswer', 'answeredBy', 'answeredAt', 'order'])
         );
 
         // An option's image attachments; same read/write shape as task
-        // images, and the report owner deletes them so removeQuestion can
-        // cascade.
+        // images. The report owner or the lead (editing in place) creates
+        // them, and either deletes them so removeQuestion can cascade.
         match /images/{imageId} {
           allow read: if ownsExistingReport(reportId) || isLead();
-          allow create: if ownsExistingReport(reportId);
-          allow delete: if ownsExistingReport(reportId);
+          allow create: if ownsExistingReport(reportId) || isLead();
+          allow delete: if ownsExistingReport(reportId) || isLead();
         }
       }
 
@@ -216,10 +223,12 @@ service cloud.firestore {
         );
 
         // A text answer's image attachments; same read/write shape as task
-        // images, plus a lead delete so removeLeadQuestion can cascade.
+        // images. The report owner or the lead (editing in place, answering
+        // on the owner's behalf) creates them; either can delete, plus a
+        // lead delete so removeLeadQuestion can cascade.
         match /images/{imageId} {
           allow read: if ownsExistingReport(reportId) || isLead();
-          allow create: if ownsExistingReport(reportId);
+          allow create: if ownsExistingReport(reportId) || isLead();
           allow delete: if isLead() || ownsExistingReport(reportId);
         }
       }
@@ -244,11 +253,16 @@ service cloud.firestore {
               && (resource == null
                   ? updateId.matches(request.auth.uid + '_.*')
                   : resource.data.assigneeId == request.auth.uid));
-        allow create, update: if signedIn()
-          && request.resource.data.assigneeId == request.auth.uid
-          && updateId.matches(request.auth.uid + '_.*')
-          && request.auth.uid in
-            get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds;
+        // The assignee writes their own update; a lead editing in place
+        // writes on the assignee's behalf instead, proven by the doc id
+        // prefix matching the `assigneeId` the write itself declares (the
+        // lead is never in `assigneeIds`, so it can't reuse the assignee check).
+        allow create, update: if (signedIn()
+            && request.resource.data.assigneeId == request.auth.uid
+            && updateId.matches(request.auth.uid + '_.*')
+            && request.auth.uid in
+              get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds)
+          || (isLead() && updateId.matches(request.resource.data.assigneeId + '_.*'));
         // The lead also needs delete here so removeAssignment's cascade can
         // clean up every assignee's updates, not only its own.
         allow delete: if isLead()
@@ -257,10 +271,11 @@ service cloud.firestore {
         match /images/{imageId} {
           allow read: if isLead()
             || (signedIn() && updateId.matches(request.auth.uid + '_.*'));
-          allow create, update: if signedIn()
-            && updateId.matches(request.auth.uid + '_.*')
-            && request.auth.uid in
-              get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds;
+          allow create, update: if isLead()
+            || (signedIn()
+                && updateId.matches(request.auth.uid + '_.*')
+                && request.auth.uid in
+                  get(/databases/$(database)/documents/assignments/$(assignmentId)).data.assigneeIds);
           allow delete: if isLead()
             || (signedIn() && updateId.matches(request.auth.uid + '_.*'));
         }
@@ -275,13 +290,14 @@ Security intent:
 - Authenticated developers can read and write their own report tree.
 - Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
+- **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. Report **creation** stays owner-only (`isOwnReportCreate()`): a lead can only edit a report that already exists, so a developer with no report for the date stays read-only in edit mode.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
-- Only users with `role: 'lead'` can write `questions.selectedAnswer`, `questions.answeredBy`, and `questions.answeredAt`. A dev question's option image attachments follow the same read shape as task images: only the report owner creates or deletes them, since `removeQuestion` also cascades to them.
-- Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`. A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner creates them (attaching an image to their own answer) and either the report owner or the lead can delete them, since `removeLeadQuestion` also cascades to them.
+- The report owner or the lead (editing in place) can create, update, or delete `questions`, and edit a question's `order` (section reorder); only the lead can additionally write `selectedAnswer`, `answeredBy`, and `answeredAt`. A dev question's option image attachments follow the same read shape as task images: the report owner or the lead creates or deletes them, since the lead can now compose a question with attachments and `removeQuestion` also cascades to them.
+- Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`, while the lead may update any field (unrestricted, since it also owns question creation). A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner or the lead (answering on the owner's behalf) creates them, and either can delete them, since `removeLeadQuestion` also cascades to them.
 - Only users with `role: 'lead'` can read or write `settings/team`, which stores the lead's chosen developer ordering for the "Team" list and the reports rollup.
 - Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
 - Only users with `role: 'lead'` can create, update, or delete `assignments`; an assignee can only read the assignments that list their uid in `assigneeIds`.
-- An assignee can create or update only their own `updates` doc (id `${assigneeId}_${date}`), and only while they're still listed in the parent assignment's `assigneeIds`; the lead can read and delete any assignee's `updates`/`images` so `removeAssignment` can cascade-delete them.
+- An assignee can create or update only their own `updates` doc (id `${assigneeId}_${date}`), and only while they're still listed in the parent assignment's `assigneeIds`; a lead editing in place may create or update any assignee's `updates`/`images` doc instead, proven by the doc id prefix matching the write's own `assigneeId` field rather than the lead's uid. The lead can also read and delete any assignee's `updates`/`images` so `removeAssignment` can cascade-delete them.
 
 > **Note:** the lead's private-notes collection was renamed to `leadNotes`, and the old team-wide prompts collection was removed in favor of per-task `leadQuestions`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or lead notes/questions will be rejected.
 >
@@ -290,6 +306,8 @@ Security intent:
 > **Note:** the `assignments` collection (and its `updates`/`images` subcollections) is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or creating/answering lead assignments will be rejected.
 >
 > **Note:** `leadQuestions.answerLinks` and the `leadQuestions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without them, redeploy the rules above before using this build, or saving link/image attachments on a text answer will be rejected.
+>
+> **Note:** lead edit mode is new and widens `isLead()` write access onto `reports.updatedAt`, `sections`/`tasks`/`images`, `questions` (create/delete/`order`), `questions/{questionId}/images`, `leadQuestions/{questionId}/images`, and `assignments/{assignmentId}/updates` (and their `images`). If your Firestore security rules were already deployed without these, redeploy the rules above before using this build, or the lead's in-place edits will be rejected.
 >
 > **Note:** `questions.optionDetails` and the `questions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without the `questions/{questionId}/images` match block, redeploy the rules above before using this build, or attaching a link/image to a dev question's option will be rejected.
 
