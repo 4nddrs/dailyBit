@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState, useEffect } from 'react';
+import { FormEvent, useMemo, useState, useEffect, type ReactNode } from 'react';
 import {
   addLeadNote,
   addLeadQuestion,
@@ -1097,6 +1097,56 @@ function SectionCard({
   );
 }
 
+// Read-only option rows for a developer's multiple-choice question: one bordered
+// row per option so each option's links and images stay visibly grouped. The
+// caller supplies the right-hand action (Choose button, Selected pill, ...).
+export function QuestionOptionList({
+  question,
+  renderAction,
+}: {
+  question: QuestionWithId;
+  renderAction?: (index: number, selected: boolean) => ReactNode;
+}) {
+  return (
+    <ol className="mt-3 space-y-2">
+      {question.options.map((option, index) => {
+        const selected = question.selectedAnswer === index;
+        const links = question.optionDetails?.[index]?.links ?? [];
+        const images = question.optionImages.filter((image) => image.optionIndex === index);
+        const hasAttachments = links.length > 0 || images.length > 0;
+
+        return (
+          <li
+            className={`rounded-md border p-3 transition ${
+              selected ? 'border-success-emphasis bg-success-muted' : 'border-line bg-canvas-subtle'
+            }`}
+            key={`${option}-${index}`}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                  selected ? 'bg-success-emphasis text-white' : 'bg-neutral-muted text-fg'
+                }`}
+                aria-hidden="true"
+              >
+                {getOptionLabel(index)}
+              </span>
+              <p className="min-w-0 flex-1 text-sm text-fg">{option}</p>
+              {renderAction?.(index, selected)}
+            </div>
+            {hasAttachments ? (
+              <div className="mt-2 space-y-2 pl-9">
+                <AnswerAttachmentImages images={images} />
+                <LinkChips links={links} />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function QuestionCard({
   reportId,
   question,
@@ -1139,57 +1189,26 @@ function QuestionCard({
         </span>
       </div>
 
-      {/* One bordered row per option so each option's links and images stay visibly grouped. */}
-      <ol className="mt-3 space-y-2">
-        {question.options.map((option, index) => {
-          const selected = question.selectedAnswer === index;
-          const links = question.optionDetails?.[index]?.links ?? [];
-          const images = question.optionImages.filter((image) => image.optionIndex === index);
-          const hasAttachments = links.length > 0 || images.length > 0;
-
-          return (
-            <li
-              className={`rounded-md border p-3 transition ${
-                selected ? 'border-success-emphasis bg-success-muted' : 'border-line bg-canvas-subtle'
-              }`}
-              key={`${option}-${index}`}
+      <QuestionOptionList
+        question={question}
+        renderAction={(index, selected) =>
+          selected ? (
+            <span className="shrink-0 rounded-full border border-success-emphasis/40 px-2 py-0.5 text-xs font-medium text-success-fg">
+              Selected
+            </span>
+          ) : (
+            <button
+              className="shrink-0 rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg disabled:cursor-wait disabled:opacity-60"
+              type="button"
+              disabled={submittingIndex !== null}
+              onClick={() => void handleAnswer(index)}
+              aria-label={`Choose option ${getOptionLabel(index)}`}
             >
-              <div className="flex items-center gap-3">
-                <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                    selected ? 'bg-success-emphasis text-white' : 'bg-neutral-muted text-fg'
-                  }`}
-                  aria-hidden="true"
-                >
-                  {getOptionLabel(index)}
-                </span>
-                <p className="min-w-0 flex-1 text-sm text-fg">{option}</p>
-                {selected ? (
-                  <span className="shrink-0 rounded-full border border-success-emphasis/40 px-2 py-0.5 text-xs font-medium text-success-fg">
-                    Selected
-                  </span>
-                ) : (
-                  <button
-                    className="shrink-0 rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg disabled:cursor-wait disabled:opacity-60"
-                    type="button"
-                    disabled={submittingIndex !== null}
-                    onClick={() => void handleAnswer(index)}
-                    aria-label={`Choose option ${getOptionLabel(index)}`}
-                  >
-                    {submittingIndex === index ? 'Saving...' : 'Choose'}
-                  </button>
-                )}
-              </div>
-              {hasAttachments ? (
-                <div className="mt-2 space-y-2 pl-9">
-                  <AnswerAttachmentImages images={images} />
-                  <LinkChips links={links} />
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
+              {submittingIndex === index ? 'Saving...' : 'Choose'}
+            </button>
+          )
+        }
+      />
       {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
     </article>
   );

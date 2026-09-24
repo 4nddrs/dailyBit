@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { subscribeAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
 import {
-  AnswerAttachmentImages,
   AssignmentUpdateDisplay,
   LeadNoteBlock,
   LeadQuestionBlock,
   LinkChips,
+  QuestionOptionList,
 } from '../LeadView/LeadView';
 import { taskLetter } from '../../utils/numbering';
 import type {
@@ -20,12 +20,6 @@ import type {
   TaskImageWithId,
   TaskWithId,
 } from '../../types';
-
-const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
-
-function getOptionLabel(index: number): string {
-  return optionLabels[index] ?? String(index + 1);
-}
 
 // Read-only image grid + lightbox for a task's attachments, matching the
 // layout Lead View uses for the same content.
@@ -140,38 +134,29 @@ function PreviewDevQuestionCard({ question }: { question: QuestionWithId }) {
   const isAnswered = question.selectedAnswer !== undefined;
 
   return (
-    <article className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
-      <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
-      <div className="mt-3 flex flex-wrap items-start gap-2">
-        {question.options.map((option, index) => {
-          const links = question.optionDetails?.[index]?.links ?? [];
-          const images = question.optionImages.filter((image) => image.optionIndex === index);
-          const hasAttachments = links.length > 0 || images.length > 0;
-
-          return (
-            <div className="flex max-w-full flex-col gap-1.5" key={`${option}-${index}`}>
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                  question.selectedAnswer === index
-                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                    : 'border-line bg-canvas-subtle text-fg-muted'
-                }`}
-              >
-                {getOptionLabel(index)}. {option}
-              </span>
-              {hasAttachments ? (
-                <div className="ml-1 space-y-1.5">
-                  <AnswerAttachmentImages images={images} />
-                  <LinkChips links={links} />
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+    <article className="rounded-md border border-line bg-canvas p-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <span
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+            isAnswered
+              ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+              : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
+          }`}
+        >
+          {isAnswered ? 'Answered by the lead' : 'Waiting for the lead'}
+        </span>
       </div>
-      {!isAnswered ? (
-        <p className="mt-2 text-xs font-semibold text-attention-fg">Pending the lead’s answer</p>
-      ) : null}
+      <QuestionOptionList
+        question={question}
+        renderAction={(_, selected) =>
+          selected ? (
+            <span className="shrink-0 rounded-full border border-success-emphasis/40 px-2 py-0.5 text-xs font-medium text-success-fg">
+              Lead's choice
+            </span>
+          ) : null
+        }
+      />
     </article>
   );
 }

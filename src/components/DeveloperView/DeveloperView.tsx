@@ -32,7 +32,7 @@ import {
   updateTask,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
-import { AnswerAttachmentImages, LinkChips as ReadOnlyLinkChips } from '../LeadView/LeadView';
+import { QuestionOptionList } from '../LeadView/LeadView';
 import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyReport } from '../../hooks/useMyReport';
@@ -2147,52 +2147,40 @@ function QuestionComposer({
 
 function QuestionCard({ reportId, question }: { reportId: string; question: QuestionWithId }) {
   const isAnswered = question.selectedAnswer !== undefined;
-  const answerText = isAnswered ? question.options[question.selectedAnswer ?? 0] : undefined;
 
   return (
-    <article className="group/question rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
+    <article className="group/question rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-fg">{question.questionText}</p>
-          <p className={`mt-2 text-xs font-semibold ${isAnswered ? 'text-success-fg' : 'text-attention-fg'}`}>
-            {isAnswered ? `Answered: ${answerText}` : 'Pending the lead’s answer'}
-          </p>
+        <p className="text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+              isAnswered
+                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
+            }`}
+          >
+            {isAnswered ? 'Answered by the lead' : 'Waiting for the lead'}
+          </span>
+          <button
+            className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/question:opacity-100 md:group-focus-within/question:opacity-100"
+            type="button"
+            onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
+          >
+            Remove
+          </button>
         </div>
-        <button
-          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/question:opacity-100 md:group-focus-within/question:opacity-100"
-          type="button"
-          onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
-        >
-          Remove
-        </button>
       </div>
-      <div className="mt-3 flex flex-wrap items-start gap-2">
-        {question.options.map((option, index) => {
-          const links = question.optionDetails?.[index]?.links ?? [];
-          const images = question.optionImages.filter((image) => image.optionIndex === index);
-          const hasAttachments = links.length > 0 || images.length > 0;
-
-          return (
-            <div className="flex max-w-full flex-col gap-1.5" key={`${option}-${index}`}>
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                  question.selectedAnswer === index
-                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                    : 'border-line bg-canvas-subtle text-fg-muted'
-                }`}
-              >
-                {optionLabels[index]}. {option}
-              </span>
-              {hasAttachments ? (
-                <div className="ml-1 space-y-1.5">
-                  <AnswerAttachmentImages images={images} />
-                  <ReadOnlyLinkChips links={links} />
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+      <QuestionOptionList
+        question={question}
+        renderAction={(_, selected) =>
+          selected ? (
+            <span className="shrink-0 rounded-full border border-success-emphasis/40 px-2 py-0.5 text-xs font-medium text-success-fg">
+              Lead's choice
+            </span>
+          ) : null
+        }
+      />
     </article>
   );
 }
