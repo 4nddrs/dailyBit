@@ -20,7 +20,7 @@ const MAX_TEXT_LENGTH = 500;
 const MAX_CONTEXT_LENGTH = 500;
 
 const KIND_LIMITS: Record<PolishKind, number> = {
-  task: 140,
+  task: 500,
   question: 200,
   answer: 280,
   option: 80,
@@ -34,7 +34,7 @@ const BASE_SYSTEM_PROMPT = [
 ].join(' ');
 
 const KIND_INSTRUCTIONS: Record<PolishKind, string> = {
-  task: 'Rewrite it as one sentence that starts with a past- or present-tense action verb. It must be a punchy status update of at most 140 characters.',
+  task: 'Rewrite it as a status update that starts with a past- or present-tense action verb. Keep it concise, at most 500 characters; use a second or third sentence only when needed to keep every fact.',
   question:
     'Rewrite it as one clear, direct question the lead can answer without needing extra context. At most 200 characters.',
   answer:

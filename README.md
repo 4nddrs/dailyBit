@@ -297,7 +297,7 @@ Security intent:
 
 - Creates the report document for the selected date on the developer's first write (adding a main title, or a question to the lead when there are none yet) — opening or viewing a date never creates a report.
 - Saves section titles, tasks, compressed Base64 image data URLs, links, and questions as the developer edits.
-- Keeps task descriptions short with a 140-character limit.
+- Caps task descriptions at 500 characters.
 - Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text, with its own supporting links and images, or by picking an option).
 - Shows an "Assigned by lead" block above the report when the developer has at least one assignment visible on the selected date, with a "Pending"/"Updated" pill per assignment; each is answered with its own daily text/links/images update, independent of the report (it works even with no report for that date).
 
