@@ -392,9 +392,11 @@ function AddSectionForm({
 function AddTaskForm({
   reportId,
   section,
+  onClose,
 }: {
   reportId: string;
   section: SectionWithTasks;
+  onClose: () => void;
 }) {
   const [description, setDescription] = useState('');
 
@@ -415,27 +417,48 @@ function AddTaskForm({
       }),
       'Task add failed',
     );
+    // Stay open (and focused) so several tasks can be added in a row.
     setDescription('');
   }
 
   return (
-    <form className="flex flex-col gap-2 sm:flex-row sm:items-start" onSubmit={handleSubmit}>
-      <TaskTextarea
-        className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm leading-5 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
-        value={description}
-        onValueChange={setDescription}
-        onEnter={(field) => field.form?.requestSubmit()}
-        placeholder="Add a task, then press Enter"
-        maxLength={TASK_DESCRIPTION_LIMIT}
-        aria-label="New task description"
-      />
-      <button
-        className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
-        type="submit"
-        disabled={!description.trim()}
-      >
-        Add task
-      </button>
+    <form
+      className="rounded-md border-l-2 border-accent-emphasis bg-accent-muted p-4"
+      onSubmit={handleSubmit}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          onClose();
+        }
+      }}
+    >
+      <label className="block text-sm font-medium text-accent-fg">
+        New task
+        <TaskTextarea
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm font-normal leading-5 text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={description}
+          onValueChange={setDescription}
+          onEnter={(field) => field.form?.requestSubmit()}
+          placeholder="What did you work on? Press Enter to add it."
+          maxLength={TASK_DESCRIPTION_LIMIT}
+          autoFocus
+        />
+      </label>
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+          type="button"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <button
+          className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          disabled={!description.trim()}
+        >
+          Add task
+        </button>
+      </div>
     </form>
   );
 }
@@ -1768,7 +1791,9 @@ function SectionCard({
   const [dragArmed, setDragArmed] = useState(false);
   const [itemOrderOverride, setItemOrderOverride] = useState<string[] | null>(null);
   const [itemOrderError, setItemOrderError] = useState<string | null>(null);
-  const [showQuestionComposer, setShowQuestionComposer] = useState(false);
+  // Only one composer is open at a time; the section footer shows just the
+  // two entry buttons until one of them is clicked.
+  const [openComposer, setOpenComposer] = useState<'task' | 'question' | null>(null);
 
   const mergedItems = useMemo(
     () => mergeSectionItems(section.tasks, section.questions),
@@ -1802,7 +1827,7 @@ function SectionCard({
   async function handleAddSectionQuestion(question: CreateQuestionInput) {
     const nextOrder = getNextOrder([...section.tasks, ...section.questions]);
     const questionId = await onAddQuestion({ ...question, sectionId: section.id, order: nextOrder });
-    setShowQuestionComposer(false);
+    setOpenComposer(null);
     return questionId;
   }
 
@@ -1959,22 +1984,35 @@ function SectionCard({
         )}
       </div>
 
-      <div className="space-y-3 border-t border-line px-4 py-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <AddTaskForm reportId={reportId} section={section} />
+      <div className="border-t border-line px-4 py-3">
+        {openComposer === 'task' ? (
+          <AddTaskForm reportId={reportId} section={section} onClose={() => setOpenComposer(null)} />
+        ) : openComposer === 'question' ? (
+          <QuestionComposer
+            reportId={reportId}
+            onAddQuestion={handleAddSectionQuestion}
+            onCancel={() => setOpenComposer(null)}
+          />
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-accent-emphasis/60 bg-accent-muted px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:border-accent-emphasis hover:bg-accent-emphasis/25"
+              type="button"
+              onClick={() => setOpenComposer('task')}
+            >
+              <span aria-hidden="true">+</span>
+              Add task
+            </button>
+            <button
+              className="inline-flex items-center gap-1.5 rounded-md border border-done-emphasis/60 bg-done-muted px-3 py-1.5 text-sm font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
+              type="button"
+              onClick={() => setOpenComposer('question')}
+            >
+              <span aria-hidden="true">?</span>
+              Ask the lead
+            </button>
           </div>
-          <button
-            className="shrink-0 rounded-md border border-done-emphasis/60 bg-done-muted px-3 py-1.5 text-sm font-medium text-done-fg transition hover:border-done-emphasis hover:bg-done-emphasis/25"
-            type="button"
-            onClick={() => setShowQuestionComposer((current) => !current)}
-          >
-            {showQuestionComposer ? 'Cancel question' : 'Ask the lead'}
-          </button>
-        </div>
-        {showQuestionComposer ? (
-          <QuestionComposer reportId={reportId} onAddQuestion={handleAddSectionQuestion} />
-        ) : null}
+        )}
       </div>
     </section>
   );
@@ -2233,12 +2271,16 @@ function emptyComposerOption(): ComposerOption {
   return { text: '', links: [], images: [] };
 }
 
+// `onCancel` is only passed where the composer is opened on demand (inside a
+// section); it adds a Cancel button, Escape-to-close and autofocus.
 function QuestionComposer({
   reportId,
   onAddQuestion,
+  onCancel,
 }: {
   reportId: string;
   onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
+  onCancel?: () => void;
 }) {
   const [questionText, setQuestionText] = useState('');
   const [options, setOptions] = useState<ComposerOption[]>([emptyComposerOption(), emptyComposerOption()]);
@@ -2317,7 +2359,15 @@ function QuestionComposer({
   }
 
   return (
-    <form className="rounded-md border-l-2 border-done-emphasis bg-done-muted p-4" onSubmit={handleSubmit}>
+    <form
+      className="rounded-md border-l-2 border-done-emphasis bg-done-muted p-4"
+      onSubmit={handleSubmit}
+      onKeyDown={(event) => {
+        if (onCancel && event.key === 'Escape') {
+          onCancel();
+        }
+      }}
+    >
       <div className="flex items-start gap-2">
         <label className="block min-w-0 flex-1 text-sm font-medium text-done-fg">
           Question for the lead
@@ -2326,6 +2376,7 @@ function QuestionComposer({
             value={questionText}
             onChange={(event) => setQuestionText(event.target.value)}
             placeholder="What should the lead decide?"
+            autoFocus={Boolean(onCancel)}
           />
         </label>
         <PolishButton
@@ -2376,15 +2427,26 @@ function QuestionComposer({
         >
           Add option
         </button>
-        <button
-          className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
-          type="submit"
-          disabled={
-            !questionText.trim() || options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM
-          }
-        >
-          Add question
-        </button>
+        <div className="flex justify-end gap-2">
+          {onCancel ? (
+            <button
+              className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+              type="button"
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+          ) : null}
+          <button
+            className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+            type="submit"
+            disabled={
+              !questionText.trim() || options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM
+            }
+          >
+            Add question
+          </button>
+        </div>
       </div>
     </form>
   );
