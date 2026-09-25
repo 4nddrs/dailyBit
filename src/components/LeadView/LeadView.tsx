@@ -695,7 +695,7 @@ export function LeadQuestionItem({
       </div>
 
       {!isAnswered ? (
-        <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
+        <p className="mt-2 text-xs font-semibold text-done-fg">Waiting for answer</p>
       ) : editingAnswer && reportId ? (
         <LeadQuestionAnswerEditor reportId={reportId} question={question} onDone={() => setEditingAnswer(false)} />
       ) : question.kind === 'text' ? (
