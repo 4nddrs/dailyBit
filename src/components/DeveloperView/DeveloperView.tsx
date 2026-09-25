@@ -2342,7 +2342,12 @@ function composerOptionsFromQuestion(question: QuestionWithId): ComposerOption[]
 // section question on demand, or editing any question): it adds a Cancel
 // button, Escape-to-close and autofocus. `onAdded` runs once a newly created
 // question and all its option images are saved, so a failed image upload
-// keeps the composer (and its error message) on screen.
+// keeps the composer (and its error message) on screen. `onSaved` runs once
+// an edit's question batch has committed — the edit is saved at that point
+// even if `failedImageCount` is nonzero, so the caller closes the composer
+// either way and surfaces any partial image failure elsewhere (on the
+// question card itself), rather than keeping stale local image state around
+// for a retry to trip over.
 function QuestionComposer({
   reportId,
   question,
@@ -2356,7 +2361,7 @@ function QuestionComposer({
   onAddQuestion?: (question: CreateQuestionInput) => Promise<string>;
   onCancel?: () => void;
   onAdded?: () => void;
-  onSaved?: () => void;
+  onSaved?: (result: { failedImageCount: number }) => void;
 }) {
   const isEditing = Boolean(question);
   const [questionText, setQuestionText] = useState(question?.questionText ?? '');
@@ -2411,9 +2416,12 @@ function QuestionComposer({
     if (question) {
       // Edit mode: the question fields, option-image remap/delete and the
       // stale-answer clear commit in one small batch; new option images
-      // upload separately afterwards (see `updateQuestion`), so a failed
-      // upload never blocks or corrupts the rest of the edit — it just
-      // surfaces below instead of failing silently.
+      // upload separately afterwards (see `updateQuestion`). Once that batch
+      // has committed the edit is saved regardless of `failedImageCount`, so
+      // the composer always closes here — retrying a partial image failure
+      // must start from a fresh edit of what's actually saved, not reuse
+      // this composer's local (now stale) image ids. Only a rejection (the
+      // batch itself failing) keeps the composer open with an inline error.
       setSaving(true);
       updateQuestion(reportId, question.id, {
         questionText: trimmedQuestion,
@@ -2428,7 +2436,7 @@ function QuestionComposer({
             .map((image) => image.imageBase64),
         })),
       })
-        .then(() => onSaved?.())
+        .then((result) => onSaved?.(result))
         .catch((caughtError) => {
           console.error('Question update failed', caughtError);
           setImageUploadError(
@@ -2585,6 +2593,11 @@ function QuestionCard({
   leadNotes: LeadNoteWithId[];
 }) {
   const [editing, setEditing] = useState(false);
+  // Set once an edit's question batch commits with one or more new option
+  // images that failed to upload. The edit is already saved at that point
+  // (see `QuestionComposer`'s `onSaved`), so this is a standalone notice on
+  // the card rather than something the composer keeps open for.
+  const [imageUploadFailureNotice, setImageUploadFailureNotice] = useState(false);
   const isAnswered = question.selectedAnswer !== undefined;
 
   if (editing) {
@@ -2593,7 +2606,10 @@ function QuestionCard({
         reportId={reportId}
         question={question}
         onCancel={() => setEditing(false)}
-        onSaved={() => setEditing(false)}
+        onSaved={(result) => {
+          setEditing(false);
+          setImageUploadFailureNotice(result.failedImageCount > 0);
+        }}
       />
     );
   }
@@ -2623,6 +2639,22 @@ function QuestionCard({
           </div>
         </div>
       </div>
+      {imageUploadFailureNotice ? (
+        <div
+          className="mt-2 flex items-start justify-between gap-2 rounded-md border border-attention-emphasis/40 bg-attention-muted px-3 py-2 text-xs font-medium text-attention-fg"
+          role="alert"
+        >
+          <p>Question saved, but some images could not be saved. Edit the question to add them again.</p>
+          <button
+            type="button"
+            className="shrink-0 leading-none text-attention-fg/70 transition hover:text-attention-fg"
+            aria-label="Dismiss"
+            onClick={() => setImageUploadFailureNotice(false)}
+          >
+            &times;
+          </button>
+        </div>
+      ) : null}
       <QuestionOptionList
         question={question}
         renderAction={(_, selected) =>
