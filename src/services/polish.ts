@@ -8,15 +8,35 @@ export interface PolishTextInput {
   questionContext?: string;
 }
 
-/** User-facing error from the AI polish flow; `message` is always short and safe to show inline. */
-export class PolishError extends Error {}
+/**
+ * User-facing error from the AI polish flow; `message` is always short and
+ * safe to show inline. `exampleAnswer` is set only when an `answer` kind is
+ * rejected as off-topic (see `api/polish.ts`'s `ANSWER_RELEVANCE_INSTRUCTIONS`):
+ * an example of what a good answer could look like, for the caller to offer
+ * as a starting point.
+ */
+export class PolishError extends Error {
+  exampleAnswer?: string;
+
+  constructor(message: string, exampleAnswer?: string) {
+    super(message);
+    this.exampleAnswer = exampleAnswer;
+  }
+}
+
+export interface PolishTextResult {
+  suggestion: string;
+  // `'partial'` only for a relevant-but-incomplete `answer` (see
+  // `api/polish.ts`); every other kind/result is `'ok'`.
+  status: 'ok' | 'partial';
+}
 
 /**
  * Sends the developer's text to the `/api/polish` Vercel Function for an
  * English, stand-up-ready rewrite. Never replaces the caller's field value:
  * the caller decides whether to use the returned suggestion.
  */
-export async function polishText({ kind, text, questionContext }: PolishTextInput): Promise<string> {
+export async function polishText({ kind, text, questionContext }: PolishTextInput): Promise<PolishTextResult> {
   const user = auth.currentUser;
   if (!user) {
     throw new PolishError('You must be signed in to use AI polish.');
@@ -44,9 +64,9 @@ export async function polishText({ kind, text, questionContext }: PolishTextInpu
   }
 
   if (response.ok) {
-    const data = (await response.json().catch(() => null)) as { suggestion?: string } | null;
+    const data = (await response.json().catch(() => null)) as { suggestion?: string; status?: string } | null;
     if (data && typeof data.suggestion === 'string' && data.suggestion.trim().length > 0) {
-      return data.suggestion;
+      return { suggestion: data.suggestion, status: data.status === 'partial' ? 'partial' : 'ok' };
     }
     throw new PolishError('AI polish returned an unexpected response.');
   }
@@ -65,6 +85,9 @@ export async function polishText({ kind, text, questionContext }: PolishTextInpu
     throw new PolishError('AI polish is not available here. Run the app with `vercel dev`.');
   }
 
-  const failure = (await response.json().catch(() => null)) as { error?: string } | null;
-  throw new PolishError(failure?.error ?? 'AI polish failed. Please try again.');
+  const failure = (await response.json().catch(() => null)) as { error?: string; exampleAnswer?: string } | null;
+  throw new PolishError(
+    failure?.error ?? 'AI polish failed. Please try again.',
+    typeof failure?.exampleAnswer === 'string' ? failure.exampleAnswer : undefined,
+  );
 }

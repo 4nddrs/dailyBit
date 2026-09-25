@@ -148,12 +148,29 @@ function validateBody(raw: unknown): ValidationResult {
 
 // Answers to the lead's questions are first checked for relevance: an answer
 // that has nothing to do with the question is rejected instead of polished.
-const RELEVANCE_INSTRUCTIONS = [
+// `option` keeps the original, simpler contract (no suggestion when
+// off-topic — it's discarded either way, see `parseRelevanceResult`).
+const OPTION_RELEVANCE_INSTRUCTIONS = [
   "Before rewriting, judge whether the developer's text is a plausible answer to the question, even partially or indirectly.",
   'A text that does not answer what the question asks (for example, an object when the question asks for a color) is NOT related.',
   "Be lenient: short, partial, or not-yet-known answers that still address the question count as related.",
   'Respond ONLY with a JSON object of the form {"relevant": boolean, "suggestion": string}.',
   'If the answer is not related to the question, set "relevant" to false and "suggestion" to an empty string.',
+].join(' ');
+
+// `answer` additionally judges whether a related answer is only partial, and
+// always returns a usable "suggestion": an example answer when off-topic (so
+// the developer sees the expected shape), a merged/completed answer when
+// partial, or the normal rewrite when the answer is already complete.
+const ANSWER_RELEVANCE_INSTRUCTIONS = [
+  "Before rewriting, judge whether the developer's text is a plausible answer to the question, even partially or indirectly.",
+  'A text that does not answer what the question asks (for example, an object when the question asks for a color) is NOT related.',
+  "Be lenient: short, partial, or not-yet-known answers that still address the question count as related.",
+  'If related, also judge whether it fully answers everything the question asks, or only partially answers it (leaves out something the question asked for).',
+  'Respond ONLY with a JSON object of the form {"relevant": boolean, "partial": boolean, "suggestion": string}.',
+  'If NOT related: set "relevant" to false, "partial" to false, and "suggestion" to an example of what a good answer could look like, in 1 to 2 short sentences, at most 280 characters. Use [bracketed placeholders] for every fact you do not actually know from the question or the developer\'s text — never invent concrete facts such as names, numbers, ticket ids, or dates, and never use the developer\'s off-topic text as a fact source.',
+  'If related but only PARTIAL: set "relevant" to true, "partial" to true, and "suggestion" to a better answer that keeps every fact the developer already gave, unchanged, and adds [bracketed placeholders] only for what is still missing to fully answer the question.',
+  'If related and already COMPLETE: set "relevant" to true, "partial" to false, and "suggestion" to the normal rewritten answer, with no placeholders.',
 ].join(' ');
 
 const OFF_TOPIC_MESSAGES: Partial<Record<PolishKind, string>> = {
@@ -165,21 +182,37 @@ function needsRelevanceCheck(kind: PolishKind, questionContext: string | undefin
   return (kind === 'answer' || kind === 'option') && Boolean(questionContext);
 }
 
-function parseRelevanceResult(kind: PolishKind, content: string): string {
+interface RelevanceResult {
+  relevant: boolean;
+  // Defensive default: missing/non-`true` "partial" reads as not partial —
+  // `option` never sends this field, and an unexpected response shouldn't
+  // ever be treated as more uncertain than "relevant, complete".
+  partial: boolean;
+  suggestion: string;
+}
+
+function parseRelevanceResult(kind: PolishKind, content: string): RelevanceResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
     throw new PolishError(500, 'AI polish returned an unexpected response.');
   }
-  const result = parsed as { relevant?: unknown; suggestion?: unknown };
-  if (result.relevant === false) {
-    throw new PolishError(422, OFF_TOPIC_MESSAGES[kind] ?? 'The text does not match the question.');
-  }
-  if (typeof result.suggestion !== 'string' || result.suggestion.trim().length === 0) {
+  const result = parsed as { relevant?: unknown; partial?: unknown; suggestion?: unknown };
+  // Permissive on purpose (mirrors the original check): only an explicit
+  // `false` counts as off-topic, so a malformed/missing field never wrongly
+  // rejects a real answer.
+  const relevant = result.relevant !== false;
+  const partial = result.partial === true;
+  // `option` never uses its off-topic "suggestion" (see
+  // `OPTION_RELEVANCE_INSTRUCTIONS`, which asks for an empty string there),
+  // so only require a non-empty one where it's actually going to be used:
+  // every `answer` case, or a relevant `option`.
+  const suggestionRequired = relevant || kind === 'answer';
+  if (suggestionRequired && (typeof result.suggestion !== 'string' || result.suggestion.trim().length === 0)) {
     throw new PolishError(500, 'AI polish returned an unexpected response.');
   }
-  return result.suggestion;
+  return { relevant, partial, suggestion: typeof result.suggestion === 'string' ? result.suggestion : '' };
 }
 
 function buildMessages(
@@ -187,8 +220,9 @@ function buildMessages(
   text: string,
   questionContext: string | undefined,
 ): Array<{ role: 'system' | 'user'; content: string }> {
+  const relevanceInstructions = kind === 'answer' ? ANSWER_RELEVANCE_INSTRUCTIONS : OPTION_RELEVANCE_INSTRUCTIONS;
   const systemContent = `${BASE_SYSTEM_PROMPT} ${KIND_INSTRUCTIONS[kind]}${
-    needsRelevanceCheck(kind, questionContext) ? ` ${RELEVANCE_INSTRUCTIONS}` : ''
+    needsRelevanceCheck(kind, questionContext) ? ` ${relevanceInstructions}` : ''
   }`;
   let userContent = `Text to rewrite:\n"""${text}"""`;
   if (kind === 'answer' && questionContext) {
@@ -219,10 +253,15 @@ function enforceLimit(text: string, limit: number): string {
 
 class PolishError extends Error {
   status: number;
+  // Set only for an off-topic `answer`: an example answer the client shows
+  // alongside the rejection message, so the developer sees the expected
+  // shape (see `ANSWER_RELEVANCE_INSTRUCTIONS`).
+  exampleAnswer?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, exampleAnswer?: string) {
     super(message);
     this.status = status;
+    this.exampleAnswer = exampleAnswer;
   }
 }
 
@@ -331,12 +370,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   try {
     const checkRelevance = needsRelevanceCheck(kind, questionContext);
     const content = await requestPolishedText(messages, checkRelevance);
-    const rawSuggestion = checkRelevance ? parseRelevanceResult(kind, content) : content;
-    const suggestion = enforceLimit(rawSuggestion, KIND_LIMITS[kind]);
+
+    if (!checkRelevance) {
+      res.status(200).json({ suggestion: enforceLimit(content, KIND_LIMITS[kind]) });
+      return;
+    }
+
+    const result = parseRelevanceResult(kind, content);
+    const suggestion = enforceLimit(result.suggestion, KIND_LIMITS[kind]);
+
+    if (!result.relevant) {
+      const message = OFF_TOPIC_MESSAGES[kind] ?? 'The text does not match the question.';
+      // Only `answer` carries the example answer onward — `option`'s
+      // off-topic "suggestion" is always empty (see `parseRelevanceResult`)
+      // and stays backwards compatible with just `{ error }`.
+      throw new PolishError(422, message, kind === 'answer' ? suggestion : undefined);
+    }
+
+    if (kind === 'answer') {
+      res.status(200).json({ suggestion, status: result.partial ? 'partial' : 'ok' });
+      return;
+    }
+
     res.status(200).json({ suggestion });
   } catch (error) {
     if (error instanceof PolishError) {
-      res.status(error.status).json({ error: error.message });
+      const body: Record<string, unknown> = { error: error.message };
+      if (error.exampleAnswer !== undefined) {
+        body.exampleAnswer = error.exampleAnswer;
+      }
+      res.status(error.status).json(body);
       return;
     }
     console.error('Unexpected /api/polish error', error);

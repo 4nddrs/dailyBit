@@ -623,19 +623,30 @@ function SparkleIcon() {
  * Shared state machine for a single "Polish with AI" action: calls the
  * `/api/polish` client service for `text`, then hands the result to `onUse`
  * only when the developer explicitly accepts it (never auto-replaces).
+ * `status`/`exampleAnswer` only ever populate for an `answer` kind (see
+ * `polishText`/`PolishError`); every other kind leaves them `null`.
  */
 function usePolishAction({
   kind,
   questionContext,
   onUse,
+  onUseExample,
 }: {
   kind: PolishKind;
   questionContext?: string;
   onUse: (suggestion: string) => void;
+  // Fills the field with the off-topic example answer without saving it —
+  // distinct from `onUse`, which some callers (e.g. an answer to a lead
+  // question) save immediately. Falls back to `onUse` when the caller
+  // doesn't need that distinction (every kind but `answer`, which never
+  // gets an example answer anyway).
+  onUseExample?: (exampleAnswer: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [status, setStatus] = useState<'ok' | 'partial' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exampleAnswer, setExampleAnswer] = useState<string | null>(null);
 
   async function trigger(text: string) {
     const trimmedText = text.trim();
@@ -645,12 +656,20 @@ function usePolishAction({
     setLoading(true);
     setError(null);
     setSuggestion(null);
+    setStatus(null);
+    setExampleAnswer(null);
     try {
       const result = await polishText({ kind, text: trimmedText, questionContext });
-      setSuggestion(result);
+      setSuggestion(result.suggestion);
+      setStatus(result.status);
     } catch (caughtError) {
       console.error('AI polish failed', caughtError);
-      setError(caughtError instanceof PolishError ? caughtError.message : 'AI polish failed. Please try again.');
+      if (caughtError instanceof PolishError) {
+        setError(caughtError.message);
+        setExampleAnswer(caughtError.exampleAnswer ?? null);
+      } else {
+        setError('AI polish failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -661,15 +680,26 @@ function usePolishAction({
       onUse(suggestion);
     }
     setSuggestion(null);
+    setStatus(null);
     setError(null);
+  }
+
+  function useExample() {
+    if (exampleAnswer) {
+      (onUseExample ?? onUse)(exampleAnswer);
+    }
+    setError(null);
+    setExampleAnswer(null);
   }
 
   function dismiss() {
     setSuggestion(null);
+    setStatus(null);
     setError(null);
+    setExampleAnswer(null);
   }
 
-  return { loading, suggestion, error, trigger, useSuggestion, dismiss };
+  return { loading, suggestion, status, error, exampleAnswer, trigger, useSuggestion, useExample, dismiss };
 }
 
 function PolishButton({
@@ -694,14 +724,23 @@ function PolishButton({
 function PolishSuggestionPanel({
   loading,
   suggestion,
+  status,
   error,
+  exampleAnswer,
   onUse,
+  onUseExample,
   onDismiss,
 }: {
   loading: boolean;
   suggestion: string | null;
+  // Only ever `'partial'` for an `answer` kind; every other caller leaves it
+  // `undefined`/`null` and gets the unchanged plain-suggestion layout.
+  status?: 'ok' | 'partial' | null;
   error: string | null;
+  // Only ever set for an off-topic `answer` (see `PolishError.exampleAnswer`).
+  exampleAnswer?: string | null;
   onUse: () => void;
+  onUseExample?: () => void;
   onDismiss: () => void;
 }) {
   if (!loading && !suggestion && !error) {
@@ -713,12 +752,35 @@ function PolishSuggestionPanel({
       {loading ? (
         <p className="text-fg-muted">Polishing with AI...</p>
       ) : error ? (
-        <p className="font-medium text-danger-fg" role="alert">
-          {error}
-        </p>
+        <>
+          <p className="font-medium text-danger-fg" role="alert">
+            {error}
+          </p>
+          {exampleAnswer ? (
+            <div className="mt-2 rounded-md border border-line bg-canvas p-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Example answer</p>
+              <p className="mt-1 text-fg">{exampleAnswer}</p>
+              <div className="mt-2 flex justify-end">
+                <button
+                  className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+                  type="button"
+                  onClick={onUseExample}
+                >
+                  Use as starting point
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : (
         <>
+          {status === 'partial' ? (
+            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Suggested better answer</p>
+          ) : null}
           <p className="text-fg">{suggestion}</p>
+          {status === 'partial' ? (
+            <p className="mt-1 text-xs text-fg-muted">Fill in the [bracketed] parts before saving.</p>
+          ) : null}
           <div className="mt-2 flex justify-end gap-2">
             <button
               className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
@@ -1211,6 +1273,9 @@ function LeadQuestionCard({
     kind: 'answer',
     questionContext: question.questionText,
     onUse: (suggestion) => void handleUseAnswerSuggestion(suggestion),
+    // An off-topic example is only a starting point: fill the field, let the
+    // developer edit and fill in the [bracketed] parts, never save it as-is.
+    onUseExample: (exampleAnswer) => setAnswerText(exampleAnswer),
   });
 
   useEffect(() => {
@@ -1396,8 +1461,11 @@ function LeadQuestionCard({
           <PolishSuggestionPanel
             loading={answerPolish.loading}
             suggestion={answerPolish.suggestion}
+            status={answerPolish.status}
             error={answerPolish.error}
+            exampleAnswer={answerPolish.exampleAnswer}
             onUse={answerPolish.useSuggestion}
+            onUseExample={answerPolish.useExample}
             onDismiss={answerPolish.dismiss}
           />
           <div className="mt-2 flex justify-end">
