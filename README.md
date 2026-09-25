@@ -105,7 +105,7 @@ reports/{userId}_{date}
 
 Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sections group tasks; tasks can include links and an `images` subcollection of compressed Base64 image data URLs; questions are developer-to-lead multiple-choice decisions, where each option's text may carry supporting `optionDetails[i].links` (parallel to `options`, only stored when at least one option has a link) and an `images` subcollection of compressed Base64 image data URLs tagged with the `optionIndex` they belong to; `leadNotes` are the lead's report-level or task-level notes; `leadQuestions` are the lead's report-level or per-task questions to the report owner (empty `taskId`/`sectionId` means the question is about the report as a whole), answered as free text or by picking one of several options. A free-text (`kind: 'text'`) answer may also include `answerLinks` and an `images` subcollection of compressed Base64 image data URLs, same shape as task images; an options answer stays a plain selected index, with no links or images.
 
-A dev question may optionally carry `sectionId` and `order`: when set, the question is anchored inside that section and interleaved with its tasks (tasks and questions share one `order` space per section, same as `sections/{sectionId}/tasks/{taskId}.order`); when omitted (or empty), the question is report-level and shown in the trailing "Questions to the lead" panel instead. No new Firestore rule is needed for these fields: `create`/`delete` on `questions/{questionId}` are already fully owner-controlled, and the report owner's `update` rule already allows any field except `selectedAnswer`/`answeredBy`/`answeredAt`, which already covers writing `order` when a section is reordered.
+A dev question may optionally carry `sectionId` and `order`: when set, the question is anchored inside that section and interleaved with its tasks (tasks and questions share one `order` space per section, same as `sections/{sectionId}/tasks/{taskId}.order`); when omitted (or empty), the question is report-level and shown in the trailing "Questions to the lead" panel instead. No extra Firestore rule is needed for these fields: `create`/`delete` on `questions/{questionId}` are owner- or lead-controlled, and the `update` allowlist (`questionText`, `options`, `optionDetails`, `order`, plus the answer fields) already covers writing `order` when a section is reordered.
 
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
@@ -209,7 +209,7 @@ service cloud.firestore {
         ) || (
           isLead() &&
           request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['selectedAnswer', 'answeredBy', 'answeredAt', 'order'])
+            .hasOnly(['questionText', 'options', 'optionDetails', 'order', 'selectedAnswer', 'answeredBy', 'answeredAt'])
         );
 
         // An option's image attachments; same read/write shape as task
