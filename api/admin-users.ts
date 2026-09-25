@@ -146,8 +146,11 @@ class AdminUsersError extends Error {
 // they own sections/tasks/images/questions/etc.), then this assignee's
 // updates (and their images) across every assignment that lists them,
 // removing them from `assigneeIds` (deleting the assignment outright once no
-// assignees remain), then the team order, then the profile itself. Auth
-// deletion happens after this resolves, in the handler below.
+// assignees remain), then the team order. The profile is deliberately NOT
+// deleted here: `deleteUser` removes the Auth login first and the profile
+// last, so a failed Auth deletion leaves the profile in place and a retry
+// from the Manage panel can still find the person and finish the job. Every
+// step is idempotent, so re-running it on retry is safe.
 async function cascadeDeleteUserData(firestore: Firestore, uid: string): Promise<void> {
   const reportsSnapshot = await firestore.collection('reports').where('userId', '==', uid).get();
   for (const reportDoc of reportsSnapshot.docs) {
@@ -186,8 +189,6 @@ async function cascadeDeleteUserData(firestore: Firestore, uid: string): Promise
       await teamSettingsRef.update({ memberOrder: memberOrder.filter((id) => id !== uid) });
     }
   }
-
-  await firestore.collection('users').doc(uid).delete();
 }
 
 async function deleteUser(firestore: Firestore, callerUid: string, targetUid: string): Promise<void> {
@@ -228,6 +229,9 @@ async function deleteUser(firestore: Firestore, callerUid: string, targetUid: st
       );
     }
   }
+
+  // Last, so the person stays listed (and retryable) until their login is gone.
+  await firestore.collection('users').doc(targetUid).delete();
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
