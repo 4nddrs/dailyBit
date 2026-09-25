@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { DeveloperView } from './components/DeveloperView';
 import { LeadView } from './components/LeadView';
+import { ManagePanel } from './components/ManagePanel/ManagePanel';
 import { signIn, signUp } from './services/auth';
 import { useAuth } from './hooks/useAuth';
 
@@ -136,8 +137,32 @@ interface AppShellProps {
   signOut: ReturnType<typeof useAuth>['signOut'];
 }
 
+function ManageTeamButton({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition ${
+        active
+          ? 'border-accent-emphasis bg-accent-muted text-accent-fg'
+          : 'border-line bg-control text-fg-muted hover:bg-control-hover'
+      }`}
+      type="button"
+      aria-label="Manage team"
+      title="Manage team"
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+        <path d="M5.5 3.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.507 5.507 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.494 3.494 0 0 1 2 5.5ZM11 4a.75.75 0 1 0 0 1.5 1.5 1.5 0 0 1 .666 2.844.75.75 0 0 0-.416.672v.352a.75.75 0 0 0 .574.73c1.2.289 2.162 1.2 2.522 2.372a.75.75 0 1 0 1.434-.44 5.01 5.01 0 0 0-2.56-3.012A3 3 0 0 0 11 4Z" />
+      </svg>
+    </button>
+  );
+}
+
 function AppShell({ user, profile, signOut }: AppShellProps) {
-  const viewName = profile?.role === 'lead' ? 'Lead View' : 'Developer';
+  const [view, setView] = useState<'dashboard' | 'manage'>('dashboard');
+  const isLead = profile?.role === 'lead';
+  const showManage = isLead && view === 'manage';
+  const viewName = isLead ? (showManage ? 'Manage team' : 'Lead View') : 'Developer';
 
   return (
     <div className="min-h-screen bg-canvas-inset">
@@ -154,6 +179,12 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
             <span className="shrink-0 rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
               {profile?.role ?? 'loading...'}
             </span>
+            {isLead ? (
+              <ManageTeamButton
+                active={showManage}
+                onClick={() => setView((current) => (current === 'manage' ? 'dashboard' : 'manage'))}
+              />
+            ) : null}
             <button
               className="shrink-0 rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
               type="button"
@@ -166,7 +197,9 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
       </header>
 
       <main className="mx-auto max-w-screen-2xl px-4 py-6 md:px-6 lg:px-8">
-        {profile?.role === 'lead' ? (
+        {showManage ? (
+          <ManagePanel currentUserId={user.uid} onBack={() => setView('dashboard')} />
+        ) : profile?.role === 'lead' ? (
           <LeadView leadUserId={user.uid} />
         ) : (
           <DeveloperView userId={user.uid} developerName={profile?.name ?? user.email ?? 'Developer'} />

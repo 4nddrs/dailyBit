@@ -258,6 +258,15 @@ export function subscribeUserProfiles(
   });
 }
 
+// Used by the lead-only Manage team panel to change another team member's
+// role. The Firestore rule enforces the same guards the panel's UI already
+// applies (a lead can't touch their own role, and only `role` is writable
+// here); the last-remaining-lead guard is UI-only for this client write,
+// since it depends on reading every profile's role first.
+export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
+  await updateDoc(userDoc(uid), { role });
+}
+
 // Missing doc means no order has been saved yet, so callers get an empty
 // order and fall back to their own default (e.g. alphabetical by name).
 export function subscribeTeamOrder(

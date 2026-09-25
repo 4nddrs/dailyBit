@@ -145,7 +145,16 @@ service cloud.firestore {
       // role changes stay in the admin console / seed script.
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.role == 'dev';
-      allow update, delete: if false;
+      // A lead can change another user's role from the Manage team panel,
+      // but only that one field: never their own role, and never any other
+      // profile data.
+      allow update: if isLead() && request.auth.uid != uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+        && request.resource.data.role in ['dev', 'lead'];
+      // Full account deletion is handled server-side by api/admin-users.ts
+      // (firebase-admin, which is not bound by these client rules), so
+      // delete stays false for the client.
+      allow delete: if false;
     }
 
     match /reports/{reportId} {
@@ -332,6 +341,7 @@ Security intent:
 - Authenticated developers can read and write their own report tree.
 - Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
+- **Manage team panel:** a lead can change another user's `role` (dev ↔ lead) from the lead-only Manage team panel; the rule blocks a lead from changing their own role and restricts the write to the `role` field only. Full account deletion happens server-side (`api/admin-users.ts`, via `firebase-admin`, which bypasses these client rules), so `users/{uid}` delete stays `false` for the client — the same self-delete and last-remaining-lead guards the panel enforces in the UI are re-checked server-side before deleting anything.
 - **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. The editor itself never creates a report: a developer with no report for the date stays read-only in edit mode.
 - **Lead tools panel — create for chosen developers:** the lead's Question/Note/Task actions (in the "Lead tools" panel under the Team list) can target a developer who has no report yet for the selected date. In that case the client calls `ensureReport`/`ensureReportWithStatus` for that developer before writing the note/question, which needs the lead to be able to create the developer's report doc. `reports` `create` therefore also allows `isLead()`, tightly scoped: the new doc's `userId` must belong to a real `role: 'dev'` user, and the report id must be exactly `${userId}_${date}` (the `reportIdFor` convention), so the lead can only ever create that one developer's report for that one date, never an arbitrary document. If the following note/question write then fails for a report the lead's own call just created, the client best-effort deletes that empty report so the developer doesn't end up looking "reported" with nothing in it; `reports` `delete` therefore also allows `isLead()` for any report — rules can't verify "created in this same client operation" across requests, so this is scoped only by the client only ever calling it right after its own create.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
@@ -359,6 +369,8 @@ Security intent:
 > **Note:** the Lead tools panel's Question/Note/Task actions for chosen developers are new. `reports` `create` widened from owner-only to also allow `isLead()` for a single developer/date pair (`userId` a real `dev`, doc id `${userId}_${date}`). If your Firestore security rules were already deployed with the previous owner-only `create` rule, redeploy the rules above before using this build, or the lead's create-for-a-developer-with-no-report action will be rejected.
 >
 > **Note:** `reports` `delete` widened from owner-only to also allow `isLead()`, so the Lead tools panel's fan-out can clean up an empty report it just created for a developer when the following note/question write fails. If your Firestore security rules were already deployed with the previous owner-only `delete` rule, redeploy the rules above before using this build, or that cleanup will silently fail and leave an empty report behind (the original note/question failure still surfaces to the lead either way).
+>
+> **Note:** the `users/{uid}` `update` rule is new (a lead changing another user's `role` from the Manage team panel). If your Firestore security rules were already deployed with the previous `allow update, delete: if false;` rule, redeploy the rules above before using this build, or role changes from the panel will be rejected.
 
 ## Usage
 
