@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { subscribeAssignmentUpdate } from '../../services/firestore';
+import { subscribeLatestAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
 import {
   AssignmentUpdateDisplay,
@@ -190,9 +190,11 @@ function PreviewDevQuestionCard({
   );
 }
 
-// Subscribes to this developer's own update for one assignment/date, the
-// same way Developer View's editable AssignmentRow does, but renders it
-// read-only via the shared AssignmentUpdateDisplay.
+// Subscribes to this developer's update for `date` if they wrote one, else
+// their most recent one before it (see `subscribeLatestAssignmentUpdate`) —
+// this is the lead's read-only view of it, unlike Developer View's own
+// per-day editable `AssignmentRow`, which stays exact — and renders it via
+// the shared AssignmentUpdateDisplay.
 function PreviewAssignmentRow({
   assignment,
   developerId,
@@ -206,7 +208,7 @@ function PreviewAssignmentRow({
 
   useEffect(() => {
     setUpdate(null);
-    const unsubscribe = subscribeAssignmentUpdate(assignment.id, developerId, date, setUpdate);
+    const unsubscribe = subscribeLatestAssignmentUpdate(assignment.id, developerId, date, setUpdate);
     return unsubscribe;
   }, [assignment.id, developerId, date]);
 
@@ -218,7 +220,7 @@ function PreviewAssignmentRow({
         <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>
       ) : null}
       <div className="mt-3">
-        <AssignmentUpdateDisplay update={update} />
+        <AssignmentUpdateDisplay update={update} date={date} />
       </div>
     </div>
   );

@@ -1932,8 +1932,102 @@ export function subscribeAssignmentUpdate(
   };
 }
 
-// Lead-only: every assignee's update doc for one assignment/date, with each
-// update's images managed the same way subscribeReport manages task images.
+// The one assignee's update for `date` if they wrote one, else their most
+// recent update strictly before it (never one after), plus its images.
+// Unlike `subscribeAssignmentUpdate` above (which the developer's own
+// per-day editor uses, unchanged), this is for read-only display — the lead
+// must still see what a developer wrote even if it landed on an earlier day
+// (e.g. the day after an assignment is answered, or the day after it
+// closes). Queries by `assigneeId` only (a single equality filter, no
+// composite index) and picks the best doc client-side, same approach
+// `subscribeAssignmentUpdatesForDate` uses for every assignee at once.
+export function subscribeLatestAssignmentUpdate(
+  assignmentId: string,
+  assigneeId: string,
+  date: string,
+  callback: (update: AssignmentUpdateWithImages | null) => void,
+  onError?: (error: FirestoreError) => void,
+): Unsubscribe {
+  const updates = new Map<string, AssignmentUpdate>();
+  let images: TaskImageWithId[] = [];
+  let imagesUnsubscribe: Unsubscribe | undefined;
+  let pickedUpdateId: string | null = null;
+
+  // `date` itself wins outright; otherwise the latest date strictly before
+  // it. A doc dated after `date` is never a candidate.
+  function pickUpdateId(): string | null {
+    const candidates = Array.from(updates.entries()).filter(([, data]) => data.date <= date);
+    const best = candidates.reduce<{ id: string; date: string } | null>((current, [updateId, data]) => {
+      if (!current || data.date === date || (current.date !== date && data.date > current.date)) {
+        return { id: updateId, date: data.date };
+      }
+      return current;
+    }, null);
+    return best ? best.id : null;
+  }
+
+  const emit = () => {
+    const data = pickedUpdateId ? updates.get(pickedUpdateId) : undefined;
+    if (!pickedUpdateId || !data) {
+      callback(null);
+      return;
+    }
+    callback({ id: pickedUpdateId, ...data, images: [...images] });
+  };
+
+  const updatesQuery = query(assignmentUpdatesCollection(assignmentId), where('assigneeId', '==', assigneeId));
+  const updatesUnsubscribe = onSnapshot(
+    updatesQuery,
+    (snapshot) => {
+      updates.clear();
+      snapshot.docs.forEach((updateSnapshot) => {
+        updates.set(updateSnapshot.id, updateSnapshot.data() as AssignmentUpdate);
+      });
+
+      const nextPickedUpdateId = pickUpdateId();
+      if (nextPickedUpdateId !== pickedUpdateId) {
+        imagesUnsubscribe?.();
+        imagesUnsubscribe = undefined;
+        images = [];
+        pickedUpdateId = nextPickedUpdateId;
+      }
+
+      if (pickedUpdateId && !imagesUnsubscribe) {
+        const imagesQuery = query(
+          assignmentUpdateImagesCollection(assignmentId, pickedUpdateId),
+          orderBy('createdAt', 'asc'),
+        );
+        imagesUnsubscribe = onSnapshot(imagesQuery, (imageSnapshot) => {
+          images = imageSnapshot.docs.map((imageSnapshotDoc) => {
+            const image = imageSnapshotDoc.data() as TaskImage;
+            return { id: imageSnapshotDoc.id, imageBase64: image.imageBase64 };
+          });
+          emit();
+        });
+      }
+
+      emit();
+    },
+    onError,
+  );
+
+  return () => {
+    updatesUnsubscribe();
+    imagesUnsubscribe?.();
+  };
+}
+
+// Lead-only: for each assignee, their update doc for `date` if they wrote
+// one, else their most recent update strictly before it (never one after) —
+// same "shows regardless of when it was written" rule
+// `subscribeLatestAssignmentUpdate` applies for a single assignee, but for
+// every assignee on this assignment at once. Reads the assignment's whole
+// `updates` subcollection (small: at most one doc per assignee per day they
+// wrote something) instead of a `where('date', '==', date)` query, so no
+// composite index is needed and the pick is entirely client-side. Only the
+// picked doc per assignee gets its images subscribed — an assignee's
+// older/no-longer-picked doc has its image listener torn down, so listeners
+// never accumulate as more days go by.
 export function subscribeAssignmentUpdatesForDate(
   assignmentId: string,
   date: string,
@@ -1944,52 +2038,68 @@ export function subscribeAssignmentUpdatesForDate(
   const updateImages = new Map<string, TaskImageWithId[]>();
   const imageUnsubscribes = new Map<string, Unsubscribe>();
 
+  // The doc id picked for each assignee: `date` itself when they wrote one,
+  // else the latest date strictly before it.
+  function pickedUpdateIds(): Map<string, string> {
+    const bestByAssignee = new Map<string, { id: string; date: string }>();
+    updates.forEach((data, updateId) => {
+      if (data.date > date) {
+        return;
+      }
+      const current = bestByAssignee.get(data.assigneeId);
+      if (!current || data.date === date || (current.date !== date && data.date > current.date)) {
+        bestByAssignee.set(data.assigneeId, { id: updateId, date: data.date });
+      }
+    });
+    return new Map(Array.from(bestByAssignee, ([assigneeId, best]) => [assigneeId, best.id]));
+  }
+
   const emit = () => {
-    const results = Array.from(updates.entries()).map(([id, data]) => ({
-      id,
-      ...data,
-      images: [...(updateImages.get(id) ?? [])],
+    const results = Array.from(pickedUpdateIds().values()).map((updateId) => ({
+      id: updateId,
+      ...(updates.get(updateId) as AssignmentUpdate),
+      images: [...(updateImages.get(updateId) ?? [])],
     }));
     callback(results);
   };
 
-  const updatesQuery = query(assignmentUpdatesCollection(assignmentId), where('date', '==', date));
   const updatesUnsubscribe = onSnapshot(
-    updatesQuery,
+    assignmentUpdatesCollection(assignmentId),
     (snapshot) => {
-      const nextIds = new Set<string>();
-
+      updates.clear();
       snapshot.docs.forEach((updateSnapshot) => {
-        const updateId = updateSnapshot.id;
-        nextIds.add(updateId);
-        updates.set(updateId, updateSnapshot.data() as AssignmentUpdate);
-
-        if (!imageUnsubscribes.has(updateId)) {
-          const imagesQuery = query(
-            assignmentUpdateImagesCollection(assignmentId, updateId),
-            orderBy('createdAt', 'asc'),
-          );
-          const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
-            updateImages.set(
-              updateId,
-              imageSnapshot.docs.map((imageSnapshotDoc) => {
-                const image = imageSnapshotDoc.data() as TaskImage;
-                return { id: imageSnapshotDoc.id, imageBase64: image.imageBase64 };
-              }),
-            );
-            emit();
-          });
-          imageUnsubscribes.set(updateId, unsubscribeImages);
-        }
+        updates.set(updateSnapshot.id, updateSnapshot.data() as AssignmentUpdate);
       });
 
-      Array.from(updates.keys()).forEach((updateId) => {
-        if (!nextIds.has(updateId)) {
-          updates.delete(updateId);
+      const pickedIds = new Set(pickedUpdateIds().values());
+
+      Array.from(imageUnsubscribes.keys()).forEach((updateId) => {
+        if (!pickedIds.has(updateId)) {
           updateImages.delete(updateId);
           imageUnsubscribes.get(updateId)?.();
           imageUnsubscribes.delete(updateId);
         }
+      });
+
+      pickedIds.forEach((updateId) => {
+        if (imageUnsubscribes.has(updateId)) {
+          return;
+        }
+        const imagesQuery = query(
+          assignmentUpdateImagesCollection(assignmentId, updateId),
+          orderBy('createdAt', 'asc'),
+        );
+        const unsubscribeImages = onSnapshot(imagesQuery, (imageSnapshot) => {
+          updateImages.set(
+            updateId,
+            imageSnapshot.docs.map((imageSnapshotDoc) => {
+              const image = imageSnapshotDoc.data() as TaskImage;
+              return { id: imageSnapshotDoc.id, imageBase64: image.imageBase64 };
+            }),
+          );
+          emit();
+        });
+        imageUnsubscribes.set(updateId, unsubscribeImages);
       });
 
       emit();

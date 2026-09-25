@@ -1453,7 +1453,17 @@ function AssignmentComposer({
 // Renders one developer's update for an assignment (text, links, image
 // thumbnails with their own lightbox), or "No updates" when empty. Shared by
 // `LeadAssignmentRow` and the developer's read-only "Preview as lead" mode.
-export function AssignmentUpdateDisplay({ update }: { update: AssignmentUpdateWithImages | null }) {
+// `date` is the currently viewed date: when `update` was actually written
+// for an earlier date (see `subscribeAssignmentUpdatesForDate`'s "date D, or
+// else the latest before it" pick), a small label names that origin date so
+// it never looks like a fresh update for `date` itself.
+export function AssignmentUpdateDisplay({
+  update,
+  date,
+}: {
+  update: AssignmentUpdateWithImages | null;
+  date: string;
+}) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const hasUpdateContent = Boolean(
@@ -1467,8 +1477,11 @@ export function AssignmentUpdateDisplay({ update }: { update: AssignmentUpdateWi
     return <p className="text-sm text-fg-muted">No updates</p>;
   }
 
+  const lastUpdateLabel = update && update.date < date ? `Last update · ${formatDisplayDate(update.date)}` : null;
+
   return (
     <>
+      {lastUpdateLabel ? <p className="mb-1 text-xs font-medium text-fg-muted">{lastUpdateLabel}</p> : null}
       {update?.text ? <p className="text-sm text-fg">{update.text}</p> : null}
       <LinkChips links={update?.links} />
       {images.length > 0 ? (
@@ -1501,6 +1514,7 @@ function LeadAssignmentRow({
   assignment,
   assigneeId,
   update,
+  date,
   allDevs,
   onSetClosed,
   onRemove,
@@ -1509,6 +1523,9 @@ function LeadAssignmentRow({
   assignment: AssignmentWithId;
   assigneeId: string;
   update: AssignmentUpdateWithImages | null;
+  // The currently viewed date, so `AssignmentUpdateDisplay` can label an
+  // update carried over from an earlier day (see `subscribeAssignmentUpdatesForDate`).
+  date: string;
   allDevs: UserProfileWithId[];
   onSetClosed: (assignmentId: string, closed: boolean) => void;
   onRemove: (assignmentId: string) => void;
@@ -1593,7 +1610,7 @@ function LeadAssignmentRow({
       </div>
 
       <div className="mt-2">
-        <AssignmentUpdateDisplay update={update} />
+        <AssignmentUpdateDisplay update={update} date={date} />
       </div>
     </article>
   );
@@ -1602,6 +1619,7 @@ function LeadAssignmentRow({
 function LeadAssignmentsBox({
   assignments,
   assigneeId,
+  date,
   updatesByAssignment,
   allDevs,
   onSetClosed,
@@ -1610,6 +1628,7 @@ function LeadAssignmentsBox({
 }: {
   assignments: AssignmentWithId[];
   assigneeId: string;
+  date: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
   allDevs: UserProfileWithId[];
   onSetClosed: (assignmentId: string, closed: boolean) => void;
@@ -1635,6 +1654,7 @@ function LeadAssignmentsBox({
             assignment={assignment}
             assigneeId={assigneeId}
             update={updatesByAssignment.get(assignment.id)?.get(assigneeId) ?? null}
+            date={date}
             allDevs={allDevs}
             onSetClosed={onSetClosed}
             onRemove={onRemove}
@@ -1654,6 +1674,7 @@ function TaskCard({
   notes,
   questions,
   assignments,
+  date,
   updatesByAssignment,
   allDevs,
   reportOwnerId,
@@ -1678,6 +1699,9 @@ function TaskCard({
   // rendered right here instead of the trailing "Assigned by lead" block —
   // see `ReportCard`'s `assignmentsByTask`.
   assignments: AssignmentWithId[];
+  // The currently viewed date, so `AssignmentUpdateDisplay` can label an
+  // update carried over from an earlier day.
+  date: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
   allDevs: UserProfileWithId[];
   reportOwnerId: string;
@@ -1792,6 +1816,7 @@ function TaskCard({
               assignment={assignment}
               assigneeId={reportOwnerId}
               update={updatesByAssignment.get(assignment.id)?.get(reportOwnerId) ?? null}
+              date={date}
               allDevs={allDevs}
               onSetClosed={onSetAssignmentClosed}
               onRemove={onRemoveAssignment}
@@ -1819,6 +1844,7 @@ function SectionCard({
   notesByTarget,
   questionsByTarget,
   assignmentsByTask,
+  date,
   updatesByAssignment,
   allDevs,
   reportOwnerId,
@@ -1840,6 +1866,9 @@ function SectionCard({
   notesByTarget: Map<string, LeadNoteWithId[]>;
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
   assignmentsByTask: Map<string, AssignmentWithId[]>;
+  // The currently viewed date, threaded to `TaskCard` for
+  // `AssignmentUpdateDisplay`'s "carried over from an earlier day" label.
+  date: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
   allDevs: UserProfileWithId[];
   reportOwnerId: string;
@@ -1896,6 +1925,7 @@ function SectionCard({
                 notes={notesByTarget.get(item.id) ?? []}
                 questions={questionsByTarget.get(item.id) ?? []}
                 assignments={assignmentsByTask.get(item.id) ?? []}
+                date={date}
                 updatesByAssignment={updatesByAssignment}
                 allDevs={allDevs}
                 reportOwnerId={reportOwnerId}
@@ -2393,6 +2423,7 @@ function ReportCard({
                         notesByTarget={notesByTarget}
                         questionsByTarget={questionsByTarget}
                         assignmentsByTask={assignmentsByTask}
+                        date={date}
                         updatesByAssignment={updatesByAssignment}
                         allDevs={allDevs}
                         reportOwnerId={report.userId}
@@ -2452,6 +2483,7 @@ function ReportCard({
               // rendered under their task above.
               assignments={onlyMineFilter ? assignments : assignments.filter((a) => !inlineAssignmentIds.has(a.id))}
               assigneeId={report.userId}
+              date={date}
               updatesByAssignment={updatesByAssignment}
               allDevs={allDevs}
               onSetClosed={onSetAssignmentClosed}
@@ -2470,6 +2502,7 @@ function AssignmentOnlyCard({
   developerName,
   allDevs,
   assignments,
+  date,
   updatesByAssignment,
   onCreateAssignment,
   onSetAssignmentClosed,
@@ -2482,6 +2515,9 @@ function AssignmentOnlyCard({
   developerName: string;
   allDevs: UserProfileWithId[];
   assignments: AssignmentWithId[];
+  // The currently selected date, passed through to `AssignmentUpdateDisplay`
+  // so it can label an update carried over from an earlier day.
+  date: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
   onCreateAssignment: (input: {
     description: string;
@@ -2541,6 +2577,7 @@ function AssignmentOnlyCard({
         <LeadAssignmentsBox
           assignments={assignments}
           assigneeId={userId}
+          date={date}
           updatesByAssignment={updatesByAssignment}
           allDevs={allDevs}
           onSetClosed={onSetAssignmentClosed}
@@ -3241,6 +3278,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   developerName={developerNames[entry.userId] ?? 'Loading…'}
                   allDevs={displayedDevs}
                   assignments={assignmentsByAssignee.get(entry.userId) ?? []}
+                  date={normalizedSelectedDate}
                   updatesByAssignment={updatesByAssignment}
                   onCreateAssignment={handleCreateAssignment}
                   onSetAssignmentClosed={handleSetAssignmentClosed}
