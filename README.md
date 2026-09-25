@@ -145,12 +145,18 @@ service cloud.firestore {
       // role changes stay in the admin console / seed script.
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.role == 'dev';
-      // A lead can change another user's role from the Manage team panel,
-      // but only that one field: never their own role, and never any other
-      // profile data.
-      allow update: if isLead() && request.auth.uid != uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
-        && request.resource.data.role in ['dev', 'lead'];
+      // From the Manage team panel a lead can change another user's role
+      // (never their own), or rename anyone including themselves. Each write
+      // touches exactly one of those fields and nothing else.
+      allow update: if isLead() && (
+        (request.auth.uid != uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+          && request.resource.data.role in ['dev', 'lead'])
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 80)
+      );
       // Full account deletion is handled server-side by api/admin-users.ts
       // (firebase-admin, which is not bound by these client rules), so
       // delete stays false for the client.

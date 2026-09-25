@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { updateUserRole } from '../../services/firestore';
+import { useState, type FormEvent } from 'react';
+import { USER_NAME_MAX_LENGTH, updateUserName, updateUserRole } from '../../services/firestore';
 import { AdminUsersError, deleteUserAccount } from '../../services/adminUsers';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import type { UserRole } from '../../types';
@@ -21,6 +21,10 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
   const [confirmingUid, setConfirmingUid] = useState<string | null>(null);
   const [deletingUid, setDeletingUid] = useState<string | null>(null);
   const [deleteErrorByUid, setDeleteErrorByUid] = useState<Record<string, string>>({});
+  const [renamingUid, setRenamingUid] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingNameUid, setSavingNameUid] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
 
   const leadCount = profiles.filter((profile) => profile.role === 'lead').length;
 
@@ -73,6 +77,36 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
     }
   }
 
+  function startRename(uid: string, currentName: string) {
+    setRenamingUid(uid);
+    setNameDraft(currentName);
+    setNameError(null);
+  }
+
+  function cancelRename() {
+    setRenamingUid(null);
+    setNameError(null);
+  }
+
+  async function handleSaveName(event: FormEvent<HTMLFormElement>, uid: string, currentName: string) {
+    event.preventDefault();
+    const trimmed = nameDraft.trim();
+    if (trimmed === currentName) {
+      cancelRename();
+      return;
+    }
+    setSavingNameUid(uid);
+    setNameError(null);
+    try {
+      await updateUserName(uid, trimmed);
+      setRenamingUid(null);
+    } catch (error) {
+      setNameError(error instanceof Error ? error.message : 'Could not save the name.');
+    } finally {
+      setSavingNameUid(null);
+    }
+  }
+
   async function handleConfirmDelete(uid: string) {
     clearDeleteError(uid);
     setDeletingUid(uid);
@@ -119,14 +153,51 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
             return (
               <li className="flex flex-col gap-2 px-4 py-3" key={profile.id}>
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <span className="truncate text-sm font-medium text-fg">{profile.name}</span>
-                    {isSelf ? (
-                      <span className="ml-2 rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
-                        You
-                      </span>
-                    ) : null}
-                  </div>
+                  {renamingUid === profile.id ? (
+                    <form
+                      className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                      onSubmit={(event) => void handleSaveName(event, profile.id, profile.name)}
+                    >
+                      <input
+                        className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-2 py-1 text-sm text-fg outline-none focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+                        value={nameDraft}
+                        maxLength={USER_NAME_MAX_LENGTH}
+                        aria-label={`Name for ${profile.name}`}
+                        autoFocus
+                        onChange={(event) => setNameDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            cancelRename();
+                          }
+                        }}
+                      />
+                      <button
+                        className="rounded-md bg-success-emphasis px-3 py-1 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+                        type="submit"
+                        disabled={!nameDraft.trim() || savingNameUid === profile.id}
+                      >
+                        {savingNameUid === profile.id ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        className="rounded-md border border-line bg-control px-3 py-1 text-sm font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+                        type="button"
+                        disabled={savingNameUid === profile.id}
+                        onClick={cancelRename}
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="truncate text-sm font-medium text-fg">{profile.name}</span>
+                      {isSelf ? (
+                        <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
+                          You
+                        </span>
+                      ) : null}
+                      <EditButton label={`Rename ${profile.name}`} onClick={() => startRename(profile.id, profile.name)} />
+                    </div>
+                  )}
 
                   <select
                     className="rounded-md border border-line bg-control px-2 py-1 text-sm text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-60"
@@ -149,6 +220,12 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
                     disabled={isSelf || isLastLead || isDeleting}
                   />
                 </div>
+
+                {renamingUid === profile.id && nameError ? (
+                  <p className="text-xs font-medium text-danger-fg" role="alert">
+                    {nameError}
+                  </p>
+                ) : null}
 
                 {roleError ? (
                   <p className="text-xs font-medium text-danger-fg" role="alert">
@@ -193,6 +270,23 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
         </ul>
       )}
     </section>
+  );
+}
+
+// Pencil button matching the trash button's size, for renaming a person.
+function EditButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition hover:scale-110 hover:bg-accent-emphasis/30 hover:text-accent-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis"
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+        <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
+      </svg>
+    </button>
   );
 }
 

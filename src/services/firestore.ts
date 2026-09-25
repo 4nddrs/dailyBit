@@ -267,6 +267,19 @@ export async function updateUserRole(uid: string, role: UserRole): Promise<void>
   await updateDoc(userDoc(uid), { role });
 }
 
+export const USER_NAME_MAX_LENGTH = 80;
+
+export async function updateUserName(uid: string, name: string): Promise<void> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error('A name is required.');
+  }
+  if (trimmed.length > USER_NAME_MAX_LENGTH) {
+    throw new Error(`Names can be at most ${USER_NAME_MAX_LENGTH} characters.`);
+  }
+  await updateDoc(userDoc(uid), { name: trimmed });
+}
+
 // Missing doc means no order has been saved yet, so callers get an empty
 // order and fall back to their own default (e.g. alphabetical by name).
 export function subscribeTeamOrder(
