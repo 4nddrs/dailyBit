@@ -30,6 +30,7 @@ import {
   reorderSections,
   saveAssignmentUpdate,
   subscribeAssignmentUpdate,
+  updateQuestion,
   updateTask,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
@@ -62,6 +63,10 @@ const QUESTION_OPTION_MINIMUM = 2;
 const MAX_IMAGE_SIDE = 1024;
 const MAX_IMAGE_DATA_URL_LENGTH = 900_000;
 const optionLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+// Marks a locally-added option image (not yet uploaded) in a composer option:
+// `QuestionOptionRow` mints these, and `QuestionComposer`'s edit-mode submit
+// uses the prefix to tell a new upload apart from a kept existing image doc.
+const LOCAL_IMAGE_PREFIX = 'local-';
 const SECTION_DRAG_TYPE = 'application/x-dailybit-section';
 // Carries `{ sectionId, kind: 'task' | 'question', id }`: tasks and section
 // questions share one drag type so either can be dropped on the other.
@@ -485,6 +490,14 @@ function TrashIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
       <path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.75 1.75 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+      <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z" />
     </svg>
   );
 }
@@ -2181,7 +2194,7 @@ function QuestionOptionRow({
     setImageError(null);
     try {
       const imageBase64 = await compressTaskImage(file);
-      onImagesChange([...images, { id: `local-${nextImageId.current++}`, imageBase64 }]);
+      onImagesChange([...images, { id: `${LOCAL_IMAGE_PREFIX}${nextImageId.current++}`, imageBase64 }]);
     } catch (caughtError) {
       console.error('Option image add failed', caughtError);
       setImageError(caughtError instanceof Error ? caughtError.message : 'Image could not be added.');
@@ -2271,24 +2284,49 @@ function emptyComposerOption(): ComposerOption {
   return { text: '', links: [], images: [] };
 }
 
-// `onCancel` is only passed where the composer is opened on demand (inside a
-// section); it adds a Cancel button, Escape-to-close and autofocus. `onAdded`
-// runs once the question and all its option images are saved, so a failed
-// image upload keeps the composer (and its error message) on screen.
+// Seeds the composer from an existing question for edit mode: each option's
+// images carry their real Firestore doc id, so submit can tell a kept image
+// apart from a newly-added one (see `LOCAL_IMAGE_PREFIX`).
+function composerOptionsFromQuestion(question: QuestionWithId): ComposerOption[] {
+  return question.options.map((text, index) => ({
+    text,
+    links: question.optionDetails?.[index]?.links ?? [],
+    images: question.optionImages
+      .filter((image) => image.optionIndex === index)
+      .map((image) => ({ id: image.id, imageBase64: image.imageBase64 })),
+  }));
+}
+
+// Reused for both creating a question (`onAddQuestion`) and, when `question`
+// is passed, editing one in place (`onSaved`) — same fields, options and
+// per-option links/images, just a different submit target. `onCancel` is
+// passed whenever the composer can be dismissed without saving (creating a
+// section question on demand, or editing any question): it adds a Cancel
+// button, Escape-to-close and autofocus. `onAdded` runs once a newly created
+// question and all its option images are saved, so a failed image upload
+// keeps the composer (and its error message) on screen.
 function QuestionComposer({
   reportId,
+  question,
   onAddQuestion,
   onCancel,
   onAdded,
+  onSaved,
 }: {
   reportId: string;
-  onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
+  question?: QuestionWithId;
+  onAddQuestion?: (question: CreateQuestionInput) => Promise<string>;
   onCancel?: () => void;
   onAdded?: () => void;
+  onSaved?: () => void;
 }) {
-  const [questionText, setQuestionText] = useState('');
-  const [options, setOptions] = useState<ComposerOption[]>([emptyComposerOption(), emptyComposerOption()]);
+  const isEditing = Boolean(question);
+  const [questionText, setQuestionText] = useState(question?.questionText ?? '');
+  const [options, setOptions] = useState<ComposerOption[]>(() =>
+    question ? composerOptionsFromQuestion(question) : [emptyComposerOption(), emptyComposerOption()],
+  );
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const questionPolish = usePolishAction({
     kind: 'question',
     onUse: (suggestion) => setQuestionText(suggestion),
@@ -2329,6 +2367,36 @@ function QuestionComposer({
     }
 
     setImageUploadError(null);
+
+    if (question) {
+      // Edit mode: one atomic batch handles the question fields, the option
+      // image remap/delete/add, and the stale-answer clear, so there is
+      // nothing left to reconcile after it resolves.
+      setSaving(true);
+      runSafely(
+        updateQuestion(reportId, question.id, {
+          questionText: trimmedQuestion,
+          options: nonEmptyOptions.map((option) => ({
+            text: option.text.trim(),
+            links: option.links,
+            keepImageIds: option.images
+              .filter((image) => !image.id.startsWith(LOCAL_IMAGE_PREFIX))
+              .map((image) => image.id),
+            newImages: option.images
+              .filter((image) => image.id.startsWith(LOCAL_IMAGE_PREFIX))
+              .map((image) => image.imageBase64),
+          })),
+        })
+          .then(() => onSaved?.())
+          .finally(() => setSaving(false)),
+        'Question update failed',
+      );
+      return;
+    }
+
+    if (!onAddQuestion) {
+      return;
+    }
 
     runSafely(
       (async () => {
@@ -2376,7 +2444,7 @@ function QuestionComposer({
     >
       <div className="flex items-start gap-2">
         <label className="block min-w-0 flex-1 text-sm font-medium text-done-fg">
-          Question for the lead
+          {isEditing ? 'Edit question for the lead' : 'Question for the lead'}
           <input
             className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             value={questionText}
@@ -2447,10 +2515,12 @@ function QuestionComposer({
             className="rounded-md border border-white/15 bg-success-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
             type="submit"
             disabled={
-              !questionText.trim() || options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM
+              saving ||
+              !questionText.trim() ||
+              options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM
             }
           >
-            Add question
+            {isEditing ? (saving ? 'Saving...' : 'Save changes') : 'Add question'}
           </button>
         </div>
       </div>
@@ -2459,7 +2529,19 @@ function QuestionComposer({
 }
 
 function QuestionCard({ reportId, question }: { reportId: string; question: QuestionWithId }) {
+  const [editing, setEditing] = useState(false);
   const isAnswered = question.selectedAnswer !== undefined;
+
+  if (editing) {
+    return (
+      <QuestionComposer
+        reportId={reportId}
+        question={question}
+        onCancel={() => setEditing(false)}
+        onSaved={() => setEditing(false)}
+      />
+    );
+  }
 
   return (
     <article className="group/question rounded-md border border-line bg-canvas p-3">
@@ -2475,13 +2557,15 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
           >
             {isAnswered ? 'Answered by the lead' : 'Waiting for the lead'}
           </span>
-          <button
-            className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/question:opacity-100 md:group-focus-within/question:opacity-100"
-            type="button"
-            onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
-          >
-            Remove
-          </button>
+          <div className="flex shrink-0 items-center gap-0.5 md:opacity-0 md:group-hover/question:opacity-100 md:group-focus-within/question:opacity-100">
+            <IconButton icon={<EditIcon />} label="Edit question" onClick={() => setEditing(true)} />
+            <IconButton
+              icon={<TrashIcon />}
+              label="Remove question"
+              danger
+              onClick={() => runSafely(removeQuestion(reportId, question.id), 'Question remove failed')}
+            />
+          </div>
         </div>
       </div>
       <QuestionOptionList

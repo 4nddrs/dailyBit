@@ -184,10 +184,28 @@ service cloud.firestore {
       match /questions/{questionId} {
         allow read: if ownsExistingReport(reportId) || isLead();
         allow create, delete: if ownsExistingReport(reportId) || isLead();
+        // The report owner or the lead (editing in place) may edit a
+        // question's text, options, and per-option links, and reorder it
+        // (`order`, from drag-reorder inside a section); only the lead may
+        // additionally set `selectedAnswer`/`answeredBy`/`answeredAt`. Either
+        // editor may instead *clear* those three answer fields — an edited
+        // option set can invalidate the lead's existing answer — but a write
+        // that touches them is only allowed when it clears all three (the
+        // resulting doc has none of them), never when it sets one, so the
+        // owner still can't answer their own question.
         allow update: if (
           ownsExistingReport(reportId) &&
-          !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['selectedAnswer', 'answeredBy', 'answeredAt'])
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['questionText', 'options', 'optionDetails', 'order', 'selectedAnswer', 'answeredBy', 'answeredAt']) &&
+          (
+            !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['selectedAnswer', 'answeredBy', 'answeredAt']) ||
+            (
+              !('selectedAnswer' in request.resource.data) &&
+              !('answeredBy' in request.resource.data) &&
+              !('answeredAt' in request.resource.data)
+            )
+          )
         ) || (
           isLead() &&
           request.resource.data.diff(resource.data).affectedKeys()
@@ -195,11 +213,16 @@ service cloud.firestore {
         );
 
         // An option's image attachments; same read/write shape as task
-        // images. The report owner or the lead (editing in place) creates
-        // them, and either deletes them so removeQuestion can cascade.
+        // images. The report owner or the lead (editing in place) creates or
+        // deletes them (removeQuestion also cascades deletes). `update` is
+        // scoped to `optionIndex` only, so editing a question can remap an
+        // image to the option it now belongs to instead of deleting and
+        // recreating it when an earlier option is removed.
         match /images/{imageId} {
           allow read: if ownsExistingReport(reportId) || isLead();
           allow create: if ownsExistingReport(reportId) || isLead();
+          allow update: if (ownsExistingReport(reportId) || isLead()) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['optionIndex']);
           allow delete: if ownsExistingReport(reportId) || isLead();
         }
       }
@@ -292,7 +315,7 @@ Security intent:
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
 - **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. Report **creation** stays owner-only (`isOwnReportCreate()`): a lead can only edit a report that already exists, so a developer with no report for the date stays read-only in edit mode.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
-- The report owner or the lead (editing in place) can create, update, or delete `questions`, and edit a question's `order` (section reorder); only the lead can additionally write `selectedAnswer`, `answeredBy`, and `answeredAt`. A dev question's option image attachments follow the same read shape as task images: the report owner or the lead creates or deletes them, since the lead can now compose a question with attachments and `removeQuestion` also cascades to them.
+- The report owner or the lead (editing in place) can create or delete `questions`, and edit a question's `questionText`, `options`, `optionDetails`, and `order`; only the lead can additionally *set* `selectedAnswer`, `answeredBy`, and `answeredAt` — the owner may only *clear* all three together (a stale answer after an option edit), never set one, since a write that touches them is rejected unless the resulting document has none of them. A dev question's option image attachments follow the same read shape as task images: the report owner or the lead creates or deletes them (also cascaded by `removeQuestion`), and either may update an image's `optionIndex` alone, to remap it to its option's new index when an edit removes or reorders options instead of deleting and recreating the image.
 - Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`, while the lead may update any field (unrestricted, since it also owns question creation). A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner or the lead (answering on the owner's behalf) creates them, and either can delete them, since `removeLeadQuestion` also cascades to them.
 - Only users with `role: 'lead'` can read or write `settings/team`, which stores the lead's chosen developer ordering for the "Team" list and the reports rollup.
 - Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
@@ -310,6 +333,8 @@ Security intent:
 > **Note:** lead edit mode is new and widens `isLead()` write access onto `reports.updatedAt`, `sections`/`tasks`/`images`, `questions` (create/delete/`order`), `questions/{questionId}/images`, `leadQuestions/{questionId}/images`, and `assignments/{assignmentId}/updates` (and their `images`). If your Firestore security rules were already deployed without these, redeploy the rules above before using this build, or the lead's in-place edits will be rejected.
 >
 > **Note:** `questions.optionDetails` and the `questions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without the `questions/{questionId}/images` match block, redeploy the rules above before using this build, or attaching a link/image to a dev question's option will be rejected.
+>
+> **Note:** editing an existing dev question (text, options, per-option links/images) is new. The `questions/{questionId}` `update` rule changed shape — from "the owner may write any field except the answer ones" to an explicit allowlist that also lets the owner clear (never set) a stale answer — and `questions/{questionId}/images` gained an `update` rule scoped to `optionIndex`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or editing a dev question will be rejected.
 
 ## Usage
 
@@ -320,6 +345,7 @@ Security intent:
 - Caps task descriptions at 500 characters.
 - Lets developers attach compressed images directly in Firestore, add supporting links, send multiple-choice questions to the lead, and answer the lead's per-task questions (free text, with its own supporting links and images, or by picking an option).
 - A question to the lead can be added either at the report level (trailing "Questions to the lead" panel) or from inside a section via its "Ask the lead" entry next to "Add task". A section question is interleaved with that section's tasks by shared `order` and can be moved up/down or dragged past a task, same as a task; it takes no letter of its own (tasks stay lettered `a, b, c…` over tasks only) and shows a small "Question" badge instead.
+- An existing question can be edited from its pencil icon, reopening the same composer prefilled with its text, options, links and images to add, rename, or remove options and attachments. Removing or reordering options remaps their images to the option's new position instead of losing them; if the option set or order changed (or the lead's already-selected option no longer matches), the lead's answer is cleared so it can't point at the wrong option.
 - Shows an "Assigned by lead" block above the report when the developer has at least one assignment visible on the selected date, with a "Pending"/"Updated" pill per assignment; each is answered with its own daily text/links/images update, independent of the report (it works even with no report for that date).
 
 ### LeadView

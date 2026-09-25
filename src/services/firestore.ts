@@ -831,6 +831,92 @@ export async function addQuestionOptionImage(
   return ref.id;
 }
 
+// One final option's edited state: `keepImageIds` are existing option-image
+// doc ids that remain under this option at its (possibly new) index, and
+// `newImages` are base64 payloads to add there. Any existing image id not
+// listed in some option's `keepImageIds` is deleted.
+export interface UpdateQuestionOptionInput {
+  text: string;
+  links?: TaskLink[];
+  keepImageIds?: string[];
+  newImages?: string[];
+}
+
+export interface UpdateQuestionInput {
+  questionText: string;
+  options: UpdateQuestionOptionInput[];
+}
+
+// Edits an existing dev question in place (text, options, per-option links
+// and images), reusing the same composer the developer used to create it.
+// Option images live one-per-doc tagged with `optionIndex`, so removing or
+// reordering options must remap or delete their images; this is done in one
+// batch with the question/report field updates so a failure never leaves an
+// image pointing at the wrong option. A stale answer — the option set or
+// order no longer matches what the lead answered — is cleared the same way
+// `answerQuestion` sets it, via `deleteField()`; text-only or links/images-only
+// edits keep the existing answer.
+export async function updateQuestion(
+  reportId: string,
+  questionId: string,
+  input: UpdateQuestionInput,
+): Promise<void> {
+  const questionSnapshot = await getDoc(questionDoc(reportId, questionId));
+  const previousOptions = (questionSnapshot.data() as Question | undefined)?.options ?? [];
+
+  const options = input.options.map((option) => option.text);
+  const optionLinks = input.options.map((option) => option.links ?? []);
+
+  const payload: Record<string, unknown> = { questionText: input.questionText, options };
+  // Same undefined-field rule as `addQuestion`, plus the explicit clear this
+  // update needs: an existing `optionDetails` from before the edit must be
+  // removed once no option has a link left.
+  if (optionLinks.some((links) => links.length > 0)) {
+    payload.optionDetails = options.map((_option, index) => ({ links: optionLinks[index] }));
+  } else {
+    payload.optionDetails = deleteField();
+  }
+
+  const optionsChanged =
+    options.length !== previousOptions.length || options.some((text, index) => text !== previousOptions[index]);
+  if (optionsChanged) {
+    payload.selectedAnswer = deleteField();
+    payload.answeredBy = deleteField();
+    payload.answeredAt = deleteField();
+  }
+
+  const batch = writeBatch(db);
+  batch.update(questionDoc(reportId, questionId), payload);
+
+  const imageSnapshots = await getDocs(questionImagesCollection(reportId, questionId));
+  const existingImageRefsById = new Map(imageSnapshots.docs.map((snapshot) => [snapshot.id, snapshot.ref]));
+  const keptImageIds = new Set<string>();
+
+  input.options.forEach((option, optionIndex) => {
+    (option.keepImageIds ?? []).forEach((imageId) => {
+      const ref = existingImageRefsById.get(imageId);
+      if (!ref) {
+        return;
+      }
+      keptImageIds.add(imageId);
+      batch.update(ref, { optionIndex });
+    });
+    (option.newImages ?? []).forEach((imageBase64) => {
+      const ref = doc(questionImagesCollection(reportId, questionId));
+      batch.set(ref, { imageBase64, optionIndex, createdAt: serverTimestamp() });
+    });
+  });
+
+  existingImageRefsById.forEach((ref, imageId) => {
+    if (!keptImageIds.has(imageId)) {
+      batch.delete(ref);
+    }
+  });
+
+  batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
+  await batch.commit();
+}
+
 // Firestore never cascades deletes into subcollections, so a question's
 // option images must be removed explicitly, before its own doc, same as
 // deleteTaskImages/deleteLeadQuestionImages above.
