@@ -139,13 +139,14 @@ export interface LeadQuestionWithId extends LeadQuestion {
 }
 
 // Top-level pointer at `leadQuestionCarryovers/{reportId}_{questionId}`, one
-// per report-level lead question, so an unanswered question keeps showing on
-// later days without re-querying every past report (mirrors how
-// `Assignment` makes a lead task visible across dates independent of
-// `reports`). `date` is the origin report's date; `answeredDate` is the date
-// string of the day view where the developer answered it (unset while
-// unanswered). Visible on date D (for D > date) when `answeredDate` is unset
-// or `answeredDate >= D`.
+// per lead question (report-level or task-anchored), so an unanswered
+// question keeps showing on later days without re-querying every past
+// report (mirrors how `Assignment` makes a lead task visible across dates
+// independent of `reports`). `date` is the origin report's date;
+// `answeredDate` is a best-effort mirror of the question's real
+// `answeredAt`, used only as a cheap prefilter (see
+// `shouldSubscribeToLeadQuestionCarryoverPointer` in firestore.ts — real
+// visibility is decided from the question doc itself).
 export interface LeadQuestionCarryoverPointer {
   userId: string;
   reportId: string;
@@ -159,14 +160,18 @@ export interface LeadQuestionCarryoverPointerWithId extends LeadQuestionCarryove
   id: string;
 }
 
-// A report-level lead question carried over from an earlier day: the origin
-// question's full data (same shape `LeadQuestionWithId` has) plus where it
-// came from, so callers can target the origin report for every action
-// (answer, edit, delete, images) instead of the day currently being viewed.
+// A lead question (report-level or task-anchored) carried over from an
+// earlier day: the origin question's full data (same shape
+// `LeadQuestionWithId` has) plus where it came from, so callers can target
+// the origin report for every action (answer, edit, delete, images) instead
+// of the day currently being viewed.
 export interface CarriedLeadQuestion extends LeadQuestionWithId {
   userId: string;
   originReportId: string;
   originDate: string;
+  // The origin task's description, for a task-anchored question (unset for
+  // a report-level one, or if the task was since deleted).
+  originTaskDescription?: string;
 }
 
 export interface ReportTree extends Report {

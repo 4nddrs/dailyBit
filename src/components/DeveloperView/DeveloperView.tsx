@@ -34,7 +34,7 @@ import {
   updateTask,
 } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
-import { QuestionOptionList } from '../LeadView/LeadView';
+import { carriedLeadQuestionLabel, QuestionOptionList } from '../LeadView/LeadView';
 import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
 import { useMyLeadQuestionCarryovers } from '../../hooks/useMyLeadQuestionCarryovers';
@@ -1182,16 +1182,17 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
   );
 }
 
-// `originDate` is set only for a carried-over report-level question, and
-// shows an "Asked on ..." label above it.
+// `originLabel` is set only for a carried-over question (report-level or
+// task-anchored) and shows an "About task: ... — Asked on ..." (or just
+// "Asked on ...") label above it — see `carriedLeadQuestionLabel`.
 function LeadQuestionCard({
   reportId,
   question,
-  originDate,
+  originLabel,
 }: {
   reportId: string;
   question: LeadQuestionWithId;
-  originDate?: string;
+  originLabel?: string;
 }) {
   const isText = question.kind === 'text';
   const isAnswered = isText
@@ -1311,8 +1312,8 @@ function LeadQuestionCard({
 
   return (
     <article className="group/task rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
-      {originDate ? (
-        <p className="mb-1 text-xs font-medium text-fg-muted">Asked on {originDate}</p>
+      {originLabel ? (
+        <p className="mb-1 text-xs font-medium text-fg-muted">{originLabel}</p>
       ) : null}
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
@@ -2818,7 +2819,7 @@ export function EditableReport({
                     key={question.id}
                     reportId={question.originReportId}
                     question={question}
-                    originDate={question.originDate}
+                    originLabel={carriedLeadQuestionLabel(question)}
                   />
                 ))}
                 {reportLevelLeadQuestions.map((question) => (

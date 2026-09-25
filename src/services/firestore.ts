@@ -762,7 +762,11 @@ async function deleteLeadQuestionImages(reportId: string, questionId: string) {
 // report-level collections rather than under the task, so both are queried
 // by their task-reference field and deleted explicitly. Lead notes can also
 // target a developer question (`targetTaskId` holds the question id), so the
-// same cleanup runs when a question is removed.
+// same cleanup runs when a question is removed. Every lead question now has
+// a carry-over pointer regardless of kind (see `addLeadQuestion`), so each
+// one found here also has its pointer queued for the same batch — deleting a
+// pointer that doesn't exist (an older question, from before carry-over) is
+// a no-op, so this never needs to check first.
 async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
   const [questionSnapshots, noteSnapshots] = await Promise.all([
     getDocs(query(leadQuestionsCollection(reportId), where('taskId', '==', taskId))),
@@ -775,13 +779,15 @@ async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
     ),
   );
 
-  const docsToDelete = [...questionSnapshots.docs, ...noteSnapshots.docs];
+  const refsToDelete = [
+    ...questionSnapshots.docs.map((questionSnapshot) => questionSnapshot.ref),
+    ...noteSnapshots.docs.map((noteSnapshot) => noteSnapshot.ref),
+    ...questionSnapshots.docs.map((questionSnapshot) => leadQuestionCarryoverDoc(reportId, questionSnapshot.id)),
+  ];
 
-  for (let start = 0; start < docsToDelete.length; start += MAX_BATCH_DELETES) {
+  for (let start = 0; start < refsToDelete.length; start += MAX_BATCH_DELETES) {
     const batch = writeBatch(db);
-    docsToDelete
-      .slice(start, start + MAX_BATCH_DELETES)
-      .forEach((docSnapshot) => batch.delete(docSnapshot.ref));
+    refsToDelete.slice(start, start + MAX_BATCH_DELETES).forEach((ref) => batch.delete(ref));
     await batch.commit();
   }
 }
@@ -1100,22 +1106,25 @@ export function updateLeadNote(reportId: string, noteId: string, noteText: strin
   return updateDoc(leadNoteDoc(reportId, noteId), { noteText });
 }
 
-// `origin` (the recipient developer and the report's own date) is only used
-// to write the `leadQuestionCarryovers` pointer for a report-level question
-// (empty `taskId`/`sectionId`); a task-anchored question never gets one, so
-// it stays tied to its day's task (see the carry-over pointer's own doc
-// comment on `LeadQuestionCarryoverPointer`).
+// `origin` (the recipient developer and the report's own date) is used to
+// write the `leadQuestionCarryovers` pointer, alongside the question, in the
+// same batch — every lead question now carries over until answered,
+// report-level or task-anchored. A task-anchored one still keeps rendering
+// inline in its own task on its own day exactly as before; the pointer is
+// only what makes it also show up on later days (see
+// `shouldSubscribeToLeadQuestionCarryoverPointer`/`isCarriedLeadQuestionVisible`),
+// never before its origin date, so there's no duplicate rendering.
 export async function addLeadQuestion(
   reportId: string,
   question: CreateLeadQuestionInput,
   origin: { userId: string; date: string },
 ): Promise<string> {
-  const { taskId, sectionId, questionText, kind } = question;
+  const { questionText, kind } = question;
   // Firestore rejects undefined field values, so `options` is only written for
   // options questions instead of being spread through as `options: undefined`.
   const payload: Record<string, unknown> = {
-    taskId,
-    sectionId,
+    taskId: question.taskId,
+    sectionId: question.sectionId,
     questionText,
     kind,
     createdAt: serverTimestamp(),
@@ -1135,16 +1144,14 @@ export async function addLeadQuestion(
   const batch = writeBatch(db);
   batch.set(questionRef, payload);
 
-  if (!taskId && !sectionId) {
-    const pointerPayload: Record<string, unknown> = {
-      userId: origin.userId,
-      reportId,
-      questionId: questionRef.id,
-      date: origin.date,
-      createdAt: serverTimestamp(),
-    };
-    batch.set(leadQuestionCarryoverDoc(reportId, questionRef.id), pointerPayload);
-  }
+  const pointerPayload: Record<string, unknown> = {
+    userId: origin.userId,
+    reportId,
+    questionId: questionRef.id,
+    date: origin.date,
+    createdAt: serverTimestamp(),
+  };
+  batch.set(leadQuestionCarryoverDoc(reportId, questionRef.id), pointerPayload);
 
   await batch.commit();
   return questionRef.id;
@@ -1312,25 +1319,29 @@ function isCarriedLeadQuestionVisible(question: LeadQuestion, date: string): boo
   return todayDateString(question.answeredAt.toDate()) >= date;
 }
 
-// The one origin lead question doc, plus its answer images, same combined
+// The one origin lead question doc, plus its answer images and (for a
+// task-anchored question) its origin task's description, same combined
 // doc+subcollection shape `subscribeAssignmentUpdate` uses. Emits `null` if
-// the question was deleted out from under an open pointer. `question` and
-// `images` are kept in outer mutable variables and `emit` always reads both
-// current values, so an images-only update (which never re-fires the
-// question doc listener) still re-emits the latest question instead of the
-// one captured when the images listener was first created.
+// the question was deleted out from under an open pointer. `question`,
+// `images`, and `taskDescription` are kept in outer mutable variables and
+// `emit` always reads all three current values, so an images-only update
+// (which never re-fires the question doc listener) still re-emits the
+// latest question instead of the one captured when the images listener was
+// first created.
 function subscribeLeadQuestionWithImages(
   reportId: string,
   questionId: string,
-  callback: (question: LeadQuestion | null, images: TaskImageWithId[]) => void,
+  callback: (question: LeadQuestion | null, images: TaskImageWithId[], taskDescription: string | undefined) => void,
   onError?: (error: FirestoreError) => void,
 ): Unsubscribe {
   let question: LeadQuestion | null = null;
   let images: TaskImageWithId[] = [];
   let imagesUnsubscribe: Unsubscribe | undefined;
+  let taskDescription: string | undefined;
+  let taskDescriptionFetched = false;
 
   const emit = () => {
-    callback(question, images);
+    callback(question, images, taskDescription);
   };
 
   const docUnsubscribe = onSnapshot(
@@ -1365,6 +1376,26 @@ function subscribeLeadQuestionWithImages(
         );
       }
 
+      // A task-anchored question's origin task rarely changes once written,
+      // so this is a one-time `getDoc` (not a live subscription) fetched
+      // once per subscription lifetime, purely for the carried item's "About
+      // task: ..." context. Best-effort: a deleted task, or any read
+      // failure, just leaves `taskDescription` unset (the context line is
+      // then omitted) instead of blocking the question itself from loading.
+      if (!taskDescriptionFetched && question.taskId && question.sectionId) {
+        taskDescriptionFetched = true;
+        getDoc(taskDoc(reportId, question.sectionId, question.taskId))
+          .then((taskSnapshot) => {
+            if (taskSnapshot.exists()) {
+              taskDescription = (taskSnapshot.data() as Task).description;
+              emit();
+            }
+          })
+          .catch((error: unknown) => {
+            console.error('Lead question carry-over origin task fetch failed', error);
+          });
+      }
+
       emit();
     },
     onError,
@@ -1391,6 +1422,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
   const pointers = new Map<string, LeadQuestionCarryoverPointer>();
   const questions = new Map<string, LeadQuestion>();
   const questionImages = new Map<string, TaskImageWithId[]>();
+  const questionTaskDescriptions = new Map<string, string | undefined>();
   const questionUnsubscribes = new Map<string, Unsubscribe>();
   // Pointer ids whose origin-question subscription hasn't delivered its
   // first snapshot (or error) yet. `emit` is held back while any are
@@ -1419,6 +1451,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
         userId: pointer.userId,
         originReportId: pointer.reportId,
         originDate: pointer.date,
+        originTaskDescription: questionTaskDescriptions.get(pointerId),
       });
     });
 
@@ -1429,6 +1462,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
   const stopQuestionSubscription = (pointerId: string) => {
     questions.delete(pointerId);
     questionImages.delete(pointerId);
+    questionTaskDescriptions.delete(pointerId);
     questionUnsubscribes.get(pointerId)?.();
     questionUnsubscribes.delete(pointerId);
     // A pointer that stops being subscribable before its question ever
@@ -1466,13 +1500,15 @@ function subscribeLeadQuestionCarryoversFromQuery(
           const unsubscribeQuestion = subscribeLeadQuestionWithImages(
             pointer.reportId,
             pointer.questionId,
-            (question, images) => {
+            (question, images, taskDescription) => {
               if (question) {
                 questions.set(pointerId, question);
                 questionImages.set(pointerId, images);
+                questionTaskDescriptions.set(pointerId, taskDescription);
               } else {
                 questions.delete(pointerId);
                 questionImages.delete(pointerId);
+                questionTaskDescriptions.delete(pointerId);
               }
               resolveFirstSnapshot();
               emit();

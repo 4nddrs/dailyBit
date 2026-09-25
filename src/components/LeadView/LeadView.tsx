@@ -2244,7 +2244,7 @@ function ReportCard({
                     key={question.id}
                     reportId={question.originReportId}
                     question={question}
-                    context={`Asked on ${question.originDate}`}
+                    context={carriedLeadQuestionLabel(question)}
                     onRemove={() => removeCarriedLeadQuestion(question)}
                     onEdit={(_questionId, input) => editCarriedLeadQuestion(question, input)}
                   />
@@ -2431,7 +2431,7 @@ function AssignmentOnlyCard({
                 key={question.id}
                 reportId={question.originReportId}
                 question={question}
-                context={`Asked on ${question.originDate}`}
+                context={carriedLeadQuestionLabel(question)}
                 onRemove={() => removeCarriedLeadQuestion(question)}
                 onEdit={(_questionId, input) => editCarriedLeadQuestion(question, input)}
               />
@@ -2609,6 +2609,18 @@ async function sendToSelectedDevs(
   );
   const failedDevIds = devIds.filter((_, index) => results[index].status === 'rejected');
   return { failedDevIds };
+}
+
+// Combined context label for a carried-over lead question: the origin
+// task's description (task-anchored only — a report-level question, or one
+// whose origin task was since deleted, has none), then the "Asked on ..."
+// label every carried question gets. Shared by this view's own carried
+// lists (via `LeadQuestionItem`'s `context` prop) and, since Developer View
+// already imports from here, its own `LeadQuestionCard`, so the format
+// never drifts between the two.
+export function carriedLeadQuestionLabel(question: CarriedLeadQuestion): string {
+  const aboutTask = question.originTaskDescription ? `About task: ${question.originTaskDescription} — ` : '';
+  return `${aboutTask}Asked on ${question.originDate}`;
 }
 
 // A carried-over question's actions always target its origin report, never

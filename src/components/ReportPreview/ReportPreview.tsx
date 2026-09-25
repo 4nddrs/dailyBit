@@ -3,6 +3,7 @@ import { subscribeAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
 import {
   AssignmentUpdateDisplay,
+  carriedLeadQuestionLabel,
   LeadNoteBlock,
   LeadQuestionBlock,
   LeadQuestionItem,
@@ -326,7 +327,7 @@ export function ReportPreview({
             {carriedQuestions.length > 0 ? (
               <div className="mt-3 space-y-2">
                 {carriedQuestions.map((question) => (
-                  <LeadQuestionItem key={question.id} question={question} context={`Asked on ${question.originDate}`} />
+                  <LeadQuestionItem key={question.id} question={question} context={carriedLeadQuestionLabel(question)} />
                 ))}
               </div>
             ) : null}

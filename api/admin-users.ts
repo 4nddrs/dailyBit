@@ -285,20 +285,31 @@ async function removeAssigneeFromAssignment(
 
 // Removes every trace of `uid` that Firestore rules can't cascade on their
 // own: reports (recursively, they own sections/tasks/images/questions/etc.),
-// then, for every assignment that lists this assignee, their own `updates`
-// (and those updates' images) followed by their atomic removal from
-// `assigneeIds` (sweeping the assignment's subcollections once it has no
-// assignees left), then the team order. The profile is deliberately NOT
-// deleted here: the caller deletes the Auth login first and the profile
-// last, so a failure partway through leaves the profile in place and a
-// retry from the Manage panel can still find the person and finish the job.
-// Every step is idempotent, and reports/updates/assignments are each swept
-// with bounded concurrency instead of strictly one at a time, to make better
-// use of the function's time budget for someone with a lot of history.
+// this developer's `leadQuestionCarryovers` pointers (a top-level collection,
+// so `recursiveDelete` on the report above never reaches it — every pointer
+// for their reports has `userId == uid`, see `addLeadQuestion`), then, for
+// every assignment that lists this assignee, their own `updates` (and those
+// updates' images) followed by their atomic removal from `assigneeIds`
+// (sweeping the assignment's subcollections once it has no assignees left),
+// then the team order. The profile is deliberately NOT deleted here: the
+// caller deletes the Auth login first and the profile last, so a failure
+// partway through leaves the profile in place and a retry from the Manage
+// panel can still find the person and finish the job. Every step is
+// idempotent, and reports/pointers/updates/assignments are each swept with
+// bounded concurrency instead of strictly one at a time, to make better use
+// of the function's time budget for someone with a lot of history.
 async function cascadeDeleteUserData(firestore: Firestore, uid: string): Promise<void> {
   const reportsSnapshot = await firestore.collection('reports').where('userId', '==', uid).get();
   await mapWithConcurrency(reportsSnapshot.docs, DELETE_CONCURRENCY, async (reportDoc) => {
     await firestore.recursiveDelete(reportDoc.ref);
+  });
+
+  const carryoverPointersSnapshot = await firestore
+    .collection('leadQuestionCarryovers')
+    .where('userId', '==', uid)
+    .get();
+  await mapWithConcurrency(carryoverPointersSnapshot.docs, DELETE_CONCURRENCY, async (pointerDoc) => {
+    await pointerDoc.ref.delete();
   });
 
   const assignmentsSnapshot = await firestore
