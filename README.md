@@ -356,8 +356,11 @@ service cloud.firestore {
       allow read: if isLead()
         || (signedIn() && resource.data.userId == request.auth.uid);
       allow create: if isLead();
+      // `resource == null` covers questions created before carry-over, which
+      // have no pointer: deleting a missing doc is harmless, and without it the
+      // whole task/section delete batch would be rejected.
       allow delete: if isLead()
-        || (signedIn() && resource.data.userId == request.auth.uid);
+        || (signedIn() && (resource == null || resource.data.userId == request.auth.uid));
       allow update: if isLead()
         || (signedIn()
             && resource.data.userId == request.auth.uid

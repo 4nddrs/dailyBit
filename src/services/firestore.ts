@@ -764,9 +764,10 @@ async function deleteLeadQuestionImages(reportId: string, questionId: string) {
 // target a developer question (`targetTaskId` holds the question id), so the
 // same cleanup runs when a question is removed. Every lead question now has
 // a carry-over pointer regardless of kind (see `addLeadQuestion`), so each
-// one found here also has its pointer queued for the same batch — deleting a
-// pointer that doesn't exist (an older question, from before carry-over) is
-// a no-op, so this never needs to check first.
+// one found here also has its pointer queued for the same batch. Deleting a
+// pointer that doesn't exist (an older question, from before carry-over) is a
+// no-op, and the delete rule explicitly allows it (`resource == null`) so a
+// developer's batch isn't rejected, so this never needs to check first.
 async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
   const [questionSnapshots, noteSnapshots] = await Promise.all([
     getDocs(query(leadQuestionsCollection(reportId), where('taskId', '==', taskId))),
