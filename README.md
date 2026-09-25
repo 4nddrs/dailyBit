@@ -175,7 +175,15 @@ service cloud.firestore {
         isLead() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
       );
-      allow delete: if ownsExistingReport(reportId);
+      // The lead also needs delete: the Lead tools panel's fan-out (see
+      // above) creates a developer's report on demand before writing a
+      // note/question, and must clean that empty report back up if the
+      // write fails, so a developer with no real report doesn't start
+      // showing up as "reported". Rules can't see across requests to check
+      // "the lead created this in the same operation", so this is simply
+      // `isLead()` for any report; the client only ever calls it right after
+      // its own create, never for a report it didn't just make.
+      allow delete: if ownsExistingReport(reportId) || isLead();
 
       match /sections/{sectionId} {
         allow read: if ownsExistingReport(reportId) || isLead();
@@ -325,7 +333,7 @@ Security intent:
 - Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
 - **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. The editor itself never creates a report: a developer with no report for the date stays read-only in edit mode.
-- **Lead tools panel — create for chosen developers:** the lead's Question/Note/Task actions (in the "Lead tools" panel under the Team list) can target a developer who has no report yet for the selected date. In that case the client calls `ensureReport` for that developer before writing the note/question, which needs the lead to be able to create the developer's report doc. `reports` `create` therefore also allows `isLead()`, tightly scoped: the new doc's `userId` must belong to a real `role: 'dev'` user, and the report id must be exactly `${userId}_${date}` (the `reportIdFor` convention), so the lead can only ever create that one developer's report for that one date, never an arbitrary document.
+- **Lead tools panel — create for chosen developers:** the lead's Question/Note/Task actions (in the "Lead tools" panel under the Team list) can target a developer who has no report yet for the selected date. In that case the client calls `ensureReport`/`ensureReportWithStatus` for that developer before writing the note/question, which needs the lead to be able to create the developer's report doc. `reports` `create` therefore also allows `isLead()`, tightly scoped: the new doc's `userId` must belong to a real `role: 'dev'` user, and the report id must be exactly `${userId}_${date}` (the `reportIdFor` convention), so the lead can only ever create that one developer's report for that one date, never an arbitrary document. If the following note/question write then fails for a report the lead's own call just created, the client best-effort deletes that empty report so the developer doesn't end up looking "reported" with nothing in it; `reports` `delete` therefore also allows `isLead()` for any report — rules can't verify "created in this same client operation" across requests, so this is scoped only by the client only ever calling it right after its own create.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
 - The report owner or the lead (editing in place) can create or delete `questions`, and edit a question's `questionText`, `options`, `optionDetails`, and `order`; only the lead can additionally *set* `selectedAnswer`, `answeredBy`, and `answeredAt` — the owner may only *clear* all three together (a stale answer after an option edit), never set one, since a write that touches them is rejected unless the resulting document has none of them. A dev question's option image attachments follow the same read shape as task images: the report owner or the lead creates or deletes them (also cascaded by `removeQuestion`), and either may update an image's `optionIndex` alone, to remap it to its option's new index when an edit removes or reorders options instead of deleting and recreating the image.
 - Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`, while the lead may update any field (unrestricted, since it also owns question creation). A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner or the lead (answering on the owner's behalf) creates them, and either can delete them, since `removeLeadQuestion` also cascades to them.
@@ -349,6 +357,8 @@ Security intent:
 > **Note:** editing an existing dev question (text, options, per-option links/images) is new. The `questions/{questionId}` `update` rule changed shape — from "the owner may write any field except the answer ones" to an explicit allowlist that also lets the owner clear (never set) a stale answer — and `questions/{questionId}/images` gained an `update` rule scoped to `optionIndex`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or editing a dev question will be rejected.
 >
 > **Note:** the Lead tools panel's Question/Note/Task actions for chosen developers are new. `reports` `create` widened from owner-only to also allow `isLead()` for a single developer/date pair (`userId` a real `dev`, doc id `${userId}_${date}`). If your Firestore security rules were already deployed with the previous owner-only `create` rule, redeploy the rules above before using this build, or the lead's create-for-a-developer-with-no-report action will be rejected.
+>
+> **Note:** `reports` `delete` widened from owner-only to also allow `isLead()`, so the Lead tools panel's fan-out can clean up an empty report it just created for a developer when the following note/question write fails. If your Firestore security rules were already deployed with the previous owner-only `delete` rule, redeploy the rules above before using this build, or that cleanup will silently fail and leave an empty report behind (the original note/question failure still surfaces to the lead either way).
 
 ## Usage
 

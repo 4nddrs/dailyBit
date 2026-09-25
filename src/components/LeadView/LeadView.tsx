@@ -6,11 +6,12 @@ import {
   closeAssignment,
   reopenAssignment,
   createAssignment,
-  ensureReport,
+  ensureReportWithStatus,
   getUserProfile,
   removeAssignment,
   removeLeadNote,
   removeLeadQuestion,
+  removeReport,
   saveTeamOrder,
 } from '../../services/firestore';
 import { EditableReport } from '../DeveloperView/DeveloperView';
@@ -1835,7 +1836,11 @@ type LeadToolsAction = 'question' | 'note' | 'task';
 // Fans an action out to every selected developer's report for `date`,
 // creating that developer's (otherwise-owner-only) report doc first when
 // it doesn't exist yet. Runs in parallel; a per-dev failure never blocks or
-// rolls back the others.
+// rolls back the others. If the write fails for a report this call just
+// created, that empty report is cleaned up best-effort — otherwise it would
+// stay behind, and the developer would then count as "reported" (a
+// ReportCard instead of the assignment-only placeholder) despite the note or
+// question never having landed. A pre-existing report is never touched.
 async function sendToSelectedDevs(
   devIds: string[],
   date: string,
@@ -1843,8 +1848,19 @@ async function sendToSelectedDevs(
 ): Promise<{ failedDevIds: string[] }> {
   const results = await Promise.allSettled(
     devIds.map(async (devId) => {
-      const reportId = await ensureReport(devId, date);
-      await action(reportId);
+      const { id: reportId, created } = await ensureReportWithStatus(devId, date);
+      try {
+        await action(reportId);
+      } catch (error) {
+        if (created) {
+          try {
+            await removeReport(reportId);
+          } catch (cleanupError) {
+            console.error('Failed to clean up empty report after write failure', cleanupError);
+          }
+        }
+        throw error;
+      }
     }),
   );
   const failedDevIds = devIds.filter((_, index) => results[index].status === 'rejected');

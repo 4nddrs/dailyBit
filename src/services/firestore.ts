@@ -278,16 +278,21 @@ export async function saveTeamOrder(uids: string[]): Promise<void> {
   );
 }
 
-// Idempotent create-if-missing: only called from a write entry point (the
-// developer actually adding content), never just from opening/viewing a
-// date. Viewing a date must never create a `reports/{userId}_{date}` doc.
-export async function ensureReport(userId: string, date: string): Promise<string> {
+// Idempotent create-if-missing, reporting whether this call was the one that
+// created the doc. Callers that need to clean up after themselves (e.g. the
+// Lead tools panel's fan-out, which must not leave an empty report behind
+// when the following write fails) use this instead of `ensureReport`; every
+// other caller keeps using the plain `ensureReport` below, unchanged.
+export async function ensureReportWithStatus(
+  userId: string,
+  date: string,
+): Promise<{ id: string; created: boolean }> {
   const id = reportIdFor(userId, date);
   const ref = reportDoc(id);
   const existing = await getDoc(ref);
 
   if (existing.exists()) {
-    return id;
+    return { id, created: false };
   }
 
   await setDoc(ref, {
@@ -297,7 +302,24 @@ export async function ensureReport(userId: string, date: string): Promise<string
     updatedAt: serverTimestamp(),
   });
 
+  return { id, created: true };
+}
+
+// Only called from a write entry point (the developer actually adding
+// content), never just from opening/viewing a date. Viewing a date must
+// never create a `reports/{userId}_{date}` doc.
+export async function ensureReport(userId: string, date: string): Promise<string> {
+  const { id } = await ensureReportWithStatus(userId, date);
   return id;
+}
+
+// Best-effort cleanup for a report doc created moments ago by
+// `ensureReportWithStatus` in the same operation, when the write that
+// followed then failed — never called for a pre-existing report. The doc has
+// no subcollections yet at that point, so a plain delete is enough; no
+// cascade cleanup like `removeSection`/`removeQuestion` is needed here.
+export function removeReport(reportId: string): Promise<void> {
+  return deleteDoc(reportDoc(reportId));
 }
 
 // Watches only the report document's existence, never its subcollections.
@@ -847,10 +869,14 @@ export interface UpdateQuestionInput {
   options: UpdateQuestionOptionInput[];
 }
 
-// Thrown by `updateQuestion` when the question itself saved but one or more
-// new option images failed to upload afterwards, so the caller can show a
-// distinct, more specific message than a plain save failure.
-export const QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE = 'Question saved, but some images could not be saved.';
+// `failedImageCount > 0` means the question itself (text/options/links,
+// image remap, stale-answer clear) is already saved — only some of the new
+// option images failed to upload afterwards. Callers must treat this as a
+// completed save, not a failed one: retrying the whole edit would re-upload
+// images that already succeeded and could re-delete ones that didn't fail.
+export interface UpdateQuestionResult {
+  failedImageCount: number;
+}
 
 // Edits an existing dev question in place (text, options, per-option links
 // and images), reusing the same composer the developer used to create it.
@@ -863,9 +889,11 @@ export const QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE = 'Question saved, but some i
 // uploaded one doc at a time (mirroring `addQuestion`/`addQuestionOptionImage`
 // on the create path) only after that batch has committed, each tagged with
 // its option's final index — so a failure can never leave an image attached
-// to the wrong (or a since-removed) option; at worst some images are missing
-// and `QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE` is thrown for the caller to
-// surface. A stale answer — the option set or order no longer matches what
+// to the wrong (or a since-removed) option; at worst some images are missing,
+// reported via the resolved `failedImageCount` rather than a thrown error, so
+// a partial image failure can never be mistaken for the batch itself having
+// failed (which still rejects the returned promise, e.g. `batch.commit()`
+// throwing). A stale answer — the option set or order no longer matches what
 // the lead answered — is cleared the same way `answerQuestion` sets it, via
 // `deleteField()`; text-only or links/images-only edits keep the existing
 // answer.
@@ -873,7 +901,7 @@ export async function updateQuestion(
   reportId: string,
   questionId: string,
   input: UpdateQuestionInput,
-): Promise<void> {
+): Promise<UpdateQuestionResult> {
   const questionSnapshot = await getDoc(questionDoc(reportId, questionId));
   const previousOptions = (questionSnapshot.data() as Question | undefined)?.options ?? [];
 
@@ -932,19 +960,18 @@ export async function updateQuestion(
   );
 
   if (newImageUploads.length === 0) {
-    return;
+    return { failedImageCount: 0 };
   }
 
   const uploadResults = await Promise.allSettled(newImageUploads);
-  const hasFailure = uploadResults.some((result) => result.status === 'rejected');
-  if (hasFailure) {
-    uploadResults.forEach((result) => {
-      if (result.status === 'rejected') {
-        console.error('Question option image upload failed', result.reason);
-      }
-    });
-    throw new Error(QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE);
-  }
+  const failedImageCount = uploadResults.filter((result) => result.status === 'rejected').length;
+  uploadResults.forEach((result) => {
+    if (result.status === 'rejected') {
+      console.error('Question option image upload failed', result.reason);
+    }
+  });
+
+  return { failedImageCount };
 }
 
 // Firestore never cascades deletes into subcollections, so a question's
