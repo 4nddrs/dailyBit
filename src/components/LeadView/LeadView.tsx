@@ -1623,6 +1623,7 @@ function ReportCard({
             assignments={assignments}
             ensureReportExists={ensureReportExists}
             showWorkHeading={false}
+            assignmentsPosition="bottom"
           />
         ) : (
           <>

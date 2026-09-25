@@ -2719,6 +2719,10 @@ interface EditableReportProps {
   // The "Today's work" heading and hint only make sense in the developer's
   // own view; Lead View's edit mode repeats this body once per developer.
   showWorkHeading?: boolean;
+  // "Assigned by lead" sits at the top for the developer's own view, but
+  // Lead View's edit mode keeps it at the bottom to match the normal
+  // (non-edit) report layout, where it always renders last.
+  assignmentsPosition?: 'top' | 'bottom';
 }
 
 // The editable body of a report: assignments, lead notes/questions, sections
@@ -2733,6 +2737,7 @@ export function EditableReport({
   assignments,
   ensureReportExists,
   showWorkHeading = true,
+  assignmentsPosition = 'top',
 }: EditableReportProps) {
   // The report document only exists once the developer actually adds
   // content, so every write that could be the first one on an empty report
@@ -2780,9 +2785,13 @@ export function EditableReport({
   );
   const reportLevelLeadQuestions = leadQuestionsByTask.get('') ?? [];
 
+  const assignmentsBox = (
+    <AssignmentsBox assignments={assignments} userId={ownerUserId} date={date} />
+  );
+
   return (
     <>
-      <AssignmentsBox assignments={assignments} userId={ownerUserId} date={date} />
+      {assignmentsPosition === 'top' ? assignmentsBox : null}
       {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas shadow-sm">
           <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
@@ -2814,6 +2823,7 @@ export function EditableReport({
         questions={reportTree.questions}
         leadNotesByTask={leadNotesByTask}
       />
+      {assignmentsPosition === 'bottom' ? assignmentsBox : null}
     </>
   );
 }
