@@ -49,7 +49,7 @@ import type {
   UserProfileWithId,
   UserRole,
 } from '../types';
-import { todayDateString } from '../types';
+import { nextBusinessDate, todayDateString } from '../types';
 
 // `optionLinks[i]` are the links for `options[i]`, kept parallel by the
 // caller (the composer keeps per-option links aligned as options are added,
@@ -1246,26 +1246,71 @@ async function stampLeadQuestionCarryoverAnswered(reportId: string, questionId: 
   }
 }
 
+// Mirrors `stampLeadQuestionCarryoverAnswered`, in the other direction: an
+// answer edit that leaves the question with no answer content (never a full
+// `updateLeadQuestion` clear, which already batches this — see there) clears
+// the pointer's `answeredDate` too, so the question starts carrying over
+// again. `deleteField()` only touches the `answeredDate` key, which the
+// recipient dev's own restricted `update` rule already allows (its
+// `affectedKeys()` allowlist doesn't care whether the value is set or
+// deleted).
+async function clearLeadQuestionCarryoverAnswered(reportId: string, questionId: string): Promise<void> {
+  try {
+    await updateDoc(leadQuestionCarryoverDoc(reportId, questionId), { answeredDate: deleteField() });
+  } catch (error) {
+    console.error('Lead question carry-over pointer clear failed', error);
+  }
+}
+
+// The answer images subcollection is the source of truth for "does this
+// question have an image answer" — queried fresh rather than trusted from a
+// caller-passed count, since a removal (`removeLeadQuestionAnswerImage`)
+// never itself carries the resulting count.
+async function hasLeadQuestionAnswerImages(reportId: string, questionId: string): Promise<boolean> {
+  const imageSnapshots = await getDocs(leadQuestionImagesCollection(reportId, questionId));
+  return !imageSnapshots.empty;
+}
+
 // Firestore rejects undefined field values, so `answerLinks` is only included
-// when the caller actually passed it.
+// when the caller actually passed it. Selecting an option always answers the
+// question (there's no way to deselect one), but a text answer can end up
+// with no text and no links left (e.g. removing the last link) — the same
+// "is answered" definition the cards use (text, links, or answer images) —
+// in which case `answeredAt` is cleared instead of re-stamped, and the
+// carry-over pointer's `answeredDate` is cleared to match, so an emptied-out
+// answer goes back to carrying over instead of quietly staying "answered".
 export async function answerLeadQuestion(
   reportId: string,
   questionId: string,
   answer: AnswerLeadQuestionInput,
 ): Promise<void> {
-  const payload: Record<string, unknown> = { answeredAt: serverTimestamp() };
+  const payload: Record<string, unknown> = {};
+  let isAnswered: boolean;
 
   if ('selectedAnswer' in answer) {
     payload.selectedAnswer = answer.selectedAnswer;
+    isAnswered = true;
   } else {
     payload.answerText = answer.answerText;
     if (answer.answerLinks !== undefined) {
       payload.answerLinks = answer.answerLinks;
     }
+    const hasAnswerText = Boolean(answer.answerText.trim());
+    const hasAnswerLinks = (answer.answerLinks ?? []).length > 0;
+    // Existing answer images (unaffected by this call) can still count as
+    // the answer, so the live subcollection is only queried when text and
+    // links alone don't already settle it.
+    isAnswered = hasAnswerText || hasAnswerLinks || (await hasLeadQuestionAnswerImages(reportId, questionId));
   }
 
+  payload.answeredAt = isAnswered ? serverTimestamp() : deleteField();
   await updateDoc(leadQuestionDoc(reportId, questionId), payload);
-  await stampLeadQuestionCarryoverAnswered(reportId, questionId);
+
+  if (isAnswered) {
+    await stampLeadQuestionCarryoverAnswered(reportId, questionId);
+  } else {
+    await clearLeadQuestionCarryoverAnswered(reportId, questionId);
+  }
 }
 
 // Mirrors addTaskImage: an image on an otherwise-unanswered text question
@@ -1284,12 +1329,47 @@ export async function addLeadQuestionAnswerImage(
   return ref.id;
 }
 
-export function removeLeadQuestionAnswerImage(
+// Removing the last answer image can leave a text-kind question with no
+// answer content at all — same "is answered" definition `answerLeadQuestion`
+// uses (checked here after the delete, so the image count is already
+// current), clearing `answeredAt`/the pointer's `answeredDate` to match.
+export async function removeLeadQuestionAnswerImage(
   reportId: string,
   questionId: string,
   imageId: string,
 ): Promise<void> {
-  return deleteDoc(leadQuestionImageDoc(reportId, questionId, imageId));
+  await deleteDoc(leadQuestionImageDoc(reportId, questionId, imageId));
+
+  const questionSnapshot = await getDoc(leadQuestionDoc(reportId, questionId));
+  if (!questionSnapshot.exists()) {
+    return;
+  }
+
+  const question = questionSnapshot.data() as LeadQuestion;
+  if (question.kind !== 'text') {
+    return;
+  }
+
+  const hasAnswerText = Boolean(question.answerText?.trim());
+  const hasAnswerLinks = (question.answerLinks?.length ?? 0) > 0;
+  if (hasAnswerText || hasAnswerLinks) {
+    return;
+  }
+
+  if (await hasLeadQuestionAnswerImages(reportId, questionId)) {
+    return;
+  }
+
+  await updateDoc(leadQuestionDoc(reportId, questionId), { answeredAt: deleteField() });
+  await clearLeadQuestionCarryoverAnswered(reportId, questionId);
+}
+
+// The last date an answered question stays visible through: the answer date
+// itself for the developer's own view, or (lead view only, see
+// `subscribeLeadQuestionCarryoversForDate`) the next business day after it —
+// so the lead doesn't lose sight of e.g. a Friday answer over the weekend.
+function leadQuestionAnsweredThroughDate(answeredDate: string, extendThroughNextBusinessDay: boolean): string {
+  return extendThroughNextBusinessDay ? nextBusinessDate(answeredDate) : answeredDate;
 }
 
 // Cheap prefilter using only the pointer doc, to decide whether it's even
@@ -1302,22 +1382,35 @@ export function removeLeadQuestionAnswerImage(
 function shouldSubscribeToLeadQuestionCarryoverPointer(
   pointer: Pick<LeadQuestionCarryoverPointer, 'date' | 'answeredDate'>,
   date: string,
+  extendThroughNextBusinessDay: boolean,
 ): boolean {
-  return pointer.date < date && (!pointer.answeredDate || pointer.answeredDate >= date);
+  return (
+    pointer.date < date &&
+    (!pointer.answeredDate ||
+      leadQuestionAnsweredThroughDate(pointer.answeredDate, extendThroughNextBusinessDay) >= date)
+  );
 }
 
 // Source of truth for whether a carried question is still visible on `date`:
-// unanswered, or answered on/after `date` (by the local calendar date of
-// `answeredAt`). `answeredAt` is stamped by every path that flips a lead
-// question to answered — `answerLeadQuestion` (text/links/options) and
-// `addLeadQuestionAnswerImage` (an image-only answer) — and cleared
-// atomically with the pointer's `answeredDate` by `updateLeadQuestion`'s
-// `clearAnswer` path, so this can never wrongly hide a just-cleared question.
-function isCarriedLeadQuestionVisible(question: LeadQuestion, date: string): boolean {
+// unanswered, or answered on/through `date` (by the local calendar date of
+// `answeredAt`, extended to the next business day for the lead's view).
+// `answeredAt` is stamped by every path that flips a lead question to
+// answered — `answerLeadQuestion` (text/links/options) and
+// `addLeadQuestionAnswerImage` (an image-only answer) — and cleared (by
+// `updateLeadQuestion`'s `clearAnswer` path, or an answer edit that leaves no
+// answer content — see `answerLeadQuestion`/`removeLeadQuestionAnswerImage`)
+// together with the pointer's `answeredDate`, so this can never wrongly hide
+// a just-cleared question.
+function isCarriedLeadQuestionVisible(
+  question: LeadQuestion,
+  date: string,
+  extendThroughNextBusinessDay: boolean,
+): boolean {
   if (!question.answeredAt) {
     return true;
   }
-  return todayDateString(question.answeredAt.toDate()) >= date;
+  const answeredDate = todayDateString(question.answeredAt.toDate());
+  return leadQuestionAnsweredThroughDate(answeredDate, extendThroughNextBusinessDay) >= date;
 }
 
 // The one origin lead question doc, plus its answer images and (for a
@@ -1413,12 +1506,15 @@ function subscribeLeadQuestionWithImages(
 // (+ its answer images) and re-emits the combined list on any change,
 // filtering the final results by the live question's real visibility and
 // tearing down a question subscription once its pointer fails the prefilter
-// or disappears.
+// or disappears. `extendThroughNextBusinessDay` is true only for the lead's
+// own subscription (`subscribeLeadQuestionCarryoversForDate`) — see
+// `leadQuestionAnsweredThroughDate`.
 function subscribeLeadQuestionCarryoversFromQuery(
   pointersQuery: Query,
   date: string,
   callback: (questions: CarriedLeadQuestion[]) => void,
-  onError?: (error: FirestoreError) => void,
+  onError: ((error: FirestoreError) => void) | undefined,
+  extendThroughNextBusinessDay: boolean,
 ): Unsubscribe {
   const pointers = new Map<string, LeadQuestionCarryoverPointer>();
   const questions = new Map<string, LeadQuestion>();
@@ -1441,7 +1537,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
 
     pointers.forEach((pointer, pointerId) => {
       const question = questions.get(pointerId);
-      if (!question || !isCarriedLeadQuestionVisible(question, date)) {
+      if (!question || !isCarriedLeadQuestionVisible(question, date, extendThroughNextBusinessDay)) {
         return;
       }
 
@@ -1483,7 +1579,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
         const pointer = pointerSnapshot.data() as LeadQuestionCarryoverPointer;
         pointers.set(pointerId, pointer);
 
-        if (!shouldSubscribeToLeadQuestionCarryoverPointer(pointer, date)) {
+        if (!shouldSubscribeToLeadQuestionCarryoverPointer(pointer, date, extendThroughNextBusinessDay)) {
           stopQuestionSubscription(pointerId);
           return;
         }
@@ -1544,7 +1640,9 @@ function subscribeLeadQuestionCarryoversFromQuery(
 
 // No composite index: `userId` is filtered server-side (a single equality
 // query), and visibility (`date`/`answeredDate`) is filtered client-side, same
-// split `subscribeAssignmentsForAssignee` uses.
+// split `subscribeAssignmentsForAssignee` uses. The developer's own view
+// stays visible only through the answer day itself (`extendThroughNextBusinessDay:
+// false`) — see `subscribeLeadQuestionCarryoversForDate` for the lead's view.
 export function subscribeLeadQuestionCarryoversForAssignee(
   uid: string,
   date: string,
@@ -1552,18 +1650,23 @@ export function subscribeLeadQuestionCarryoversForAssignee(
   onError?: (error: FirestoreError) => void,
 ): Unsubscribe {
   const pointersQuery = query(leadQuestionCarryoversCollection(), where('userId', '==', uid));
-  return subscribeLeadQuestionCarryoversFromQuery(pointersQuery, date, callback, onError);
+  return subscribeLeadQuestionCarryoversFromQuery(pointersQuery, date, callback, onError, false);
 }
 
 // Lead-only: reads every pointer (no per-developer filter is possible for
 // "any recipient"), so visibility is filtered entirely client-side to avoid a
-// composite index, same as `subscribeAssignmentsForDate`.
+// composite index, same as `subscribeAssignmentsForDate`. Unlike the
+// developer's own view, an answered question here stays visible through the
+// next business day after it was answered (`extendThroughNextBusinessDay:
+// true` — see `nextBusinessDate`), so the lead doesn't lose sight of e.g. a
+// Friday answer over the weekend; it still stops carrying over for the
+// developer right after the answer day.
 export function subscribeLeadQuestionCarryoversForDate(
   date: string,
   callback: (questions: CarriedLeadQuestion[]) => void,
   onError?: (error: FirestoreError) => void,
 ): Unsubscribe {
-  return subscribeLeadQuestionCarryoversFromQuery(leadQuestionCarryoversCollection(), date, callback, onError);
+  return subscribeLeadQuestionCarryoversFromQuery(leadQuestionCarryoversCollection(), date, callback, onError, true);
 }
 
 export function subscribeReportsByDate(

@@ -227,3 +227,21 @@ export function todayDateString(date = new Date()): string {
 
   return `${year}-${month}-${day}`;
 }
+
+// The next business day after `dateString` (a plain 'YYYY-MM-DD'), skipping
+// Saturday and Sunday: Mon–Thu -> the following day, Fri/Sat/Sun -> Monday.
+// Parses/formats through explicit local `Date` field getters/setters (the
+// `year, month - 1, day` constructor form, never `new Date(dateString)`,
+// which JS parses as UTC midnight for a bare ISO date and can land on the
+// wrong local day) — same local-date convention `todayDateString` uses.
+export function nextBusinessDate(dateString: string): string {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + 1);
+
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  return todayDateString(date);
+}
