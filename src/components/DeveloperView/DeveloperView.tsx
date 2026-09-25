@@ -2638,73 +2638,41 @@ function QuestionCard({
   );
 }
 
+// New dev questions are asked from a section ("Ask the lead"), so there is
+// no report-level composer anymore. Older report-level questions (no
+// `sectionId`) are still listed here so they stay visible and answerable;
+// the panel disappears entirely when there are none.
 function QuestionsPanel({
   reportId,
   questions = [],
   leadNotesByTask,
-  onAddQuestion,
 }: {
   reportId: string;
   questions?: QuestionWithId[];
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
-  onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
 }) {
-  // null means "not toggled yet": the panel then starts open only when there
-  // are questions, so answers from the lead are never hidden by default.
-  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
-  const expanded = expandedOverride ?? questions.length > 0;
+  if (questions.length === 0) {
+    return null;
+  }
 
   return (
     <section className="rounded-md border border-line bg-canvas shadow-sm">
-      {/* The heading wraps the toggle button (a button cannot contain a heading). */}
-      <h2>
-        <button
-          className={`flex w-full items-center gap-2 bg-canvas-subtle px-4 py-3 text-left transition hover:bg-control-hover ${
-            expanded ? 'rounded-t-md border-b border-line' : 'rounded-md'
-          }`}
-          type="button"
-          aria-expanded={expanded}
-          aria-controls="report-questions-panel"
-          onClick={() => setExpandedOverride(!expanded)}
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 16 16"
-            width="16"
-            height="16"
-            fill="currentColor"
-            className={`shrink-0 text-fg-muted transition-transform ${expanded ? 'rotate-90' : ''}`}
-          >
-            <path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-          </svg>
-          <span className="text-lg font-semibold text-fg">Questions to the lead</span>
-          <span className="rounded-full border border-done-emphasis/40 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
-            multiple choice
-          </span>
-          {questions.length > 0 ? (
-            <span className="ml-auto rounded-full border border-line bg-canvas px-2 py-0.5 text-xs font-medium text-fg-muted tabular-nums">
-              {questions.length}
-            </span>
-          ) : null}
-        </button>
-      </h2>
-
-      {expanded ? (
-        <div className="space-y-3 p-4" id="report-questions-panel">
-          <p className="text-sm text-fg-muted">
-            Ask a general question that isn&apos;t tied to a section. Use multiple choice for a fast answer.
-          </p>
-          <QuestionComposer reportId={reportId} onAddQuestion={onAddQuestion} />
-          {questions.map((question) => (
-            <QuestionCard
-              key={question.id}
-              reportId={reportId}
-              question={question}
-              leadNotes={leadNotesByTask.get(question.id) ?? []}
-            />
-          ))}
-        </div>
-      ) : null}
+      <div className="flex items-center gap-2 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
+        <h2 className="text-lg font-semibold text-fg">General questions to the lead</h2>
+        <span className="ml-auto rounded-full border border-line bg-canvas px-2 py-0.5 text-xs font-medium text-fg-muted tabular-nums">
+          {questions.length}
+        </span>
+      </div>
+      <div className="space-y-3 p-4">
+        {questions.map((question) => (
+          <QuestionCard
+            key={question.id}
+            reportId={reportId}
+            question={question}
+            leadNotes={leadNotesByTask.get(question.id) ?? []}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -2813,7 +2781,6 @@ export function EditableReport({
         reportId={reportId}
         questions={reportTree.questions}
         leadNotesByTask={leadNotesByTask}
-        onAddQuestion={handleAddQuestion}
       />
     </>
   );
