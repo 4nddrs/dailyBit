@@ -107,6 +107,8 @@ Reports are keyed by `reports/{userId}_{date}` where `date` is `YYYY-MM-DD`. Sec
 
 A dev question may optionally carry `sectionId` and `order`: when set, the question is anchored inside that section and interleaved with its tasks (tasks and questions share one `order` space per section, same as `sections/{sectionId}/tasks/{taskId}.order`); when omitted (or empty), the question is report-level. New questions are always asked from a section; older report-level questions still show in a "General questions to the lead" block, which is hidden when there are none. No extra Firestore rule is needed for these fields: `create`/`delete` on `questions/{questionId}` are owner- or lead-controlled, and the `update` allowlist (`questionText`, `options`, `optionDetails`, `order`, plus the answer fields) already covers writing `order` when a section is reordered.
 
+A report-level `leadQuestions` doc (empty `taskId`/`sectionId`) also gets a top-level `leadQuestionCarryovers/{reportId}_{questionId}` pointer, written in the same batch that creates the question. It's what keeps an unanswered question showing on later days until the developer answers it, the same way `assignments` stays visible across dates independent of `reports` — a task-anchored question never gets one, so it stays tied to its day's task. See "Lead question carry-over" below.
+
 See `odd/tasks/dailybit-mvp.md` for the detailed model and implementation notes.
 
 ### 4. Suggested minimum security rules
@@ -336,6 +338,22 @@ service cloud.firestore {
         }
       }
     }
+
+    // One pointer per report-level `leadQuestions` doc, doc id
+    // `${reportId}_${questionId}`, so an unanswered question keeps showing on
+    // later days without re-reading every past report. The lead owns
+    // create/delete (same lifecycle as the question itself); only the
+    // recipient dev may write `answeredDate`, and only that one field — the
+    // lead instead deletes and recreates the pointer to clear an answered
+    // one (see `updateLeadQuestion`), reusing this same create/delete grant.
+    match /leadQuestionCarryovers/{pointerId} {
+      allow read: if isLead()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      allow create, delete: if isLead();
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answeredDate']);
+    }
   }
 }
 ```
@@ -355,12 +373,15 @@ Security intent:
 - Firestore documents are limited to 1 MB; DailyBit stores each task image in its own document and compresses each image client-side before saving it to stay under that per-document limit.
 - Only users with `role: 'lead'` can create, update, or delete `assignments`; an assignee can only read the assignments that list their uid in `assigneeIds`.
 - An assignee can create or update only their own `updates` doc (id `${assigneeId}_${date}`), and only while they're still listed in the parent assignment's `assigneeIds`; a lead editing in place may create or update any assignee's `updates`/`images` doc instead, proven by the doc id prefix matching the write's own `assigneeId` field rather than the lead's uid. The lead can also read and delete any assignee's `updates`/`images` so `removeAssignment` can cascade-delete them.
+- Only users with `role: 'lead'` can create or delete `leadQuestionCarryovers`; a developer can read only the pointers where `userId` is their own uid (the lead reads all of them); the recipient developer can update a pointer only to set `answeredDate`, and no other field.
 
 > **Note:** the lead's private-notes collection was renamed to `leadNotes`, and the old team-wide prompts collection was removed in favor of per-task `leadQuestions`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or lead notes/questions will be rejected.
 >
 > **Note:** the `settings/team` rule is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or saving the lead's team order will be rejected.
 >
 > **Note:** the `assignments` collection (and its `updates`/`images` subcollections) is new. If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or creating/answering lead assignments will be rejected.
+>
+> **Note:** the `leadQuestionCarryovers` collection is new (lead question carry-over across dates). If your Firestore security rules were already deployed without it, redeploy the rules above before using this build, or sending a report-level lead question, deleting one, clearing/editing one's answer, or a developer answering an older one will be rejected.
 >
 > **Note:** `leadQuestions.answerLinks` and the `leadQuestions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without them, redeploy the rules above before using this build, or saving link/image attachments on a text answer will be rejected.
 >
@@ -387,6 +408,7 @@ Security intent:
 - A question to the lead is added from inside a section via its "Ask the lead" entry next to "Add task" (the report-level composer was removed; older report-level questions stay visible in a "General questions to the lead" block). A section question is interleaved with that section's tasks by shared `order` and can be moved up/down or dragged past a task, same as a task; it takes no letter of its own (tasks stay lettered `a, b, c…` over tasks only) and shows a small "Question" badge instead.
 - An existing question can be edited from its pencil icon, reopening the same composer prefilled with its text, options, links and images to add, rename, or remove options and attachments. Removing or reordering options remaps their images to the option's new position instead of losing them; if the option set or order changed (or the lead's already-selected option no longer matches), the lead's answer is cleared so it can't point at the wrong option.
 - Shows an "Assigned by lead" block above the report when the developer has at least one assignment visible on the selected date, with a "Pending"/"Updated" pill per assignment; each is answered with its own daily text/links/images update, independent of the report (it works even with no report for that date).
+- An unanswered report-level lead question (from the "General questions to the lead" block) keeps showing in the "From the lead" panel on every later day, labeled "Asked on {origin date}", until the developer answers it; answering, editing, or attaching an image still targets the day it was originally asked, not the day it's shown on. "Preview as lead" shows the same carried-over questions read-only.
 
 ### LeadView
 
@@ -395,6 +417,7 @@ Security intent:
 - Hovering a task reveals "Question" and "Note" buttons; a task can have several of each.
 - Lets the lead ask a developer a per-task question (free text or multiple choice) and leave per-task notes; a free-text answer's links and images show alongside its text.
 - Lets the lead answer developer questions, including a section question, answered right where it appears among that section's tasks; only report-level questions (no `sectionId`) show in the trailing "Questions from {developer}" block, which stays hidden when there are none.
+- A developer's unanswered report-level lead questions from earlier days show under their card too, labeled "Asked on {origin date}" — even on a date the developer has no report for, alongside their assignments — and stay editable/removable there, targeting the day the question was originally asked. They count toward the "Only my questions & tasks" filter the same as today's lead questions.
 - Shows a "Team" list with the lead's developers, in the same order the reports appear; the lead can reorder it (drag-and-drop or up/down buttons), which also reorders the reports. Clicking a name scrolls to that developer's report.
 - A collapsible "Lead tools" panel sits right below the Team list, in the same sticky column so both stay visible while scrolling. It holds the "Only my questions & tasks" and "Edit mode" switches (moved out of the top header), plus Question/Note/Task actions for one or more chosen developers: a Task opens `AssignmentComposer` with no preselected developer (multi-select); a Note/Question opens the usual composer next to a developer picker and, on submit, writes a report-level note/question to each selected developer's report for the currently selected date in parallel — creating that developer's report first if they don't have one yet for the date. A partial failure keeps the composer open, lists which developers failed by name, and narrows the selection to just those so retrying never re-sends to the ones that already succeeded.
 
@@ -412,6 +435,7 @@ Security intent:
 | `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
 | `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. A `'text'` answer may also include `answerLinks`. |
 | `reports/{reportId}/leadQuestions/{questionId}/images/{imageId}` | Image attached to a `'text'` lead question's answer; same one-doc-per-image shape as task images. |
+| `leadQuestionCarryovers/{reportId}_{questionId}` | Pointer for a report-level `leadQuestions` doc: `{ userId, reportId, questionId, date, answeredDate?, createdAt }`, where `date` is the origin report's date and `userId` is the recipient developer. Visible on a later date D when `date < D` and (`answeredDate` is unset or `answeredDate >= D`); keeps an unanswered question showing on later days until answered, independent of `reports`, same as `assignments`. |
 | `settings/team` | The lead's saved developer ordering: `{ memberOrder: string[], updatedAt }`, where `memberOrder` is an ordered list of developer uids. Drives both the "Team" list and the reports rollup order in LeadView. |
 | `assignments/{assignmentId}` | A lead-created task assigned to one or more developers: `{ description, assigneeIds, createdBy, startDate, status: 'open' | 'closed', closedDate?, createdAt, updatedAt }`. Visible on a date when `startDate <= date` and the assignment is still `'open'` or `closedDate >= date`. Independent of `reports`. |
 | `assignments/{assignmentId}/updates/{assigneeId}_{date}` | One assignee's daily answer to an assignment: `{ assigneeId, date, text?, links, createdAt, updatedAt }`. |

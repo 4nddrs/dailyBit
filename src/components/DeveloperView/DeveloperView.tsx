@@ -37,6 +37,7 @@ import { ImageLightbox } from '../ImageLightbox';
 import { QuestionOptionList } from '../LeadView/LeadView';
 import { ReportPreview } from '../ReportPreview/ReportPreview';
 import { useMyAssignments } from '../../hooks/useMyAssignments';
+import { useMyLeadQuestionCarryovers } from '../../hooks/useMyLeadQuestionCarryovers';
 import { useMyReport } from '../../hooks/useMyReport';
 import { PolishError, polishText } from '../../services/polish';
 import type { CreateQuestionInput, SectionOrderItem } from '../../services/firestore';
@@ -44,6 +45,7 @@ import type { PolishKind } from '../../services/polish';
 import type {
   AssignmentUpdateWithImages,
   AssignmentWithId,
+  CarriedLeadQuestion,
   LeadNoteWithId,
   LeadQuestionWithId,
   QuestionWithId,
@@ -1180,7 +1182,21 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
   );
 }
 
-function LeadQuestionCard({ reportId, question }: { reportId: string; question: LeadQuestionWithId }) {
+// `answeredDate` is the date string of the day view this card is shown on
+// (omitted for a task-anchored question, which never carries over — see
+// `answerLeadQuestion`); `originDate` is set only for a carried-over
+// report-level question, and shows an "Asked on ..." label above it.
+function LeadQuestionCard({
+  reportId,
+  question,
+  answeredDate,
+  originDate,
+}: {
+  reportId: string;
+  question: LeadQuestionWithId;
+  answeredDate?: string;
+  originDate?: string;
+}) {
   const isText = question.kind === 'text';
   const isAnswered = isText
     ? (Boolean(question.answerText?.trim()) || (question.answerLinks?.length ?? 0) > 0 || question.answerImages.length > 0)
@@ -1222,7 +1238,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
     setSubmittingText(true);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer, answerLinks });
+      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer, answerLinks }, answeredDate);
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1237,7 +1253,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
     setSubmittingText(true);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { answerText: suggestion, answerLinks });
+      await answerLeadQuestion(reportId, question.id, { answerText: suggestion, answerLinks }, answeredDate);
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1251,7 +1267,7 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
     setSubmittingIndex(index);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index });
+      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index }, answeredDate);
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1263,10 +1279,12 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
 
   function updateAnswerLinks(nextLinks: TaskLink[]) {
     runSafely(
-      answerLeadQuestion(reportId, question.id, {
-        answerText: question.answerText ?? '',
-        answerLinks: nextLinks,
-      }),
+      answerLeadQuestion(
+        reportId,
+        question.id,
+        { answerText: question.answerText ?? '', answerLinks: nextLinks },
+        answeredDate,
+      ),
       'Lead question answer links save failed',
     );
   }
@@ -1302,6 +1320,9 @@ function LeadQuestionCard({ reportId, question }: { reportId: string; question: 
 
   return (
     <article className="group/task rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
+      {originDate ? (
+        <p className="mb-1 text-xs font-medium text-fg-muted">Asked on {originDate}</p>
+      ) : null}
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         {isText ? (
@@ -2718,6 +2739,10 @@ interface EditableReportProps {
   // Lead View's edit mode keeps it at the bottom to match the normal
   // (non-edit) report layout, where it always renders last.
   assignmentsPosition?: 'top' | 'bottom';
+  // Report-level lead questions still unanswered (or answered on this date)
+  // from an earlier day, shown alongside today's own "From the lead" panel
+  // with their origin date; every action still targets their origin report.
+  carriedQuestions?: CarriedLeadQuestion[];
 }
 
 // The editable body of a report: assignments, lead notes/questions, sections
@@ -2733,6 +2758,7 @@ export function EditableReport({
   ensureReportExists,
   showWorkHeading = true,
   assignmentsPosition = 'top',
+  carriedQuestions = [],
 }: EditableReportProps) {
   // The report document only exists once the developer actually adds
   // content, so every write that could be the first one on an empty report
@@ -2787,17 +2813,26 @@ export function EditableReport({
   return (
     <>
       {assignmentsPosition === 'top' ? assignmentsBox : null}
-      {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 ? (
+      {reportLevelLeadNotes.length > 0 || reportLevelLeadQuestions.length > 0 || carriedQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas shadow-sm">
           <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
             <h2 className="text-lg font-semibold text-fg">From the lead</h2>
           </div>
           <div className="p-4">
             <LeadNotesReadOnly notes={reportLevelLeadNotes} />
-            {reportLevelLeadQuestions.length > 0 ? (
+            {carriedQuestions.length > 0 || reportLevelLeadQuestions.length > 0 ? (
               <div className="mt-3 space-y-3">
+                {carriedQuestions.map((question) => (
+                  <LeadQuestionCard
+                    key={question.id}
+                    reportId={question.originReportId}
+                    question={question}
+                    answeredDate={date}
+                    originDate={question.originDate}
+                  />
+                ))}
                 {reportLevelLeadQuestions.map((question) => (
-                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
+                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} answeredDate={date} />
                 ))}
               </div>
             ) : null}
@@ -2828,6 +2863,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const { reportTree, reportId, loading, date, ensureReportExists } = useMyReport(userId, selectedDate);
   const { assignments } = useMyAssignments(userId, date);
+  const { carriedQuestions } = useMyLeadQuestionCarryovers(userId, date);
   const [previewAsLead, setPreviewAsLead] = useState(() => loadPreviewAsLead());
   const handleDateChange = (nextDate: string) =>
     setSelectedDate(nextDate === todayDateString() ? null : nextDate);
@@ -2881,7 +2917,13 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
         onPreviewAsLeadChange={handlePreviewAsLeadChange}
       />
       {previewAsLead ? (
-        <ReportPreview reportTree={reportTree} developerId={userId} date={date} assignments={assignments} />
+        <ReportPreview
+          reportTree={reportTree}
+          developerId={userId}
+          date={date}
+          assignments={assignments}
+          carriedQuestions={carriedQuestions}
+        />
       ) : (
         <EditableReport
           reportId={reportId}
@@ -2890,6 +2932,7 @@ export function DeveloperView({ userId, developerName }: DeveloperViewProps) {
           ownerUserId={userId}
           assignments={assignments}
           ensureReportExists={ensureReportExists}
+          carriedQuestions={carriedQuestions}
         />
       )}
     </div>

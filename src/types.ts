@@ -138,6 +138,37 @@ export interface LeadQuestionWithId extends LeadQuestion {
   answerImages: TaskImageWithId[];
 }
 
+// Top-level pointer at `leadQuestionCarryovers/{reportId}_{questionId}`, one
+// per report-level lead question, so an unanswered question keeps showing on
+// later days without re-querying every past report (mirrors how
+// `Assignment` makes a lead task visible across dates independent of
+// `reports`). `date` is the origin report's date; `answeredDate` is the date
+// string of the day view where the developer answered it (unset while
+// unanswered). Visible on date D (for D > date) when `answeredDate` is unset
+// or `answeredDate >= D`.
+export interface LeadQuestionCarryoverPointer {
+  userId: string;
+  reportId: string;
+  questionId: string;
+  date: string;
+  answeredDate?: string;
+  createdAt: Timestamp;
+}
+
+export interface LeadQuestionCarryoverPointerWithId extends LeadQuestionCarryoverPointer {
+  id: string;
+}
+
+// A report-level lead question carried over from an earlier day: the origin
+// question's full data (same shape `LeadQuestionWithId` has) plus where it
+// came from, so callers can target the origin report for every action
+// (answer, edit, delete, images) instead of the day currently being viewed.
+export interface CarriedLeadQuestion extends LeadQuestionWithId {
+  userId: string;
+  originReportId: string;
+  originDate: string;
+}
+
 export interface ReportTree extends Report {
   id: string;
   sections: SectionWithTasks[];

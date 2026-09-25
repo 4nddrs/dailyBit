@@ -5,6 +5,7 @@ import {
   AssignmentUpdateDisplay,
   LeadNoteBlock,
   LeadQuestionBlock,
+  LeadQuestionItem,
   LinkChips,
   QuestionOptionList,
 } from '../LeadView/LeadView';
@@ -13,6 +14,7 @@ import { mergeSectionItems, taskLettersById } from '../../utils/sectionItems';
 import type {
   AssignmentUpdateWithImages,
   AssignmentWithId,
+  CarriedLeadQuestion,
   LeadNoteWithId,
   LeadQuestionWithId,
   QuestionWithId,
@@ -252,13 +254,23 @@ export interface ReportPreviewProps {
   developerId: string;
   date: string;
   assignments: AssignmentWithId[];
+  // Report-level lead questions carried over from an earlier day, shown
+  // read-only alongside today's own "From the lead" panel with their origin
+  // date; the developer answers them from the editable report, not here.
+  carriedQuestions?: CarriedLeadQuestion[];
 }
 
 // Read-only rendering of a developer's own report, exactly as the lead sees
 // it: numbered sections, lettered tasks, link chips, image thumbnails with a
 // lightbox, lead notes/questions with answers, dev questions with the lead's
 // answer, and assignments with this developer's update for the date.
-export function ReportPreview({ reportTree, developerId, date, assignments }: ReportPreviewProps) {
+export function ReportPreview({
+  reportTree,
+  developerId,
+  date,
+  assignments,
+  carriedQuestions = [],
+}: ReportPreviewProps) {
   const sections = useMemo(
     () => [...(reportTree?.sections ?? [])].sort((a, b) => a.order - b.order),
     [reportTree?.sections],
@@ -290,6 +302,7 @@ export function ReportPreview({ reportTree, developerId, date, assignments }: Re
     sections.length === 0 &&
     reportLevelNotes.length === 0 &&
     reportLevelQuestions.length === 0 &&
+    carriedQuestions.length === 0 &&
     devQuestions.length === 0 &&
     assignments.length === 0;
 
@@ -303,13 +316,20 @@ export function ReportPreview({ reportTree, developerId, date, assignments }: Re
         <PreviewAssignmentsBox assignments={assignments} developerId={developerId} date={date} />
       ) : null}
 
-      {reportLevelNotes.length > 0 || reportLevelQuestions.length > 0 ? (
+      {reportLevelNotes.length > 0 || reportLevelQuestions.length > 0 || carriedQuestions.length > 0 ? (
         <section className="rounded-md border border-line bg-canvas shadow-sm">
           <div className="rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
             <h2 className="text-lg font-semibold text-fg">From the lead</h2>
           </div>
           <div className="p-4">
             <LeadNoteBlock notes={reportLevelNotes} />
+            {carriedQuestions.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {carriedQuestions.map((question) => (
+                  <LeadQuestionItem key={question.id} question={question} context={`Asked on ${question.originDate}`} />
+                ))}
+              </div>
+            ) : null}
             <LeadQuestionBlock questions={reportLevelQuestions} />
           </div>
         </section>

@@ -37,6 +37,7 @@ import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
 import { useAssignmentUpdates } from '../../hooks/useAssignmentUpdates';
 import type { AssignmentUpdatesByAssignment } from '../../hooks/useAssignmentUpdates';
+import { useLeadQuestionCarryoversForDate } from '../../hooks/useLeadQuestionCarryoversForDate';
 import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
@@ -46,6 +47,7 @@ import { orderDevelopers, orderReportsByTeam } from '../../utils/team';
 import type {
   AssignmentUpdateWithImages,
   AssignmentWithId,
+  CarriedLeadQuestion,
   LeadNoteWithId,
   LeadQuestionKind,
   LeadQuestionWithId,
@@ -2073,6 +2075,7 @@ function ReportCard({
   onlyMineFilter,
   date,
   editMode,
+  carriedQuestions,
 }: {
   report: ReportTree;
   developerName: string;
@@ -2091,6 +2094,9 @@ function ReportCard({
   onlyMineFilter: boolean;
   date: string;
   editMode: boolean;
+  // This developer's report-level lead questions carried over from an
+  // earlier day, still visible on `date`.
+  carriedQuestions: CarriedLeadQuestion[];
 }) {
   const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | null>(null);
 
@@ -2143,7 +2149,11 @@ function ReportCard({
     sectionId: string,
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) {
-    await addLeadQuestion(report.id, { taskId, sectionId, ...input });
+    await addLeadQuestion(
+      report.id,
+      { taskId, sectionId, ...input },
+      { userId: report.userId, date: report.date },
+    );
   }
 
   function handleRemoveQuestion(questionId: string) {
@@ -2223,9 +2233,24 @@ function ReportCard({
             ensureReportExists={ensureReportExists}
             showWorkHeading={false}
             assignmentsPosition="bottom"
+            carriedQuestions={carriedQuestions}
           />
         ) : (
           <>
+            {carriedQuestions.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {carriedQuestions.map((question) => (
+                  <LeadQuestionItem
+                    key={question.id}
+                    reportId={question.originReportId}
+                    question={question}
+                    context={`Asked on ${question.originDate}`}
+                    onRemove={() => removeCarriedLeadQuestion(question)}
+                    onEdit={(_questionId, input) => editCarriedLeadQuestion(question, input)}
+                  />
+                ))}
+              </div>
+            ) : null}
             {openComposer === 'question' ? (
               <LeadQuestionComposer
                 onAdd={async (input) => {
@@ -2364,6 +2389,7 @@ function AssignmentOnlyCard({
   onRemoveAssignment,
   onEditAssignment,
   editMode,
+  carriedQuestions,
 }: {
   userId: string;
   developerName: string;
@@ -2379,6 +2405,10 @@ function AssignmentOnlyCard({
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
   editMode: boolean;
+  // This developer's report-level lead questions carried over from an
+  // earlier day, still visible on the selected date, even though they have
+  // no report for it.
+  carriedQuestions: CarriedLeadQuestion[];
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
 
@@ -2392,6 +2422,21 @@ function AssignmentOnlyCard({
       <div className="p-4">
         {editMode ? (
           <p className="mb-3 text-xs text-fg-muted">No report to edit yet.</p>
+        ) : null}
+
+        {carriedQuestions.length > 0 ? (
+          <div className="space-y-2">
+            {carriedQuestions.map((question) => (
+              <LeadQuestionItem
+                key={question.id}
+                reportId={question.originReportId}
+                question={question}
+                context={`Asked on ${question.originDate}`}
+                onRemove={() => removeCarriedLeadQuestion(question)}
+                onEdit={(_questionId, input) => editCarriedLeadQuestion(question, input)}
+              />
+            ))}
+          </div>
         ) : null}
 
         {composerOpen ? (
@@ -2542,13 +2587,13 @@ type LeadToolsAction = 'question' | 'note' | 'task';
 async function sendToSelectedDevs(
   devIds: string[],
   date: string,
-  action: (reportId: string) => Promise<unknown>,
+  action: (reportId: string, userId: string) => Promise<unknown>,
 ): Promise<{ failedDevIds: string[] }> {
   const results = await Promise.allSettled(
     devIds.map(async (devId) => {
       const { id: reportId, created } = await ensureReportWithStatus(devId, date);
       try {
-        await action(reportId);
+        await action(reportId, devId);
       } catch (error) {
         if (created) {
           try {
@@ -2564,6 +2609,37 @@ async function sendToSelectedDevs(
   );
   const failedDevIds = devIds.filter((_, index) => results[index].status === 'rejected');
   return { failedDevIds };
+}
+
+// A carried-over question's actions always target its origin report, never
+// the currently selected date's report, so `ReportCard` and
+// `AssignmentOnlyCard` share these instead of each closing over `report.id`
+// like their own-day `handleRemoveQuestion`/`handleEditQuestion` do.
+function removeCarriedLeadQuestion(question: CarriedLeadQuestion): void {
+  removeLeadQuestion(question.originReportId, question.id).catch((error: unknown) => {
+    console.error('Failed to remove question', error);
+  });
+}
+
+async function editCarriedLeadQuestion(
+  question: CarriedLeadQuestion,
+  input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+): Promise<void> {
+  // Same "only a kind/options change can invalidate the existing answer" rule
+  // `ReportCard`'s own `handleEditQuestion` applies for today's questions.
+  const isAnswered =
+    question.kind === 'text'
+      ? Boolean(question.answerText?.trim()) ||
+        (question.answerLinks?.length ?? 0) > 0 ||
+        question.answerImages.length > 0
+      : question.selectedAnswer !== undefined;
+  const kindOrOptionsChanged =
+    input.kind !== question.kind ||
+    (input.kind === 'options' && JSON.stringify(input.options ?? []) !== JSON.stringify(question.options ?? []));
+
+  await updateLeadQuestion(question.originReportId, question.id, input, {
+    clearAnswer: isAnswered && kindOrOptionsChanged,
+  });
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -2673,8 +2749,8 @@ function LeadToolsPanel({
     kind: LeadQuestionKind;
     options?: string[];
   }) {
-    const { failedDevIds } = await sendToSelectedDevs(questionDevIds, date, (reportId) =>
-      addLeadQuestion(reportId, { taskId: '', sectionId: '', ...input }),
+    const { failedDevIds } = await sendToSelectedDevs(questionDevIds, date, (reportId, userId) =>
+      addLeadQuestion(reportId, { taskId: '', sectionId: '', ...input }, { userId, date }),
     );
 
     if (failedDevIds.length > 0) {
@@ -2785,6 +2861,14 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   const { assignments } = useAssignmentsForDate(normalizedSelectedDate);
   const assignmentIds = useMemo(() => assignments.map((assignment) => assignment.id), [assignments]);
   const updatesByAssignment = useAssignmentUpdates(assignmentIds, normalizedSelectedDate);
+  const { carriedQuestions } = useLeadQuestionCarryoversForDate(normalizedSelectedDate);
+  const carriedQuestionsByUser = useMemo(() => {
+    const grouped = new Map<string, CarriedLeadQuestion[]>();
+    carriedQuestions.forEach((question) => {
+      grouped.set(question.userId, [...(grouped.get(question.userId) ?? []), question]);
+    });
+    return grouped;
+  }, [carriedQuestions]);
   const { profiles } = useUserProfiles();
   const { memberOrder } = useTeamOrder();
   const devs = useMemo(() => profiles.filter((profile) => profile.role === 'dev'), [profiles]);
@@ -2876,12 +2960,14 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     [reportTrees],
   );
 
-  // A card shows for every developer who has a report on this date, or who
-  // has at least one visible assignment on it — even without a report.
+  // A card shows for every developer who has a report on this date, has at
+  // least one visible assignment on it, or has a carried-over lead question
+  // still visible on it — even without a report.
   const assignmentOnlyUserIds = useMemo(() => {
     const reportUserIds = reportedUserIds;
-    return Array.from(assignmentsByAssignee.keys()).filter((userId) => !reportUserIds.has(userId));
-  }, [assignmentsByAssignee, reportedUserIds]);
+    const noReportUserIds = new Set([...assignmentsByAssignee.keys(), ...carriedQuestionsByUser.keys()]);
+    return Array.from(noReportUserIds).filter((userId) => !reportUserIds.has(userId));
+  }, [assignmentsByAssignee, carriedQuestionsByUser, reportedUserIds]);
 
   const cardEntries = useMemo<CardEntry[]>(
     () => [
@@ -2897,7 +2983,8 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   );
 
   // "Only my questions & tasks" hides a card entirely once it has neither a
-  // lead question (report- or task-level) nor a visible assignment.
+  // lead question (report-, task-level, or carried over) nor a visible
+  // assignment.
   const visibleCardEntries = useMemo(() => {
     if (!onlyMineFilter) {
       return orderedCardEntries;
@@ -2906,9 +2993,10 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     return orderedCardEntries.filter((entry) => {
       const assignmentCount = assignmentsByAssignee.get(entry.userId)?.length ?? 0;
       const leadQuestionCount = entry.report?.leadQuestions?.length ?? 0;
-      return leadQuestionCount > 0 || assignmentCount > 0;
+      const carriedQuestionCount = carriedQuestionsByUser.get(entry.userId)?.length ?? 0;
+      return leadQuestionCount > 0 || carriedQuestionCount > 0 || assignmentCount > 0;
     });
-  }, [orderedCardEntries, onlyMineFilter, assignmentsByAssignee]);
+  }, [orderedCardEntries, onlyMineFilter, assignmentsByAssignee, carriedQuestionsByUser]);
 
   async function persistOrder(nextIds: string[]) {
     const previousIds = displayedDevs.map((dev) => dev.id);
@@ -3045,6 +3133,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onlyMineFilter={onlyMineFilter}
                   date={normalizedSelectedDate}
                   editMode={editMode}
+                  carriedQuestions={carriedQuestionsByUser.get(entry.userId) ?? []}
                 />
               ) : (
                 <AssignmentOnlyCard
@@ -3059,6 +3148,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onRemoveAssignment={handleRemoveAssignment}
                   onEditAssignment={handleEditAssignment}
                   editMode={editMode}
+                  carriedQuestions={carriedQuestionsByUser.get(entry.userId) ?? []}
                 />
               ),
             )
