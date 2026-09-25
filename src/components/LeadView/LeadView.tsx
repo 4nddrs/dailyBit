@@ -44,6 +44,7 @@ const QUESTION_OPTION_MINIMUM = 2;
 const QUESTION_OPTION_LIMIT = 6;
 const UNKNOWN_DEVELOPER_NAME = 'Unknown developer';
 const ONLY_MINE_STORAGE_KEY = 'leadView.onlyMineFilter';
+const LEAD_TOOLS_PANEL_STORAGE_KEY = 'leadView.leadToolsPanelOpen';
 
 function loadOnlyMineFilter(): boolean {
   try {
@@ -56,6 +57,26 @@ function loadOnlyMineFilter(): boolean {
 function persistOnlyMineFilter(value: boolean): void {
   try {
     window.localStorage.setItem(ONLY_MINE_STORAGE_KEY, String(value));
+  } catch {
+    // Best-effort only: an unavailable/blocked storage never blocks the toggle.
+  }
+}
+
+// Defaults open: the two switches used to always be visible in the header,
+// so hiding them behind a first click would be a regression for a viewer
+// with no stored preference yet.
+function loadLeadToolsPanelOpen(): boolean {
+  try {
+    const stored = window.localStorage.getItem(LEAD_TOOLS_PANEL_STORAGE_KEY);
+    return stored === null ? true : stored === 'true';
+  } catch {
+    return true;
+  }
+}
+
+function persistLeadToolsPanelOpen(value: boolean): void {
+  try {
+    window.localStorage.setItem(LEAD_TOOLS_PANEL_STORAGE_KEY, String(value));
   } catch {
     // Best-effort only: an unavailable/blocked storage never blocks the toggle.
   }
@@ -177,19 +198,11 @@ function LeadHeader({
   onDateChange,
   reportedCount,
   totalDeveloperCount,
-  onlyMineFilter,
-  onOnlyMineFilterChange,
-  editMode,
-  onEditModeChange,
 }: {
   date: string;
   onDateChange: (date: string) => void;
   reportedCount: number;
   totalDeveloperCount: number;
-  onlyMineFilter: boolean;
-  onOnlyMineFilterChange: (checked: boolean) => void;
-  editMode: boolean;
-  onEditModeChange: (checked: boolean) => void;
 }) {
   return (
     <header className="rounded-md border border-line bg-canvas shadow-sm">
@@ -206,8 +219,6 @@ function LeadHeader({
               onChange={(event) => onDateChange(event.target.value)}
             />
           </label>
-          <OnlyMineToggle checked={onlyMineFilter} onChange={onOnlyMineFilterChange} />
-          <EditModeToggle checked={editMode} onChange={onEditModeChange} />
           <span className="rounded-full bg-neutral-muted px-2 py-0.5 text-xs font-medium text-fg-muted">
             {reportedCount}/{totalDeveloperCount} reported
           </span>
@@ -1788,6 +1799,73 @@ function TeamBox({
   );
 }
 
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+    >
+      <path d="m4 6 4 4 4-4" />
+    </svg>
+  );
+}
+
+// Collapsible panel under the Team box (same sticky column, so it stays
+// visible while scrolling): holds the two view-only switches that used to
+// live in the top header.
+function LeadToolsPanel({
+  onlyMineFilter,
+  onOnlyMineFilterChange,
+  editMode,
+  onEditModeChange,
+}: {
+  onlyMineFilter: boolean;
+  onOnlyMineFilterChange: (checked: boolean) => void;
+  editMode: boolean;
+  onEditModeChange: (checked: boolean) => void;
+}) {
+  const [panelOpen, setPanelOpen] = useState(() => loadLeadToolsPanelOpen());
+
+  function togglePanel() {
+    setPanelOpen((current) => {
+      const next = !current;
+      persistLeadToolsPanelOpen(next);
+      return next;
+    });
+  }
+
+  return (
+    <section className="mt-4 rounded-md border border-line bg-canvas shadow-sm">
+      <button
+        className="flex w-full items-center justify-between gap-2 rounded-md px-4 py-3 text-left transition hover:bg-canvas-subtle"
+        type="button"
+        aria-expanded={panelOpen}
+        onClick={togglePanel}
+      >
+        <h2 className="text-lg font-semibold text-fg">Lead tools</h2>
+        <ChevronIcon expanded={panelOpen} />
+      </button>
+
+      {panelOpen ? (
+        <div className="space-y-4 border-t border-line px-4 py-3">
+          <div className="flex flex-col items-start gap-3">
+            <OnlyMineToggle checked={onlyMineFilter} onChange={onOnlyMineFilterChange} />
+            <EditModeToggle checked={editMode} onChange={onEditModeChange} />
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function LeadView({ leadUserId }: LeadViewProps) {
   const [selectedDate, setSelectedDate] = useState(() => todayDateString());
   const normalizedSelectedDate = normalizeDateString(selectedDate);
@@ -2002,10 +2080,6 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
         reportedCount={reportTrees.length}
         totalDeveloperCount={totalDeveloperCount}
-        onlyMineFilter={onlyMineFilter}
-        onOnlyMineFilterChange={handleOnlyMineFilterChange}
-        editMode={editMode}
-        onEditModeChange={setEditMode}
       />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
@@ -2017,6 +2091,12 @@ export function LeadView({ leadUserId }: LeadViewProps) {
             onReorderDrag={handleReorderDrag}
             onSelectDev={handleSelectDev}
             error={teamOrderError}
+          />
+          <LeadToolsPanel
+            onlyMineFilter={onlyMineFilter}
+            onOnlyMineFilterChange={handleOnlyMineFilterChange}
+            editMode={editMode}
+            onEditModeChange={setEditMode}
           />
         </aside>
 
