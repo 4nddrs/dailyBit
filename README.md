@@ -436,6 +436,28 @@ DeveloperView has a "Polish with AI" (sparkle) action next to a task description
 
 `gpt-4.1-nano` is a small, non-reasoning model; each polish call is capped at `max_tokens: 200` with `temperature: 0.2`, so a typical request costs a small fraction of a cent. The per-user rate limit (30 requests / 10 minutes, per serverless instance, best effort) is an additional abuse guard, not a budget control.
 
+## Team management
+
+The lead-only Manage team panel (opened from the people icon next to the top bar's "Sign out") lists every user, lets the lead change a person's role (dev ↔ lead), and fully delete a team member's account after an inline "Are you sure?" confirmation (Yes / No — no browser `confirm()` dialogs).
+
+- **Role change** is a plain client-side Firestore write (`updateUserRole` in `src/services/firestore.ts`), allowed by the `users/{uid}` `update` rule above. A lead can't change their own role, and the last remaining lead can't be demoted (checked in the UI before the write).
+- **Full delete** removes the person everywhere: their Firebase Auth login, `users/{uid}` profile, all their `reports` (recursively, with sections/tasks/images/questions/etc.), their assignment `updates` (and those updates' images) across every assignment they're assigned to (removed from `assigneeIds`, deleting the assignment if no assignees remain), and their id in `settings/team.memberOrder`. This can't be expressed safely as a client-side Firestore rule (it needs to delete the Auth login too), so it's a Vercel Function, `api/admin-users.ts`, using the Firebase Admin SDK. A lead can't delete themselves, and the last remaining lead can't be deleted — enforced server-side, not just in the UI.
+
+### How it works
+
+- The client (`src/services/adminUsers.ts`) reads the signed-in lead's Firebase ID token and calls `POST /api/admin-users` with `{ action: 'delete', uid }`.
+- `api/admin-users.ts` (Node runtime) verifies the ID token the same way `api/polish.ts` does (Google's public JWKS, no extra round trip), then initializes `firebase-admin` from a service account and checks the caller's own `users/{uid}.role` is `'lead'` before doing anything else.
+- The service account key never leaves the server: it's read from `FIREBASE_SERVICE_ACCOUNT` (or `FIREBASE_SERVICE_ACCOUNT_BASE64`) and is never echoed back to the client, logged, or included in error responses.
+- `npm run dev` (Vite only) does not serve `/api/*`. Test this feature locally with `vercel dev` instead, which runs both the Vite app and the Vercel Functions together.
+
+### Configuration (Vercel project)
+
+| Env var | Required | Notes |
+| --- | --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT` | Yes (or the `_BASE64` variant below) | The full service account JSON as a string. Get it from **Firebase Console > Project settings > Service accounts > Generate new private key**, then paste the downloaded JSON's contents as this variable's value. Add it with `vercel env add FIREBASE_SERVICE_ACCOUNT production --type secret` (repeat for `preview`/`development` as needed). |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64` | No | Same JSON, base64-encoded; used only if `FIREBASE_SERVICE_ACCOUNT` is unset. Useful when a hosting UI mangles multi-line/quoted JSON env values. |
+| `FIREBASE_PROJECT_ID` | No | Shared with `api/polish.ts`; falls back to `VITE_FIREBASE_PROJECT_ID` if unset. |
+
 ## Roles
 
 | Role | User | View | Permissions in the app |
