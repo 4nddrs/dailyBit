@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { subscribeLatestAssignmentUpdate } from '../../services/firestore';
+import { subscribeAssignmentUpdate, subscribeLatestAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
 import {
   AssignmentUpdateDisplay,
@@ -208,8 +208,14 @@ function PreviewAssignmentRow({
 
   useEffect(() => {
     setUpdate(null);
-    const unsubscribe = subscribeLatestAssignmentUpdate(assignment.id, developerId, date, setUpdate);
-    return unsubscribe;
+    let unsubscribe = subscribeLatestAssignmentUpdate(assignment.id, developerId, date, setUpdate, (error) => {
+      // If the rules can't prove the assignee query, fall back to the exact
+      // day's update (the previous behaviour) instead of showing nothing.
+      console.error('Latest assignment update query failed; using the day update', error);
+      unsubscribe();
+      unsubscribe = subscribeAssignmentUpdate(assignment.id, developerId, date, setUpdate);
+    });
+    return () => unsubscribe();
   }, [assignment.id, developerId, date]);
 
   return (
