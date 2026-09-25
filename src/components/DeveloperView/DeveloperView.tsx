@@ -1276,7 +1276,11 @@ function LeadQuestionCard({
   const answerPolish = usePolishAction({
     kind: 'answer',
     questionContext: question.questionText,
-    onUse: (suggestion) => void handleUseAnswerSuggestion(suggestion),
+    // A suggestion with [bracketed] placeholders (a "partial" answer) still
+    // needs the developer's facts, so it only fills the field; a complete one
+    // is saved right away as before.
+    onUse: (suggestion) =>
+      /\[[^\]]+\]/.test(suggestion) ? setAnswerText(suggestion) : void handleUseAnswerSuggestion(suggestion),
     // An off-topic example is only a starting point: fill the field, let the
     // developer edit and fill in the [bracketed] parts, never save it as-is.
     onUseExample: (exampleAnswer) => setAnswerText(exampleAnswer),
