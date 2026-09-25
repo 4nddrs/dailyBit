@@ -258,15 +258,6 @@ export function subscribeUserProfiles(
   });
 }
 
-// Used by the lead-only Manage team panel to change another team member's
-// role. The Firestore rule enforces the same guards the panel's UI already
-// applies (a lead can't touch their own role, and only `role` is writable
-// here); the last-remaining-lead guard is UI-only for this client write,
-// since it depends on reading every profile's role first.
-export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
-  await updateDoc(userDoc(uid), { role });
-}
-
 export const USER_NAME_MAX_LENGTH = 80;
 
 export async function updateUserName(uid: string, name: string): Promise<void> {

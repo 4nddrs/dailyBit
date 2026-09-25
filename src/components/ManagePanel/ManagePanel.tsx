@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { USER_NAME_MAX_LENGTH, updateUserName, updateUserRole } from '../../services/firestore';
-import { AdminUsersError, deleteUserAccount } from '../../services/adminUsers';
+import { USER_NAME_MAX_LENGTH, updateUserName } from '../../services/firestore';
+import { AdminUserNotFoundError, AdminUsersError, deleteUserAccount, setUserRole } from '../../services/adminUsers';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import type { UserRole } from '../../types';
 
@@ -10,10 +10,11 @@ interface ManagePanelProps {
 }
 
 // Lead-only panel (routed to by App.tsx's Manage team button) listing every
-// team member with a role selector and a full-delete action. Role changes
-// write straight to Firestore (see the `users/{uid}` update rule in the
-// README); deletion goes through `api/admin-users.ts` since it must also
-// remove the person's Firebase Auth login.
+// team member with a role selector and a full-delete action. Both role
+// changes and deletion go through `api/admin-users.ts` (see
+// src/services/adminUsers.ts): role changes moved server-side so the
+// last-remaining-lead guard is atomic, and deletion must also remove the
+// person's Firebase Auth login, which a client Firestore write can never do.
 export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
   const { profiles, loading } = useUserProfiles();
   const [savingUid, setSavingUid] = useState<string | null>(null);
@@ -66,8 +67,14 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
     clearRoleError(uid);
     setSavingUid(uid);
     try {
-      await updateUserRole(uid, nextRole);
+      await setUserRole(uid, nextRole);
     } catch (error) {
+      // The person was deleted (by this lead or another one) between the
+      // list loading and this change: the row disappears via the realtime
+      // profile list on its own, so this isn't a failure worth showing.
+      if (error instanceof AdminUserNotFoundError) {
+        return;
+      }
       setRoleErrorByUid((previous) => ({
         ...previous,
         [uid]: error instanceof Error ? error.message : 'Could not save the role change.',
@@ -114,6 +121,13 @@ export function ManagePanel({ currentUserId, onBack }: ManagePanelProps) {
       await deleteUserAccount(uid);
       setConfirmingUid(null);
     } catch (error) {
+      // Already gone (this lead's own earlier retry, or another lead beat
+      // them to it): close the confirmation instead of showing a failure —
+      // the row disappears via the realtime profile list on its own.
+      if (error instanceof AdminUserNotFoundError) {
+        setConfirmingUid(null);
+        return;
+      }
       setDeleteErrorByUid((previous) => ({
         ...previous,
         [uid]: error instanceof AdminUsersError ? error.message : 'Could not delete this account.',

@@ -145,21 +145,19 @@ service cloud.firestore {
       // role changes stay in the admin console / seed script.
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.role == 'dev';
-      // From the Manage team panel a lead can change another user's role
-      // (never their own), or rename anyone including themselves. Each write
-      // touches exactly one of those fields and nothing else.
-      allow update: if isLead() && (
-        (request.auth.uid != uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
-          && request.resource.data.role in ['dev', 'lead'])
-        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
-          && request.resource.data.name is string
-          && request.resource.data.name.size() > 0
-          && request.resource.data.name.size() <= 80)
-      );
-      // Full account deletion is handled server-side by api/admin-users.ts
-      // (firebase-admin, which is not bound by these client rules), so
-      // delete stays false for the client.
+      // From the Manage team panel a lead can rename anyone, including
+      // themselves. Role changes are NOT allowed here: they go through
+      // api/admin-users.ts (firebase-admin) instead, so the last-remaining
+      // -lead guard can be enforced atomically in a transaction rather than
+      // racily from the client reading every profile's role first.
+      allow update: if isLead()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 80;
+      // Full account deletion and role changes are handled server-side by
+      // api/admin-users.ts (firebase-admin, which is not bound by these
+      // client rules), so delete stays false for the client.
       allow delete: if false;
     }
 
@@ -376,7 +374,7 @@ Security intent:
 >
 > **Note:** `reports` `delete` widened from owner-only to also allow `isLead()`, so the Lead tools panel's fan-out can clean up an empty report it just created for a developer when the following note/question write fails. If your Firestore security rules were already deployed with the previous owner-only `delete` rule, redeploy the rules above before using this build, or that cleanup will silently fail and leave an empty report behind (the original note/question failure still surfaces to the lead either way).
 >
-> **Note:** the `users/{uid}` `update` rule is new (a lead changing another user's `role` from the Manage team panel). If your Firestore security rules were already deployed with the previous `allow update, delete: if false;` rule, redeploy the rules above before using this build, or role changes from the panel will be rejected.
+> **Note:** the `users/{uid}` `update` rule is new (a lead renaming anyone from the Manage team panel). Role changes are NOT part of this rule — they go through `api/admin-users.ts` instead (see [Team management](#team-management)) — so if your rules previously allowed a lead to write `role` directly, redeploy the rules above to close that off. If your Firestore security rules were already deployed with the original `allow update, delete: if false;` rule, redeploy the rules above before using this build, or renames from the panel will be rejected.
 
 ## Usage
 
@@ -444,16 +442,20 @@ DeveloperView has a "Polish with AI" (sparkle) action next to a task description
 
 ## Team management
 
-The lead-only Manage team panel (opened from the people icon next to the top bar's "Sign out") lists every user, lets the lead change a person's role (dev ↔ lead), and fully delete a team member's account after an inline "Are you sure?" confirmation (Yes / No — no browser `confirm()` dialogs).
+The lead-only Manage team panel (opened from the people icon next to the top bar's "Sign out") lists every user, lets the lead rename anyone, change a person's role (dev ↔ lead), and fully delete a team member's account after an inline "Are you sure?" confirmation (Yes / No — no browser `confirm()` dialogs). Renaming is a plain client-side Firestore write (`updateUserName` in `src/services/firestore.ts`, allowed by the `users/{uid}` `update` rule above); role changes and deletion are both server-side, described below.
 
-- **Role change** is a plain client-side Firestore write (`updateUserRole` in `src/services/firestore.ts`), allowed by the `users/{uid}` `update` rule above. A lead can't change their own role, and the last remaining lead can't be demoted (checked in the UI before the write).
-- **Full delete** removes the person everywhere: their Firebase Auth login, `users/{uid}` profile, all their `reports` (recursively, with sections/tasks/images/questions/etc.), their assignment `updates` (and those updates' images) across every assignment they're assigned to (removed from `assigneeIds`, deleting the assignment if no assignees remain), and their id in `settings/team.memberOrder`. This can't be expressed safely as a client-side Firestore rule (it needs to delete the Auth login too), so it's a Vercel Function, `api/admin-users.ts`, using the Firebase Admin SDK. A lead can't delete themselves, and the last remaining lead can't be deleted — enforced server-side, not just in the UI.
+- **Role change** and **full delete** both go through `api/admin-users.ts` (Vercel Function, Firebase Admin SDK), not a plain client Firestore write. Both need to atomically check "is this the last remaining lead?" against a fresh read of every profile's role, which a Firestore security rule can't safely express (a rule sees one document write at a time, not a consistent snapshot across a query plus a write) — so both run inside a Firestore transaction on the server instead. A lead can't change their own role or delete their own account, and the last remaining lead can't be demoted or deleted; all four are enforced server-side, not just in the UI (the UI still disables the controls as a convenience).
+- **Full delete** removes the person everywhere: their Firebase Auth login (disabled and its refresh tokens revoked before anything else is touched, then removed at the end), `users/{uid}` profile, all their `reports` (recursively, with sections/tasks/images/questions/etc.), their assignment `updates` (and those updates' images) across every assignment they're assigned to (removed from `assigneeIds` inside a transaction that re-reads the assignment first, deleting the assignment if no assignees remain), and their id in `settings/team.memberOrder`. This can't be expressed safely as a client-side Firestore rule (it needs to delete the Auth login too), so it runs server-side with the Firebase Admin SDK.
+- **Residual session risk (accepted):** disabling the Auth user and revoking its refresh tokens stops the person from getting a *new* ID token, but an ID token issued just before deletion stays valid for Firestore requests until it naturally expires (at most ~1 hour) — Firestore has no built-in per-request revocation check. Given the short window and that all their data is being deleted moments later anyway, this is accepted rather than engineered around.
+- **In-progress marker:** right after the last-lead check passes, the target's `users/{uid}` doc is marked `removing: true` (and, if they were a lead, their `role` is flipped to `'dev'` in the same transaction) so a second, concurrent delete/role-change request sees the change immediately instead of racing on stale data. This is a transient, server-only marker — the client never reads or writes it — so a person mid-deletion may briefly show as `dev` in the Manage/Lead views before their row disappears; deleting an already-marked target (e.g. retrying after a timeout) skips straight to the cascade instead of re-running the guard.
 
 ### How it works
 
-- The client (`src/services/adminUsers.ts`) reads the signed-in lead's Firebase ID token and calls `POST /api/admin-users` with `{ action: 'delete', uid }`.
+- The client (`src/services/adminUsers.ts`) reads the signed-in lead's Firebase ID token and calls `POST /api/admin-users` with `{ action: 'delete', uid }` or `{ action: 'setRole', uid, role }`.
 - `api/admin-users.ts` (Node runtime) verifies the ID token the same way `api/polish.ts` does (Google's public JWKS, no extra round trip), then initializes `firebase-admin` from a service account and checks the caller's own `users/{uid}.role` is `'lead'` before doing anything else.
 - The service account key never leaves the server: it's read from `FIREBASE_SERVICE_ACCOUNT` (or `FIREBASE_SERVICE_ACCOUNT_BASE64`) and is never echoed back to the client, logged, or included in error responses.
+- The function declares `export const config = { maxDuration: 60 }` (Vercel's per-function time budget) and deletes someone's reports/assignment-updates with bounded concurrency (5 at a time) rather than strictly one by one, so a person with a lot of history is less likely to time the delete out. Every step is idempotent, so retrying a timed-out or failed delete finishes the job instead of redoing (or breaking on) what already happened.
+- A 404 from this endpoint ("That user no longer exists.") is shown by the client as-is; the ManagePanel treats it as the row already being gone (it disappears via the realtime profile list) rather than as a failure. The `vercel dev` hint below is only shown when the response isn't JSON from this function at all (e.g. Vite's own HTML 404 page), which is how a missing/undeployed endpoint is told apart from the endpoint's own 404.
 - `npm run dev` (Vite only) does not serve `/api/*`. Test this feature locally with `vercel dev` instead, which runs both the Vite app and the Vercel Functions together.
 
 ### Configuration (Vercel project)
