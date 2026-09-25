@@ -44,6 +44,13 @@ export default {
           emphasis: '#8957e5',
           muted: '#ab7df826',
         },
+        // Pink (Primer "sponsors" scale): "needs your action" states, kept
+        // distinct from attention (notes) and done (questions).
+        pending: {
+          fg: '#db61a2',
+          emphasis: '#bf4b8a',
+          muted: '#db61a21a',
+        },
         control: {
           DEFAULT: '#212830',
           hover: '#262c36',
