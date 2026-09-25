@@ -1,0 +1,51 @@
+# Mirrors .gitignore so `vercel` CLI deploys don't upload local-only files
+# (e.g. .codegraph/daemon.sock, a socket the CLI can't read).
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+key.json
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+*.pem
+*.key
+
+# Firebase CLI local state
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Deploy platform local state
+.vercel/
+.netlify/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local tooling / agent workflow state
+.atl/
+.codegraph/
+.claude/
+odd/
