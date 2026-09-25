@@ -1502,6 +1502,7 @@ function ReportCard({
             ownerUserId={report.userId}
             assignments={assignments}
             ensureReportExists={ensureReportExists}
+            showWorkHeading={false}
           />
         ) : (
           <>

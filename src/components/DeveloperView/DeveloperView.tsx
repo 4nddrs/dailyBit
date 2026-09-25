@@ -2038,6 +2038,7 @@ function SectionsList({
   leadQuestionsByTask,
   onAddSection,
   onAddQuestion,
+  showHeading = true,
 }: {
   reportId: string;
   sections: SectionWithTasks[];
@@ -2045,6 +2046,7 @@ function SectionsList({
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
   onAddSection: (section: Section) => Promise<unknown>;
   onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
+  showHeading?: boolean;
 }) {
   const sortedSections = useMemo(
     () => [...sections].sort((a, b) => a.order - b.order),
@@ -2107,12 +2109,14 @@ function SectionsList({
 
   return (
     <section>
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-fg">Today’s work</h2>
-          <p className="text-sm text-fg-muted">Group related work under clear main titles.</p>
+      {showHeading ? (
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold text-fg">Today’s work</h2>
+            <p className="text-sm text-fg-muted">Group related work under clear main titles.</p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {sectionOrderError ? (
         <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
@@ -2120,7 +2124,7 @@ function SectionsList({
         </p>
       ) : null}
 
-      <div className="mt-3">
+      <div className={showHeading ? 'mt-3' : undefined}>
         <AddSectionForm sections={sortedSections} onAddSection={onAddSection} />
       </div>
 
@@ -2653,6 +2657,9 @@ interface EditableReportProps {
   ownerUserId: string;
   assignments: AssignmentWithId[];
   ensureReportExists: () => Promise<string>;
+  // The "Today's work" heading and hint only make sense in the developer's
+  // own view; Lead View's edit mode repeats this body once per developer.
+  showWorkHeading?: boolean;
 }
 
 // The editable body of a report: assignments, lead notes/questions, sections
@@ -2666,6 +2673,7 @@ export function EditableReport({
   ownerUserId,
   assignments,
   ensureReportExists,
+  showWorkHeading = true,
 }: EditableReportProps) {
   // The report document only exists once the developer actually adds
   // content, so every write that could be the first one on an empty report
@@ -2740,6 +2748,7 @@ export function EditableReport({
         leadQuestionsByTask={leadQuestionsByTask}
         onAddSection={handleAddSection}
         onAddQuestion={handleAddQuestion}
+        showHeading={showWorkHeading}
       />
       <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
     </>
