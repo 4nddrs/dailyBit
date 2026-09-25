@@ -536,12 +536,16 @@ function NoteComposer({
   label,
   onAdd,
   submitDisabled = false,
+  beforeSubmit,
 }: {
   label: string;
   onAdd: (noteText: string) => Promise<void>;
   // Extra disable condition on top of the composer's own (e.g. a people
   // picker rendered alongside it with nothing selected yet).
   submitDisabled?: boolean;
+  // Extra fields rendered after the note text, above the submit button
+  // (e.g. the Lead tools people picker).
+  beforeSubmit?: ReactNode;
 }) {
   const [noteText, setNoteText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -580,6 +584,7 @@ function NoteComposer({
           autoFocus
         />
       </label>
+      {beforeSubmit}
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
       <div className="mt-2 flex justify-end">
         <button
@@ -597,11 +602,15 @@ function NoteComposer({
 function LeadQuestionComposer({
   onAdd,
   submitDisabled = false,
+  beforeSubmit,
 }: {
   onAdd: (input: { questionText: string; kind: LeadQuestionKind; options?: string[] }) => Promise<void>;
   // Extra disable condition on top of the composer's own (e.g. a people
   // picker rendered alongside it with nothing selected yet).
   submitDisabled?: boolean;
+  // Extra fields rendered after the question and its options, above the
+  // submit button (e.g. the Lead tools people picker).
+  beforeSubmit?: ReactNode;
 }) {
   const [questionText, setQuestionText] = useState('');
   const [kind, setKind] = useState<LeadQuestionKind>('text');
@@ -721,6 +730,8 @@ function LeadQuestionComposer({
           </button>
         </div>
       ) : null}
+
+      {beforeSubmit}
 
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
 
@@ -2025,8 +2036,13 @@ function LeadToolsPanel({
 
           {openAction === 'question' ? (
             <div>
-              <DevPicker devs={devs} selectedIds={questionDevIds} onToggle={toggleQuestionDev} label="Ask" />
-              <LeadQuestionComposer onAdd={handleAddQuestion} submitDisabled={questionDevIds.length === 0} />
+              <LeadQuestionComposer
+                onAdd={handleAddQuestion}
+                submitDisabled={questionDevIds.length === 0}
+                beforeSubmit={
+                  <DevPicker devs={devs} selectedIds={questionDevIds} onToggle={toggleQuestionDev} label="Ask" />
+                }
+              />
               {questionFailedNames.length > 0 ? (
                 <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
                   Could not send to: {questionFailedNames.join(', ')}. They stay selected — retry when ready.
@@ -2037,11 +2053,13 @@ function LeadToolsPanel({
 
           {openAction === 'note' ? (
             <div>
-              <DevPicker devs={devs} selectedIds={noteDevIds} onToggle={toggleNoteDev} label="Note for" />
               <NoteComposer
                 label="Lead note for chosen developers"
                 onAdd={handleAddNote}
                 submitDisabled={noteDevIds.length === 0}
+                beforeSubmit={
+                  <DevPicker devs={devs} selectedIds={noteDevIds} onToggle={toggleNoteDev} label="Note for" />
+                }
               />
               {noteFailedNames.length > 0 ? (
                 <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
@@ -2289,7 +2307,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
       />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <aside className="lg:order-2 lg:w-64 lg:shrink-0 lg:sticky lg:top-20 lg:self-start">
+        <aside className="lg:order-2 lg:w-80 lg:shrink-0 xl:w-96 lg:sticky lg:top-20 lg:self-start">
           <TeamBox
             devs={displayedDevs}
             reportedUserIds={reportedUserIds}
