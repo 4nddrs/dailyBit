@@ -23,6 +23,9 @@ import {
   removeLeadQuestion,
   removeUntouchedReport,
   saveTeamOrder,
+  updateAssignment,
+  updateLeadNote,
+  updateLeadQuestion,
 } from '../../services/firestore';
 import { EditableReport } from '../DeveloperView/DeveloperView';
 import { ImageLightbox } from '../ImageLightbox';
@@ -266,14 +269,16 @@ export function LinkChips({ links = [] }: { links?: TaskLink[] }) {
   );
 }
 
-// `onRemove` is optional so this block can be reused read-only (e.g. the
-// developer's "Preview as lead" mode), where no removal action exists.
+// `onRemove`/`onEdit` are optional so this block can be reused read-only
+// (e.g. the developer's "Preview as lead" mode), where no lead action exists.
 export function LeadNoteBlock({
   notes,
   onRemove,
+  onEdit,
 }: {
   notes: LeadNoteWithId[];
   onRemove?: (noteId: string) => void;
+  onEdit?: (noteId: string, noteText: string) => Promise<void>;
 }) {
   if (notes.length === 0) {
     return null;
@@ -282,16 +287,51 @@ export function LeadNoteBlock({
   return (
     <div className="mt-3 space-y-2">
       {notes.map((note) => (
-        <div
-          className="flex items-start justify-between gap-3 rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm text-attention-fg"
-          key={note.id}
-        >
-          <p className="min-w-0 break-words leading-6">{note.noteText}</p>
-          {onRemove ? (
-            <RemoveButton label="Remove note" onClick={() => onRemove(note.id)} />
-          ) : null}
-        </div>
+        <LeadNoteRow key={note.id} note={note} onRemove={onRemove} onEdit={onEdit} />
       ))}
+    </div>
+  );
+}
+
+function LeadNoteRow({
+  note,
+  onRemove,
+  onEdit,
+}: {
+  note: LeadNoteWithId;
+  onRemove?: (noteId: string) => void;
+  onEdit?: (noteId: string, noteText: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  async function handleSave(noteText: string) {
+    if (!onEdit) {
+      return;
+    }
+    await onEdit(note.id, noteText);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <NoteComposer
+        label="Edit lead note"
+        onAdd={handleSave}
+        initialText={note.noteText}
+        submitLabel="Save"
+        submittingLabel="Saving..."
+        onCancel={() => setEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm text-attention-fg">
+      <p className="min-w-0 break-words leading-6">{note.noteText}</p>
+      <div className="flex shrink-0 items-center gap-1">
+        {onEdit ? <EditButton label="Edit note" onClick={() => setEditing(true)} /> : null}
+        {onRemove ? <RemoveButton label="Remove note" onClick={() => onRemove(note.id)} /> : null}
+      </div>
     </div>
   );
 }
@@ -335,28 +375,64 @@ export function AnswerAttachmentImages({ images }: { images: Array<{ id: string;
 
 // `onRemove` is optional so this item can be reused read-only (e.g. the
 // developer's "Preview as lead" mode), where no removal action exists.
+// `onRemove`/`onEdit` are optional so this item can be reused read-only
+// (e.g. the developer's "Preview as lead" mode), where no lead action
+// exists.
 export function LeadQuestionItem({
   question,
   onRemove,
+  onEdit,
   context,
 }: {
   question: LeadQuestionWithId;
   onRemove?: (questionId: string) => void;
+  onEdit?: (
+    questionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
   context?: string;
 }) {
+  const [editingQuestion, setEditingQuestion] = useState(false);
   const isAnswered =
     question.kind === 'text'
       ? (Boolean(question.answerText?.trim()) || (question.answerLinks?.length ?? 0) > 0 || question.answerImages.length > 0)
       : question.selectedAnswer !== undefined;
+
+  async function handleSaveQuestion(input: { questionText: string; kind: LeadQuestionKind; options?: string[] }) {
+    if (!onEdit) {
+      return;
+    }
+    await onEdit(question.id, input);
+    setEditingQuestion(false);
+  }
+
+  if (editingQuestion) {
+    return (
+      <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
+        {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
+        <LeadQuestionComposer
+          onAdd={handleSaveQuestion}
+          initialQuestionText={question.questionText}
+          initialKind={question.kind}
+          initialOptions={question.options}
+          submitLabel="Save"
+          submittingLabel="Saving..."
+          onCancel={() => setEditingQuestion(false)}
+          warnOnAnswerClear={isAnswered}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
       {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
-        {onRemove ? (
-          <RemoveButton label="Remove question" onClick={() => onRemove(question.id)} />
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1">
+          {onEdit ? <EditButton label="Edit question" onClick={() => setEditingQuestion(true)} /> : null}
+          {onRemove ? <RemoveButton label="Remove question" onClick={() => onRemove(question.id)} /> : null}
+        </div>
       </div>
 
       {!isAnswered ? (
@@ -389,14 +465,19 @@ export function LeadQuestionItem({
   );
 }
 
-// `onRemove` is optional so this block can be reused read-only (e.g. the
-// developer's "Preview as lead" mode), where no removal action exists.
+// `onRemove`/`onEdit` are optional so this block can be reused read-only
+// (e.g. the developer's "Preview as lead" mode), where no lead action exists.
 export function LeadQuestionBlock({
   questions,
   onRemove,
+  onEdit,
 }: {
   questions: LeadQuestionWithId[];
   onRemove?: (questionId: string) => void;
+  onEdit?: (
+    questionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
 }) {
   if (questions.length === 0) {
     return null;
@@ -405,7 +486,7 @@ export function LeadQuestionBlock({
   return (
     <div className="mt-3 space-y-2">
       {questions.map((question) => (
-        <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} />
+        <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} onEdit={onEdit} />
       ))}
     </div>
   );
@@ -418,10 +499,15 @@ function LeadTaskQuestionsOnly({
   sections,
   questionsByTarget,
   onRemove,
+  onEdit,
 }: {
   sections: SectionWithTasks[];
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
   onRemove: (questionId: string) => void;
+  onEdit: (
+    questionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
 }) {
   const items = sections.flatMap((section) =>
     section.tasks.flatMap((task) =>
@@ -436,7 +522,13 @@ function LeadTaskQuestionsOnly({
   return (
     <div className="mt-3 space-y-2">
       {items.map(({ task, question }) => (
-        <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} context={task.description} />
+        <LeadQuestionItem
+          key={question.id}
+          question={question}
+          onRemove={onRemove}
+          onEdit={onEdit}
+          context={task.description}
+        />
       ))}
     </div>
   );
@@ -542,6 +634,34 @@ function RemoveButton({
   );
 }
 
+// Always-visible pencil button used for every lead-side edit of an item the
+// lead created (notes, questions, assignments), placed next to that item's
+// RemoveButton.
+function EditButton({
+  label,
+  onClick,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition hover:scale-110 hover:bg-accent-muted hover:text-accent-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-transparent"
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+        <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61a1.75 1.75 0 0 1-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.098-.35.29-.679.556-.945l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.353 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.81l-6.286 6.287a.25.25 0 0 0-.087.041.25.25 0 0 0-.03.098l-.558 1.953 1.953-.558a.249.249 0 0 0 .124-.117l6.323-6.324Z" />
+      </svg>
+    </button>
+  );
+}
+
 // Lead composer text field: starts at 4 lines and grows with its content
 // (same fit-to-content approach as the developer's task field), so longer
 // notes, questions and task descriptions stay fully visible while typing.
@@ -603,6 +723,10 @@ function NoteComposer({
   onAdd,
   submitDisabled = false,
   beforeSubmit,
+  initialText = '',
+  submitLabel = 'Add note',
+  submittingLabel = 'Saving...',
+  onCancel,
 }: {
   label: string;
   onAdd: (noteText: string) => Promise<void>;
@@ -612,8 +736,15 @@ function NoteComposer({
   // Extra fields rendered after the note text, above the submit button
   // (e.g. the Lead tools people picker).
   beforeSubmit?: ReactNode;
+  // Prefills the field for editing an existing note; omitted for the normal
+  // add flow.
+  initialText?: string;
+  submitLabel?: string;
+  submittingLabel?: string;
+  // Renders a Cancel button next to the submit button, for the edit flow.
+  onCancel?: () => void;
 }) {
-  const [noteText, setNoteText] = useState('');
+  const [noteText, setNoteText] = useState(initialText);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -629,7 +760,7 @@ function NoteComposer({
     setError(null);
     try {
       await onAdd(trimmedNote);
-      setNoteText('');
+      setNoteText(initialText);
     } catch (caughtError) {
       console.error('Lead note failed', caughtError);
       setError('Note could not be saved. Please try again.');
@@ -652,13 +783,22 @@ function NoteComposer({
       </label>
       {beforeSubmit}
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex justify-end gap-2">
+        {onCancel ? (
+          <button
+            className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        ) : null}
         <button
           className="rounded-md bg-attention-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-attention-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!noteText.trim() || submitting || submitDisabled}
         >
-          {submitting ? 'Saving...' : 'Add note'}
+          {submitting ? submittingLabel : submitLabel}
         </button>
       </div>
     </form>
@@ -669,6 +809,13 @@ function LeadQuestionComposer({
   onAdd,
   submitDisabled = false,
   beforeSubmit,
+  initialQuestionText = '',
+  initialKind = 'text',
+  initialOptions,
+  submitLabel = 'Ask question',
+  submittingLabel = 'Asking...',
+  onCancel,
+  warnOnAnswerClear = false,
 }: {
   onAdd: (input: { questionText: string; kind: LeadQuestionKind; options?: string[] }) => Promise<void>;
   // Extra disable condition on top of the composer's own (e.g. a people
@@ -677,10 +824,26 @@ function LeadQuestionComposer({
   // Extra fields rendered after the question and its options, above the
   // submit button (e.g. the Lead tools people picker).
   beforeSubmit?: ReactNode;
+  // Prefills the form for editing an existing question; omitted for the
+  // normal ask flow.
+  initialQuestionText?: string;
+  initialKind?: LeadQuestionKind;
+  initialOptions?: string[];
+  submitLabel?: string;
+  submittingLabel?: string;
+  // Renders a Cancel button next to the submit button, for the edit flow.
+  onCancel?: () => void;
+  // Shows a warning once the current kind/options differ from
+  // `initialKind`/`initialOptions` — that combination clears the developer's
+  // existing answer on save (only meaningful when editing an already-answered
+  // question).
+  warnOnAnswerClear?: boolean;
 }) {
-  const [questionText, setQuestionText] = useState('');
-  const [kind, setKind] = useState<LeadQuestionKind>('text');
-  const [options, setOptions] = useState(['', '']);
+  const [questionText, setQuestionText] = useState(initialQuestionText);
+  const [kind, setKind] = useState<LeadQuestionKind>(initialKind);
+  const [options, setOptions] = useState(
+    initialOptions && initialOptions.length >= QUESTION_OPTION_MINIMUM ? initialOptions : ['', ''],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -701,6 +864,14 @@ function LeadQuestionComposer({
   const canSubmit =
     questionText.trim().length > 0 && (kind === 'text' || trimmedOptions.length >= QUESTION_OPTION_MINIMUM);
 
+  const initialTrimmedOptions = (initialOptions ?? []).map((option) => option.trim()).filter(Boolean);
+  const willClearAnswer =
+    warnOnAnswerClear &&
+    (kind !== initialKind ||
+      (kind === 'options' &&
+        (trimmedOptions.length !== initialTrimmedOptions.length ||
+          trimmedOptions.some((option, index) => option !== initialTrimmedOptions[index]))));
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = questionText.trim();
@@ -717,9 +888,9 @@ function LeadQuestionComposer({
         kind,
         options: kind === 'options' ? trimmedOptions : undefined,
       });
-      setQuestionText('');
-      setOptions(['', '']);
-      setKind('text');
+      setQuestionText(initialQuestionText);
+      setOptions(initialOptions && initialOptions.length >= QUESTION_OPTION_MINIMUM ? initialOptions : ['', '']);
+      setKind(initialKind);
     } catch (caughtError) {
       console.error('Lead question failed', caughtError);
       setError('Question could not be saved. Please try again.');
@@ -797,17 +968,32 @@ function LeadQuestionComposer({
         </div>
       ) : null}
 
+      {willClearAnswer ? (
+        <p className="mt-3 text-xs font-medium text-attention-fg">
+          Changing the options clears the developer's answer.
+        </p>
+      ) : null}
+
       {beforeSubmit}
 
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex justify-end gap-2">
+        {onCancel ? (
+          <button
+            className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        ) : null}
         <button
           className="rounded-md bg-done-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-done-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!canSubmit || submitting || submitDisabled}
         >
-          {submitting ? 'Asking...' : 'Ask question'}
+          {submitting ? submittingLabel : submitLabel}
         </button>
       </div>
     </form>
@@ -871,6 +1057,12 @@ function AssignmentComposer({
   relatedTask,
   onAssign,
   onDone,
+  initialDescription = '',
+  initialAssigneeIds,
+  submitLabel = 'Assign task',
+  submittingLabel = 'Assigning...',
+  errorMessage = 'Task could not be assigned. Please try again.',
+  onCancel,
 }: {
   devs: UserProfileWithId[];
   preselectedDevId: string;
@@ -884,10 +1076,19 @@ function AssignmentComposer({
   // caller with no single preselected dev (e.g. the Lead tools panel) can
   // still decide whether revealing the new row makes sense.
   onDone: (assignmentId: string, assigneeIds: string[]) => void;
+  // Prefills the form for editing an existing assignment; omitted for the
+  // normal create flow.
+  initialDescription?: string;
+  initialAssigneeIds?: string[];
+  submitLabel?: string;
+  submittingLabel?: string;
+  errorMessage?: string;
+  // Renders a Cancel button next to the submit button, for the edit flow.
+  onCancel?: () => void;
 }) {
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(initialDescription);
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
-    preselectedDevId ? [preselectedDevId] : [],
+    initialAssigneeIds ?? (preselectedDevId ? [preselectedDevId] : []),
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -912,12 +1113,12 @@ function AssignmentComposer({
     setError(null);
     try {
       const assignmentId = await onAssign({ description: trimmedDescription, assigneeIds, relatedTask });
-      setDescription('');
-      setAssigneeIds(preselectedDevId ? [preselectedDevId] : []);
+      setDescription(initialDescription);
+      setAssigneeIds(initialAssigneeIds ?? (preselectedDevId ? [preselectedDevId] : []));
       onDone(assignmentId, assigneeIds);
     } catch (caughtError) {
-      console.error('Assignment create failed', caughtError);
-      setError('Task could not be assigned. Please try again.');
+      console.error('Assignment save failed', caughtError);
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -944,13 +1145,22 @@ function AssignmentComposer({
 
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex justify-end gap-2">
+        {onCancel ? (
+          <button
+            className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        ) : null}
         <button
           className="rounded-md bg-accent-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-accent-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
           disabled={!canSubmit || submitting}
         >
-          {submitting ? 'Assigning...' : 'Assign task'}
+          {submitting ? submittingLabel : submitLabel}
         </button>
       </div>
     </form>
@@ -1008,15 +1218,20 @@ function LeadAssignmentRow({
   assignment,
   assigneeId,
   update,
+  allDevs,
   onSetClosed,
   onRemove,
+  onEdit,
 }: {
   assignment: AssignmentWithId;
   assigneeId: string;
   update: AssignmentUpdateWithImages | null;
+  allDevs: UserProfileWithId[];
   onSetClosed: (assignmentId: string, closed: boolean) => void;
   onRemove: (assignmentId: string) => void;
+  onEdit: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
   const hasUpdateContent = Boolean(
     (update?.text && update.text.trim().length > 0) ||
       (update?.links && update.links.length > 0) ||
@@ -1024,6 +1239,28 @@ function LeadAssignmentRow({
   );
   const isClosed = assignment.status === 'closed';
   const otherAssigneeCount = assignment.assigneeIds.filter((id) => id !== assigneeId).length;
+
+  if (editing) {
+    return (
+      <article id={`assignment-${assignment.id}-${assigneeId}`} className="scroll-mt-4 px-4 py-3">
+        <AssignmentComposer
+          devs={allDevs}
+          preselectedDevId={assigneeId}
+          initialDescription={assignment.description}
+          initialAssigneeIds={assignment.assigneeIds}
+          submitLabel="Save"
+          submittingLabel="Saving..."
+          errorMessage="Task could not be saved. Please try again."
+          onCancel={() => setEditing(false)}
+          onAssign={async (input) => {
+            await onEdit(assignment.id, input);
+            return assignment.id;
+          }}
+          onDone={() => setEditing(false)}
+        />
+      </article>
+    );
+  }
 
   return (
     <article id={`assignment-${assignment.id}-${assigneeId}`} className="scroll-mt-4 px-4 py-3">
@@ -1067,6 +1304,7 @@ function LeadAssignmentRow({
           >
             {isClosed ? 'Reopen' : 'Close'}
           </button>
+          <EditButton label="Edit assignment" onClick={() => setEditing(true)} />
           <RemoveButton label="Remove assignment" onClick={() => onRemove(assignment.id)} />
         </div>
       </div>
@@ -1082,14 +1320,18 @@ function LeadAssignmentsBox({
   assignments,
   assigneeId,
   updatesByAssignment,
+  allDevs,
   onSetClosed,
   onRemove,
+  onEdit,
 }: {
   assignments: AssignmentWithId[];
   assigneeId: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
+  allDevs: UserProfileWithId[];
   onSetClosed: (assignmentId: string, closed: boolean) => void;
   onRemove: (assignmentId: string) => void;
+  onEdit: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
 }) {
   if (assignments.length === 0) {
     return null;
@@ -1110,8 +1352,10 @@ function LeadAssignmentsBox({
             assignment={assignment}
             assigneeId={assigneeId}
             update={updatesByAssignment.get(assignment.id)?.get(assigneeId) ?? null}
+            allDevs={allDevs}
             onSetClosed={onSetClosed}
             onRemove={onRemove}
+            onEdit={onEdit}
           />
         ))}
       </div>
@@ -1130,8 +1374,10 @@ function TaskCard({
   reportOwnerId,
   onAddNote,
   onRemoveNote,
+  onEditNote,
   onAddQuestion,
   onRemoveQuestion,
+  onEditQuestion,
   onCreateAssignment,
 }: {
   reportId: string;
@@ -1144,12 +1390,17 @@ function TaskCard({
   reportOwnerId: string;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
+  onEditNote: (noteId: string, noteText: string) => Promise<void>;
   onAddQuestion: (
     taskId: string,
     sectionId: string,
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) => Promise<void>;
   onRemoveQuestion: (questionId: string) => void;
+  onEditQuestion: (
+    questionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
@@ -1235,8 +1486,8 @@ function TaskCard({
         />
       ) : null}
 
-      <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} />
-      <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
+      <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} onEdit={onEditQuestion} />
+      <LeadNoteBlock notes={notes} onRemove={onRemoveNote} onEdit={onEditNote} />
 
       {lightboxIndex !== null ? (
         <ImageLightbox
@@ -1260,8 +1511,10 @@ function SectionCard({
   leadUserId,
   onAddNote,
   onRemoveNote,
+  onEditNote,
   onAddQuestion,
   onRemoveQuestion,
+  onEditQuestion,
   onCreateAssignment,
 }: {
   reportId: string;
@@ -1274,12 +1527,17 @@ function SectionCard({
   leadUserId: string;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
+  onEditNote: (noteId: string, noteText: string) => Promise<void>;
   onAddQuestion: (
     taskId: string,
     sectionId: string,
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) => Promise<void>;
   onRemoveQuestion: (questionId: string) => void;
+  onEditQuestion: (
+    questionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) => Promise<void>;
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
@@ -1319,8 +1577,10 @@ function SectionCard({
                 reportOwnerId={reportOwnerId}
                 onAddNote={onAddNote}
                 onRemoveNote={onRemoveNote}
+                onEditNote={onEditNote}
                 onAddQuestion={onAddQuestion}
                 onRemoveQuestion={onRemoveQuestion}
+                onEditQuestion={onEditQuestion}
                 onCreateAssignment={onCreateAssignment}
               />
             ) : (
@@ -1335,6 +1595,7 @@ function SectionCard({
                   notes={notesByTarget.get(item.id) ?? []}
                   onAddNote={onAddNote}
                   onRemoveNote={onRemoveNote}
+                  onEditNote={onEditNote}
                 />
               </div>
             ),
@@ -1406,6 +1667,7 @@ function QuestionCard({
   notes,
   onAddNote,
   onRemoveNote,
+  onEditNote,
 }: {
   reportId: string;
   question: QuestionWithId;
@@ -1413,6 +1675,7 @@ function QuestionCard({
   notes: LeadNoteWithId[];
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
+  onEditNote: (noteId: string, noteText: string) => Promise<void>;
 }) {
   const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
@@ -1486,7 +1749,7 @@ function QuestionCard({
           }}
         />
       ) : null}
-      <LeadNoteBlock notes={notes} onRemove={onRemoveNote} />
+      <LeadNoteBlock notes={notes} onRemove={onRemoveNote} onEdit={onEditNote} />
     </article>
   );
 }
@@ -1501,6 +1764,7 @@ function ReportCard({
   onCreateAssignment,
   onSetAssignmentClosed,
   onRemoveAssignment,
+  onEditAssignment,
   onlyMineFilter,
   date,
   editMode,
@@ -1518,6 +1782,7 @@ function ReportCard({
   }) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
+  onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
   onlyMineFilter: boolean;
   date: string;
   editMode: boolean;
@@ -1564,6 +1829,10 @@ function ReportCard({
     });
   }
 
+  async function handleEditNote(noteId: string, noteText: string) {
+    await updateLeadNote(report.id, noteId, noteText);
+  }
+
   async function handleAddQuestion(
     taskId: string,
     sectionId: string,
@@ -1576,6 +1845,31 @@ function ReportCard({
     removeLeadQuestion(report.id, questionId).catch((error: unknown) => {
       console.error('Failed to remove question', error);
     });
+  }
+
+  // Only a `kind`/options change can invalidate the developer's existing
+  // answer — same rule `updateQuestion` applies to dev questions — so this
+  // compares the submitted input against the question's current shape to
+  // decide whether `updateLeadQuestion` should clear it.
+  async function handleEditQuestion(
+    questionId: string,
+    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  ) {
+    const original = leadQuestions.find((question) => question.id === questionId);
+    const isAnswered = original
+      ? original.kind === 'text'
+        ? Boolean(original.answerText?.trim()) ||
+          (original.answerLinks?.length ?? 0) > 0 ||
+          original.answerImages.length > 0
+        : original.selectedAnswer !== undefined
+      : false;
+    const kindOrOptionsChanged =
+      !original ||
+      input.kind !== original.kind ||
+      (input.kind === 'options' &&
+        JSON.stringify(input.options ?? []) !== JSON.stringify(original.options ?? []));
+
+    await updateLeadQuestion(report.id, questionId, input, { clearAnswer: isAnswered && kindOrOptionsChanged });
   }
 
   const reportLevelNotes = notesByTarget.get('') ?? [];
@@ -1658,17 +1952,26 @@ function ReportCard({
 
             {onlyMineFilter ? (
               <>
-                <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
+                <LeadQuestionBlock
+                  questions={reportLevelQuestions}
+                  onRemove={handleRemoveQuestion}
+                  onEdit={handleEditQuestion}
+                />
                 <LeadTaskQuestionsOnly
                   sections={report.sections}
                   questionsByTarget={questionsByTarget}
                   onRemove={handleRemoveQuestion}
+                  onEdit={handleEditQuestion}
                 />
               </>
             ) : (
               <>
-                <LeadQuestionBlock questions={reportLevelQuestions} onRemove={handleRemoveQuestion} />
-                <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} />
+                <LeadQuestionBlock
+                  questions={reportLevelQuestions}
+                  onRemove={handleRemoveQuestion}
+                  onEdit={handleEditQuestion}
+                />
+                <LeadNoteBlock notes={reportLevelNotes} onRemove={handleRemoveNote} onEdit={handleEditNote} />
 
                 <div className="mt-3 space-y-3">
                   {report.sections.length > 0 ? (
@@ -1685,8 +1988,10 @@ function ReportCard({
                         leadUserId={leadUserId}
                         onAddNote={handleAddNote}
                         onRemoveNote={handleRemoveNote}
+                        onEditNote={handleEditNote}
                         onAddQuestion={handleAddQuestion}
                         onRemoveQuestion={handleRemoveQuestion}
+                        onEditQuestion={handleEditQuestion}
                         onCreateAssignment={onCreateAssignment}
                       />
                     ))
@@ -1715,6 +2020,7 @@ function ReportCard({
                           notes={notesByTarget.get(question.id) ?? []}
                           onAddNote={handleAddNote}
                           onRemoveNote={handleRemoveNote}
+                          onEditNote={handleEditNote}
                         />
                       ))}
                     </div>
@@ -1727,8 +2033,10 @@ function ReportCard({
               assignments={assignments}
               assigneeId={report.userId}
               updatesByAssignment={updatesByAssignment}
+              allDevs={allDevs}
               onSetClosed={onSetAssignmentClosed}
               onRemove={onRemoveAssignment}
+              onEdit={onEditAssignment}
             />
           </>
         )}
@@ -1746,6 +2054,7 @@ function AssignmentOnlyCard({
   onCreateAssignment,
   onSetAssignmentClosed,
   onRemoveAssignment,
+  onEditAssignment,
   editMode,
 }: {
   userId: string;
@@ -1760,6 +2069,7 @@ function AssignmentOnlyCard({
   }) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
+  onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
   editMode: boolean;
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1792,8 +2102,10 @@ function AssignmentOnlyCard({
           assignments={assignments}
           assigneeId={userId}
           updatesByAssignment={updatesByAssignment}
+          allDevs={allDevs}
           onSetClosed={onSetAssignmentClosed}
           onRemove={onRemoveAssignment}
+          onEdit={onEditAssignment}
         />
       </div>
     </article>
@@ -2217,6 +2529,13 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     });
   }
 
+  async function handleEditAssignment(
+    assignmentId: string,
+    input: { description: string; assigneeIds: string[] },
+  ) {
+    await updateAssignment(assignmentId, input);
+  }
+
   const persistedOrderedDevs = useMemo(() => orderDevelopers(devs, memberOrder), [devs, memberOrder]);
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
   const [teamOrderError, setTeamOrderError] = useState<string | null>(null);
@@ -2414,6 +2733,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onCreateAssignment={handleCreateAssignment}
                   onSetAssignmentClosed={handleSetAssignmentClosed}
                   onRemoveAssignment={handleRemoveAssignment}
+                  onEditAssignment={handleEditAssignment}
                   onlyMineFilter={onlyMineFilter}
                   date={normalizedSelectedDate}
                   editMode={editMode}
@@ -2429,6 +2749,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onCreateAssignment={handleCreateAssignment}
                   onSetAssignmentClosed={handleSetAssignmentClosed}
                   onRemoveAssignment={handleRemoveAssignment}
+                  onEditAssignment={handleEditAssignment}
                   editMode={editMode}
                 />
               ),

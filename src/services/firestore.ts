@@ -61,6 +61,9 @@ export type CreateLeadQuestionInput = Pick<
   LeadQuestion,
   'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options'
 >;
+// Editing a lead question never moves it to a different task/section, so
+// only the text, kind, and options are writable.
+export type UpdateLeadQuestionInput = Pick<LeadQuestion, 'questionText' | 'kind' | 'options'>;
 export type AnswerLeadQuestionInput =
   | { answerText: string; answerLinks?: TaskLink[] }
   | { selectedAnswer: number };
@@ -1052,6 +1055,10 @@ export function removeLeadNote(reportId: string, noteId: string): Promise<void> 
   return deleteDoc(leadNoteDoc(reportId, noteId));
 }
 
+export function updateLeadNote(reportId: string, noteId: string, noteText: string): Promise<void> {
+  return updateDoc(leadNoteDoc(reportId, noteId), { noteText });
+}
+
 export async function addLeadQuestion(
   reportId: string,
   question: CreateLeadQuestionInput,
@@ -1082,6 +1089,45 @@ export async function addLeadQuestion(
 export async function removeLeadQuestion(reportId: string, questionId: string): Promise<void> {
   await deleteLeadQuestionImages(reportId, questionId);
   await deleteDoc(leadQuestionDoc(reportId, questionId));
+}
+
+// Edits an existing lead question's text, kind, and options in place. A
+// change to `kind` or the options array can invalidate the developer's
+// existing answer, so the caller (which knows both the previous and the new
+// shape) decides via `clearAnswer` whether to wipe it — same split between
+// deciding and clearing as `updateQuestion` above, mirrored for the lead's
+// own questions. Clearing also removes any answer images, same cascade as
+// removeLeadQuestion.
+export async function updateLeadQuestion(
+  reportId: string,
+  questionId: string,
+  input: UpdateLeadQuestionInput,
+  { clearAnswer }: { clearAnswer: boolean },
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    questionText: input.questionText,
+    kind: input.kind,
+  };
+
+  if (input.kind === 'options') {
+    const nonEmptyOptions = (input.options ?? []).map((option) => option.trim()).filter(Boolean);
+    if (nonEmptyOptions.length < 2) {
+      throw new Error('An options question needs at least 2 non-empty options.');
+    }
+    payload.options = nonEmptyOptions;
+  } else {
+    payload.options = deleteField();
+  }
+
+  if (clearAnswer) {
+    await deleteLeadQuestionImages(reportId, questionId);
+    payload.answerText = deleteField();
+    payload.answerLinks = deleteField();
+    payload.selectedAnswer = deleteField();
+    payload.answeredAt = deleteField();
+  }
+
+  await updateDoc(leadQuestionDoc(reportId, questionId), payload);
 }
 
 // Firestore rejects undefined field values, so `answerLinks` is only included
@@ -1189,6 +1235,33 @@ export async function createAssignment(input: CreateAssignmentInput): Promise<st
   const ref = await addDoc(assignmentsCollection(), payload);
 
   return ref.id;
+}
+
+export interface UpdateAssignmentInput {
+  description: string;
+  assigneeIds: string[];
+}
+
+// Edits an existing assignment's description and assignees. Removing an
+// assignee here only stops the assignment showing on their side; their
+// existing `updates` docs are left in place rather than deleted.
+export async function updateAssignment(assignmentId: string, input: UpdateAssignmentInput): Promise<void> {
+  const description = input.description.trim();
+  const assigneeIds = Array.from(new Set(input.assigneeIds.filter(Boolean)));
+
+  if (!description) {
+    throw new Error('An assignment needs a description.');
+  }
+
+  if (assigneeIds.length === 0) {
+    throw new Error('An assignment needs at least one assignee.');
+  }
+
+  await updateDoc(assignmentDoc(assignmentId), {
+    description,
+    assigneeIds,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function closeAssignment(assignmentId: string, closedDate: string): Promise<void> {
