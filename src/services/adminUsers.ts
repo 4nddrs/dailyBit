@@ -41,7 +41,13 @@ async function toAdminUsersError(response: Response): Promise<AdminUsersError> {
     return response.status === 404 ? new AdminUserNotFoundError(body.error) : new AdminUsersError(body.error);
   }
 
-  return new AdminUsersError('Account management is not available here. Run the app with `vercel dev`.');
+  // Vite's dev server has no `/api/*`, so a plain 404 there means the
+  // function isn't being served at all. Anything else (e.g. Vercel's own
+  // FUNCTION_INVOCATION_FAILED 500 page) is a deployment/runtime failure.
+  if (response.status === 404) {
+    return new AdminUsersError('Account management is not available here. Run the app with `vercel dev`.');
+  }
+  return new AdminUsersError(`Account management failed on the server (HTTP ${response.status}). Please try again later.`);
 }
 
 async function postAdminUsers(body: Record<string, unknown>): Promise<void> {
