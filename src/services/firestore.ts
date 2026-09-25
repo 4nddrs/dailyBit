@@ -1040,6 +1040,17 @@ export async function answerQuestion(
   });
 }
 
+// Undoes answerQuestion: lets the lead unselect their answer to a developer's
+// multiple-choice question instead of only ever changing it to another
+// option.
+export async function clearQuestionAnswer(reportId: string, questionId: string): Promise<void> {
+  await updateDoc(questionDoc(reportId, questionId), {
+    selectedAnswer: deleteField(),
+    answeredBy: deleteField(),
+    answeredAt: deleteField(),
+  });
+}
+
 export async function addLeadNote(
   reportId: string,
   note: CreateLeadNoteInput,

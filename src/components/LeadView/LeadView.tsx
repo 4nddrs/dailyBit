@@ -12,7 +12,10 @@ import {
 import {
   addLeadNote,
   addLeadQuestion,
+  addLeadQuestionAnswerImage,
+  answerLeadQuestion,
   answerQuestion,
+  clearQuestionAnswer,
   closeAssignment,
   reopenAssignment,
   createAssignment,
@@ -21,13 +24,14 @@ import {
   removeAssignment,
   removeLeadNote,
   removeLeadQuestion,
+  removeLeadQuestionAnswerImage,
   removeUntouchedReport,
   saveTeamOrder,
   updateAssignment,
   updateLeadNote,
   updateLeadQuestion,
 } from '../../services/firestore';
-import { EditableReport } from '../DeveloperView/DeveloperView';
+import { compressTaskImage, EditableReport } from '../DeveloperView/DeveloperView';
 import { ImageLightbox } from '../ImageLightbox';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
@@ -375,15 +379,269 @@ export function AnswerAttachmentImages({ images }: { images: Array<{ id: string;
 
 // `onRemove` is optional so this item can be reused read-only (e.g. the
 // developer's "Preview as lead" mode), where no removal action exists.
-// `onRemove`/`onEdit` are optional so this item can be reused read-only
-// (e.g. the developer's "Preview as lead" mode), where no lead action
-// exists.
+// Lets the lead edit the developer's existing answer to an already-answered
+// lead question in place: free text (with its own links and images) or the
+// selected option. Links and images commit immediately on add/remove, same
+// as the developer's own answer flow (DeveloperView's `LeadQuestionCard`);
+// only the free-text answer itself needs an explicit Save.
+function LeadQuestionAnswerEditor({
+  reportId,
+  question,
+  onDone,
+}: {
+  reportId: string;
+  question: LeadQuestionWithId;
+  onDone: () => void;
+}) {
+  const isText = question.kind === 'text';
+  const [answerText, setAnswerText] = useState(question.answerText ?? '');
+  const [submittingText, setSubmittingText] = useState(false);
+  const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+  const [linkLabel, setLinkLabel] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const answerLinks = question.answerLinks ?? [];
+  const answerImages = question.answerImages;
+
+  async function handleTextSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmittingText(true);
+    setAnswerError(null);
+    try {
+      await answerLeadQuestion(reportId, question.id, { answerText: answerText.trim(), answerLinks });
+      onDone();
+    } catch (caughtError) {
+      console.error('Lead question answer edit failed', caughtError);
+      setAnswerError('Answer could not be saved. Please try again.');
+    } finally {
+      setSubmittingText(false);
+    }
+  }
+
+  async function handleOptionSelect(index: number) {
+    setSubmittingIndex(index);
+    setAnswerError(null);
+    try {
+      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index });
+      onDone();
+    } catch (caughtError) {
+      console.error('Lead question answer edit failed', caughtError);
+      setAnswerError('Answer could not be saved. Please try again.');
+    } finally {
+      setSubmittingIndex(null);
+    }
+  }
+
+  function handleAddLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedUrl = linkUrl.trim();
+    if (!trimmedUrl) {
+      return;
+    }
+    const nextLinks = [...answerLinks, { label: linkLabel.trim(), url: trimmedUrl }];
+    setLinkLabel('');
+    setLinkUrl('');
+    answerLeadQuestion(reportId, question.id, { answerText: question.answerText ?? '', answerLinks: nextLinks }).catch(
+      (error: unknown) => console.error('Lead question answer link save failed', error),
+    );
+  }
+
+  function handleRemoveLink(index: number) {
+    const nextLinks = answerLinks.filter((_, linkIndex) => linkIndex !== index);
+    answerLeadQuestion(reportId, question.id, { answerText: question.answerText ?? '', answerLinks: nextLinks }).catch(
+      (error: unknown) => console.error('Lead question answer link remove failed', error),
+    );
+  }
+
+  async function handleImageSelected(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const imageBase64 = await compressTaskImage(file);
+      await addLeadQuestionAnswerImage(reportId, question.id, imageBase64);
+    } catch (error) {
+      console.error('Lead question answer image processing failed', error);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }
+
+  function handleRemoveImage(imageId: string) {
+    setUploadError(null);
+    removeLeadQuestionAnswerImage(reportId, question.id, imageId).catch((error: unknown) => {
+      console.error('Lead question answer image remove failed', error);
+    });
+  }
+
+  if (!isText) {
+    return (
+      <div className="mt-2 rounded-md border border-line bg-canvas p-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {(question.options ?? []).map((option, index) => (
+            <button
+              className={`max-w-full break-words rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${
+                question.selectedAnswer === index
+                  ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                  : 'border-line bg-canvas-subtle text-fg-muted hover:border-accent-emphasis/50 hover:bg-accent-muted hover:text-accent-fg'
+              }`}
+              key={`${option}-${index}`}
+              type="button"
+              disabled={submittingIndex !== null}
+              onClick={() => void handleOptionSelect(index)}
+            >
+              {submittingIndex === index ? 'Saving...' : `${getOptionLabel(index)}. ${option}`}
+            </button>
+          ))}
+          <button
+            className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={onDone}
+          >
+            Cancel
+          </button>
+        </div>
+        {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-md border border-line bg-canvas p-3">
+      <form onSubmit={handleTextSubmit}>
+        <AutoGrowTextarea
+          className="w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={answerText}
+          onChange={(event) => setAnswerText(event.target.value)}
+          placeholder="Developer's answer"
+        />
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            className="rounded-md border border-line bg-control px-3 py-1.5 text-xs font-medium text-fg transition hover:bg-control-hover"
+            type="button"
+            onClick={onDone}
+          >
+            Cancel
+          </button>
+          <button
+            className="rounded-md bg-success-emphasis px-3 py-1.5 text-xs font-medium text-white transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+            type="submit"
+            disabled={submittingText}
+          >
+            {submittingText ? 'Saving...' : 'Save answer'}
+          </button>
+        </div>
+      </form>
+
+      <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={handleAddLink}>
+        <input
+          className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-2 py-1 text-xs text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={linkLabel}
+          onChange={(event) => setLinkLabel(event.target.value)}
+          placeholder="Link label (optional)"
+        />
+        <input
+          className="min-w-0 flex-1 rounded-md border border-line bg-canvas-inset px-2 py-1 text-xs text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+          value={linkUrl}
+          onChange={(event) => setLinkUrl(event.target.value)}
+          placeholder="https://..."
+          type="url"
+        />
+        <button
+          className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          disabled={!linkUrl.trim()}
+        >
+          Add link
+        </button>
+      </form>
+      {answerLinks.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {answerLinks.map((link, index) => (
+            <span
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-canvas-subtle px-2 py-1 text-xs text-fg"
+              key={`${link.url}-${index}`}
+            >
+              <span className="min-w-0 truncate">{link.label || link.url}</span>
+              <button
+                className="shrink-0 text-fg-muted transition hover:text-danger-fg"
+                type="button"
+                aria-label="Remove link"
+                onClick={() => handleRemoveLink(index)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          className="sr-only"
+          type="file"
+          accept="image/*"
+          onChange={(event) => void handleImageSelected(event.target.files?.[0])}
+        />
+        <button
+          className="rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover disabled:cursor-not-allowed disabled:opacity-50"
+          type="button"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? 'Processing...' : 'Add image'}
+        </button>
+      </div>
+      {answerImages.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {answerImages.map((image) => (
+            <div className="relative" key={image.id}>
+              <img
+                className="h-16 w-16 rounded-md border border-line object-cover"
+                src={image.imageBase64}
+                alt="Answer attachment thumbnail"
+              />
+              <button
+                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-line bg-canvas text-xs text-danger-fg shadow-sm transition hover:bg-danger-muted"
+                type="button"
+                aria-label="Remove image"
+                onClick={() => handleRemoveImage(image.id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {uploadError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{uploadError}</p> : null}
+      {answerError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{answerError}</p> : null}
+    </div>
+  );
+}
+
+// `reportId`/`onRemove`/`onEdit` are optional so this item can be reused
+// read-only (e.g. the developer's "Preview as lead" mode), where no lead
+// action exists.
 export function LeadQuestionItem({
+  reportId,
   question,
   onRemove,
   onEdit,
   context,
 }: {
+  reportId?: string;
   question: LeadQuestionWithId;
   onRemove?: (questionId: string) => void;
   onEdit?: (
@@ -393,6 +651,7 @@ export function LeadQuestionItem({
   context?: string;
 }) {
   const [editingQuestion, setEditingQuestion] = useState(false);
+  const [editingAnswer, setEditingAnswer] = useState(false);
   const isAnswered =
     question.kind === 'text'
       ? (Boolean(question.answerText?.trim()) || (question.answerLinks?.length ?? 0) > 0 || question.answerImages.length > 0)
@@ -437,41 +696,60 @@ export function LeadQuestionItem({
 
       {!isAnswered ? (
         <p className="mt-2 text-xs font-semibold text-attention-fg">Waiting for answer</p>
+      ) : editingAnswer && reportId ? (
+        <LeadQuestionAnswerEditor reportId={reportId} question={question} onDone={() => setEditingAnswer(false)} />
       ) : question.kind === 'text' ? (
         <>
-          <p className="mt-2 break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
-            {question.answerText}
-          </p>
+          <div className="mt-2 flex items-start gap-2">
+            <p className="min-w-0 flex-1 break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+              {question.answerText}
+            </p>
+            {reportId ? <EditButton label="Edit answer" onClick={() => setEditingAnswer(true)} /> : null}
+          </div>
           <LinkChips links={question.answerLinks} />
           <AnswerAttachmentImages images={question.answerImages} />
         </>
       ) : (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {(question.options ?? []).map((option, index) => (
-            <span
-              className={`max-w-full break-words rounded-full border px-3 py-1 text-xs font-medium ${
-                question.selectedAnswer === index
-                  ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                  : 'border-line bg-canvas-subtle text-fg-muted'
-              }`}
-              key={`${option}-${index}`}
+        <>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(question.options ?? []).map((option, index) => (
+              <span
+                className={`max-w-full break-words rounded-full border px-3 py-1 text-xs font-medium ${
+                  question.selectedAnswer === index
+                    ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                    : 'border-line bg-canvas-subtle text-fg-muted'
+                }`}
+                key={`${option}-${index}`}
+              >
+                {getOptionLabel(index)}. {option}
+              </span>
+            ))}
+          </div>
+          {reportId ? (
+            <button
+              className="mt-2 rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:bg-control-hover"
+              type="button"
+              onClick={() => setEditingAnswer(true)}
             >
-              {getOptionLabel(index)}. {option}
-            </span>
-          ))}
-        </div>
+              Change answer
+            </button>
+          ) : null}
+        </>
       )}
     </div>
   );
 }
 
-// `onRemove`/`onEdit` are optional so this block can be reused read-only
-// (e.g. the developer's "Preview as lead" mode), where no lead action exists.
+// `reportId`/`onRemove`/`onEdit` are optional so this block can be reused
+// read-only (e.g. the developer's "Preview as lead" mode), where no lead
+// action exists.
 export function LeadQuestionBlock({
+  reportId,
   questions,
   onRemove,
   onEdit,
 }: {
+  reportId?: string;
   questions: LeadQuestionWithId[];
   onRemove?: (questionId: string) => void;
   onEdit?: (
@@ -486,7 +764,7 @@ export function LeadQuestionBlock({
   return (
     <div className="mt-3 space-y-2">
       {questions.map((question) => (
-        <LeadQuestionItem key={question.id} question={question} onRemove={onRemove} onEdit={onEdit} />
+        <LeadQuestionItem key={question.id} reportId={reportId} question={question} onRemove={onRemove} onEdit={onEdit} />
       ))}
     </div>
   );
@@ -496,11 +774,13 @@ export function LeadQuestionBlock({
 // per-task lead questions are flattened here with the task's own description
 // shown as context instead of being nested under a task card.
 function LeadTaskQuestionsOnly({
+  reportId,
   sections,
   questionsByTarget,
   onRemove,
   onEdit,
 }: {
+  reportId: string;
   sections: SectionWithTasks[];
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
   onRemove: (questionId: string) => void;
@@ -524,6 +804,7 @@ function LeadTaskQuestionsOnly({
       {items.map(({ task, question }) => (
         <LeadQuestionItem
           key={question.id}
+          reportId={reportId}
           question={question}
           onRemove={onRemove}
           onEdit={onEdit}
@@ -1486,7 +1767,7 @@ function TaskCard({
         />
       ) : null}
 
-      <LeadQuestionBlock questions={questions} onRemove={onRemoveQuestion} onEdit={onEditQuestion} />
+      <LeadQuestionBlock reportId={reportId} questions={questions} onRemove={onRemoveQuestion} onEdit={onEditQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} onEdit={onEditNote} />
 
       {lightboxIndex !== null ? (
@@ -1678,6 +1959,7 @@ function QuestionCard({
   onEditNote: (noteId: string, noteText: string) => Promise<void>;
 }) {
   const [submittingIndex, setSubmittingIndex] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [answerError, setAnswerError] = useState<string | null>(null);
 
@@ -1694,6 +1976,19 @@ function QuestionCard({
     }
   }
 
+  async function handleClearAnswer() {
+    setClearing(true);
+    setAnswerError(null);
+    try {
+      await clearQuestionAnswer(reportId, question.id);
+    } catch (caughtError) {
+      console.error('Question answer clear failed', caughtError);
+      setAnswerError('Answer could not be cleared. Please try again.');
+    } finally {
+      setClearing(false);
+    }
+  }
+
   const isAnswered = question.selectedAnswer !== undefined;
 
   return (
@@ -1706,6 +2001,16 @@ function QuestionCard({
             active={noteComposerOpen}
             onClick={() => setNoteComposerOpen((current) => !current)}
           />
+          {isAnswered ? (
+            <button
+              className="shrink-0 rounded-md border border-line bg-control px-2 py-1 text-xs font-medium text-fg transition hover:border-danger-emphasis/40 hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-50"
+              type="button"
+              disabled={clearing}
+              onClick={() => void handleClearAnswer()}
+            >
+              {clearing ? 'Clearing...' : 'Clear answer'}
+            </button>
+          ) : null}
           <span
             className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
               isAnswered
@@ -1953,11 +2258,13 @@ function ReportCard({
             {onlyMineFilter ? (
               <>
                 <LeadQuestionBlock
+                  reportId={report.id}
                   questions={reportLevelQuestions}
                   onRemove={handleRemoveQuestion}
                   onEdit={handleEditQuestion}
                 />
                 <LeadTaskQuestionsOnly
+                  reportId={report.id}
                   sections={report.sections}
                   questionsByTarget={questionsByTarget}
                   onRemove={handleRemoveQuestion}
@@ -1967,6 +2274,7 @@ function ReportCard({
             ) : (
               <>
                 <LeadQuestionBlock
+                  reportId={report.id}
                   questions={reportLevelQuestions}
                   onRemove={handleRemoveQuestion}
                   onEdit={handleEditQuestion}

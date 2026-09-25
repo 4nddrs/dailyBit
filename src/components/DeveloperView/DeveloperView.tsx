@@ -190,7 +190,9 @@ function loadImageFromObjectUrl(objectUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-async function compressTaskImage(file: File): Promise<string> {
+// Exported so LeadView's own image-attaching editors (e.g. editing a
+// developer's lead question answer in place) compress uploads the same way.
+export async function compressTaskImage(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) {
     throw new Error('Please choose an image file.');
   }
