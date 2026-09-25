@@ -204,12 +204,10 @@ function parseRelevanceResult(kind: PolishKind, content: string): RelevanceResul
   // rejects a real answer.
   const relevant = result.relevant !== false;
   const partial = result.partial === true;
-  // `option` never uses its off-topic "suggestion" (see
-  // `OPTION_RELEVANCE_INSTRUCTIONS`, which asks for an empty string there),
-  // so only require a non-empty one where it's actually going to be used:
-  // every `answer` case, or a relevant `option`.
-  const suggestionRequired = relevant || kind === 'answer';
-  if (suggestionRequired && (typeof result.suggestion !== 'string' || result.suggestion.trim().length === 0)) {
+  // Only a relevant result needs a non-empty suggestion. An off-topic
+  // `answer`'s example is optional: when the model omits it, the caller still
+  // returns the off-topic 422, just without an `exampleAnswer`.
+  if (relevant && (typeof result.suggestion !== 'string' || result.suggestion.trim().length === 0)) {
     throw new PolishError(500, 'AI polish returned an unexpected response.');
   }
   return { relevant, partial, suggestion: typeof result.suggestion === 'string' ? result.suggestion : '' };
@@ -384,7 +382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       // Only `answer` carries the example answer onward — `option`'s
       // off-topic "suggestion" is always empty (see `parseRelevanceResult`)
       // and stays backwards compatible with just `{ error }`.
-      throw new PolishError(422, message, kind === 'answer' ? suggestion : undefined);
+      throw new PolishError(422, message, kind === 'answer' && suggestion ? suggestion : undefined);
     }
 
     if (kind === 'answer') {
