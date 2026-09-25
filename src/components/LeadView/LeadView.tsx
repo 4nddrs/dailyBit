@@ -11,7 +11,7 @@ import {
   removeAssignment,
   removeLeadNote,
   removeLeadQuestion,
-  removeReport,
+  removeUntouchedReport,
   saveTeamOrder,
 } from '../../services/firestore';
 import { EditableReport } from '../DeveloperView/DeveloperView';
@@ -1865,7 +1865,8 @@ async function sendToSelectedDevs(
       } catch (error) {
         if (created) {
           try {
-            await removeReport(reportId);
+            // Skips the delete if the developer started using the report.
+            await removeUntouchedReport(reportId);
           } catch (cleanupError) {
             console.error('Failed to clean up empty report after write failure', cleanupError);
           }

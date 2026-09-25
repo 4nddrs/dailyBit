@@ -9,6 +9,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -289,20 +290,27 @@ export async function ensureReportWithStatus(
 ): Promise<{ id: string; created: boolean }> {
   const id = reportIdFor(userId, date);
   const ref = reportDoc(id);
-  const existing = await getDoc(ref);
 
-  if (existing.exists()) {
-    return { id, created: false };
-  }
+  // The existence check and the create run in one transaction, so a report
+  // the developer creates at the same moment is never overwritten, and
+  // `created` is only true when this call really wrote the doc.
+  const created = await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(ref);
 
-  await setDoc(ref, {
-    userId,
-    date,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    if (existing.exists()) {
+      return false;
+    }
+
+    transaction.set(ref, {
+      userId,
+      date,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return true;
   });
 
-  return { id, created: true };
+  return { id, created };
 }
 
 // Only called from a write entry point (the developer actually adding
@@ -315,11 +323,30 @@ export async function ensureReport(userId: string, date: string): Promise<string
 
 // Best-effort cleanup for a report doc created moments ago by
 // `ensureReportWithStatus` in the same operation, when the write that
-// followed then failed — never called for a pre-existing report. The doc has
-// no subcollections yet at that point, so a plain delete is enough; no
-// cascade cleanup like `removeSection`/`removeQuestion` is needed here.
-export function removeReport(reportId: string): Promise<void> {
-  return deleteDoc(reportDoc(reportId));
+// followed then failed — never called for a pre-existing report. Every
+// developer edit bumps the report's `updatedAt`, while a freshly created doc
+// has `updatedAt` equal to `createdAt` (same server timestamp). So the delete
+// only happens, inside a transaction, while the doc is still untouched; if
+// the developer started using it in the meantime it is kept. Resolves to
+// whether the doc was deleted.
+export async function removeUntouchedReport(reportId: string): Promise<boolean> {
+  const ref = reportDoc(reportId);
+
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+
+    if (!snapshot.exists()) {
+      return false;
+    }
+
+    const { createdAt, updatedAt } = snapshot.data() as Report;
+    const untouched = Boolean(createdAt && updatedAt && createdAt.isEqual(updatedAt));
+
+    if (untouched) {
+      transaction.delete(ref);
+    }
+    return untouched;
+  });
 }
 
 // Watches only the report document's existence, never its subcollections.
