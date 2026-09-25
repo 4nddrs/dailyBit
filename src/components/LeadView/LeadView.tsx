@@ -6,6 +6,7 @@ import {
   closeAssignment,
   reopenAssignment,
   createAssignment,
+  ensureReport,
   getUserProfile,
   removeAssignment,
   removeLeadNote,
@@ -533,9 +534,13 @@ function RemoveButton({
 function NoteComposer({
   label,
   onAdd,
+  submitDisabled = false,
 }: {
   label: string;
   onAdd: (noteText: string) => Promise<void>;
+  // Extra disable condition on top of the composer's own (e.g. a people
+  // picker rendered alongside it with nothing selected yet).
+  submitDisabled?: boolean;
 }) {
   const [noteText, setNoteText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -579,7 +584,7 @@ function NoteComposer({
         <button
           className="rounded-md bg-attention-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-attention-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
-          disabled={!noteText.trim() || submitting}
+          disabled={!noteText.trim() || submitting || submitDisabled}
         >
           {submitting ? 'Saving...' : 'Add note'}
         </button>
@@ -590,8 +595,12 @@ function NoteComposer({
 
 function LeadQuestionComposer({
   onAdd,
+  submitDisabled = false,
 }: {
   onAdd: (input: { questionText: string; kind: LeadQuestionKind; options?: string[] }) => Promise<void>;
+  // Extra disable condition on top of the composer's own (e.g. a people
+  // picker rendered alongside it with nothing selected yet).
+  submitDisabled?: boolean;
 }) {
   const [questionText, setQuestionText] = useState('');
   const [kind, setKind] = useState<LeadQuestionKind>('text');
@@ -718,7 +727,7 @@ function LeadQuestionComposer({
         <button
           className="rounded-md bg-done-emphasis px-3 py-1.5 text-sm font-medium text-white transition hover:bg-done-emphasis/80 disabled:cursor-not-allowed disabled:opacity-50"
           type="submit"
-          disabled={!canSubmit || submitting}
+          disabled={!canSubmit || submitting || submitDisabled}
         >
           {submitting ? 'Asking...' : 'Ask question'}
         </button>
@@ -741,6 +750,43 @@ function revealAssignment(assignmentId: string, assigneeId: string, attemptsLeft
   }
 }
 
+// Shared checkbox-chip picker for "which developer(s)" — the assignee list
+// inside `AssignmentComposer` and the recipient list for the Lead tools
+// panel's note/question actions share this exact look.
+function DevPicker({
+  devs,
+  selectedIds,
+  onToggle,
+  label,
+}: {
+  devs: UserProfileWithId[];
+  selectedIds: string[];
+  onToggle: (devId: string) => void;
+  label: string;
+}) {
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-fg">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {devs.map((dev) => (
+          <label
+            className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-canvas px-3 py-1 text-xs font-medium text-fg"
+            key={dev.id}
+          >
+            <input
+              className="shrink-0"
+              type="checkbox"
+              checked={selectedIds.includes(dev.id)}
+              onChange={() => onToggle(dev.id)}
+            />
+            <span className="min-w-0 break-words">{dev.name}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AssignmentComposer({
   devs,
   preselectedDevId,
@@ -756,7 +802,10 @@ function AssignmentComposer({
     assigneeIds: string[];
     relatedTask?: { description: string };
   }) => Promise<string>;
-  onDone: (assignmentId: string) => void;
+  // `assigneeIds` is the final set the assignment was created for, so a
+  // caller with no single preselected dev (e.g. the Lead tools panel) can
+  // still decide whether revealing the new row makes sense.
+  onDone: (assignmentId: string, assigneeIds: string[]) => void;
 }) {
   const [description, setDescription] = useState('');
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
@@ -787,7 +836,7 @@ function AssignmentComposer({
       const assignmentId = await onAssign({ description: trimmedDescription, assigneeIds, relatedTask });
       setDescription('');
       setAssigneeIds(preselectedDevId ? [preselectedDevId] : []);
-      onDone(assignmentId);
+      onDone(assignmentId, assigneeIds);
     } catch (caughtError) {
       console.error('Assignment create failed', caughtError);
       setError('Task could not be assigned. Please try again.');
@@ -813,25 +862,7 @@ function AssignmentComposer({
         {description.length}/{TASK_DESCRIPTION_LIMIT}
       </p>
 
-      <div className="mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-fg">Assign to</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {devs.map((dev) => (
-            <label
-              className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-canvas px-3 py-1 text-xs font-medium text-fg"
-              key={dev.id}
-            >
-              <input
-                className="shrink-0"
-                type="checkbox"
-                checked={assigneeIds.includes(dev.id)}
-                onChange={() => toggleAssignee(dev.id)}
-              />
-              <span className="min-w-0 break-words">{dev.name}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <DevPicker devs={devs} selectedIds={assigneeIds} onToggle={toggleAssignee} label="Assign to" />
 
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
 
@@ -1799,6 +1830,27 @@ function TeamBox({
   );
 }
 
+type LeadToolsAction = 'question' | 'note' | 'task';
+
+// Fans an action out to every selected developer's report for `date`,
+// creating that developer's (otherwise-owner-only) report doc first when
+// it doesn't exist yet. Runs in parallel; a per-dev failure never blocks or
+// rolls back the others.
+async function sendToSelectedDevs(
+  devIds: string[],
+  date: string,
+  action: (reportId: string) => Promise<unknown>,
+): Promise<{ failedDevIds: string[] }> {
+  const results = await Promise.allSettled(
+    devIds.map(async (devId) => {
+      const reportId = await ensureReport(devId, date);
+      await action(reportId);
+    }),
+  );
+  const failedDevIds = devIds.filter((_, index) => results[index].status === 'rejected');
+  return { failedDevIds };
+}
+
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -1819,20 +1871,38 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 }
 
 // Collapsible panel under the Team box (same sticky column, so it stays
-// visible while scrolling): holds the two view-only switches that used to
-// live in the top header.
+// visible while scrolling): holds the two view-only switches plus the
+// lead's "create for chosen developers" actions (question/note/task).
 function LeadToolsPanel({
+  devs,
+  date,
   onlyMineFilter,
   onOnlyMineFilterChange,
   editMode,
   onEditModeChange,
+  onCreateAssignment,
 }: {
+  devs: UserProfileWithId[];
+  date: string;
   onlyMineFilter: boolean;
   onOnlyMineFilterChange: (checked: boolean) => void;
   editMode: boolean;
   onEditModeChange: (checked: boolean) => void;
+  onCreateAssignment: (input: {
+    description: string;
+    assigneeIds: string[];
+    relatedTask?: { description: string };
+  }) => Promise<string>;
 }) {
   const [panelOpen, setPanelOpen] = useState(() => loadLeadToolsPanelOpen());
+  const [openAction, setOpenAction] = useState<LeadToolsAction | null>(null);
+
+  const [noteDevIds, setNoteDevIds] = useState<string[]>([]);
+  const [noteFailedNames, setNoteFailedNames] = useState<string[]>([]);
+  const [questionDevIds, setQuestionDevIds] = useState<string[]>([]);
+  const [questionFailedNames, setQuestionFailedNames] = useState<string[]>([]);
+
+  const devNameById = useMemo(() => new Map(devs.map((dev) => [dev.id, dev.name])), [devs]);
 
   function togglePanel() {
     setPanelOpen((current) => {
@@ -1840,6 +1910,67 @@ function LeadToolsPanel({
       persistLeadToolsPanelOpen(next);
       return next;
     });
+  }
+
+  function toggleAction(action: LeadToolsAction) {
+    setOpenAction((current) => (current === action ? null : action));
+  }
+
+  function toggleNoteDev(devId: string) {
+    setNoteDevIds((current) =>
+      current.includes(devId) ? current.filter((id) => id !== devId) : [...current, devId],
+    );
+  }
+
+  function toggleQuestionDev(devId: string) {
+    setQuestionDevIds((current) =>
+      current.includes(devId) ? current.filter((id) => id !== devId) : [...current, devId],
+    );
+  }
+
+  function namesFor(devIds: string[]): string[] {
+    return devIds.map((devId) => devNameById.get(devId) ?? UNKNOWN_DEVELOPER_NAME);
+  }
+
+  // Report-level note/question, written to each selected developer's report
+  // for `date` (created first if missing). On a partial failure the
+  // composer stays open (this throws, so its own text isn't cleared) and
+  // the selection narrows to only the developers that failed, so a retry
+  // never re-sends to the ones that already succeeded.
+  async function handleAddNote(noteText: string) {
+    const { failedDevIds } = await sendToSelectedDevs(noteDevIds, date, (reportId) =>
+      addLeadNote(reportId, { targetTaskId: '', noteText }),
+    );
+
+    if (failedDevIds.length > 0) {
+      setNoteDevIds(failedDevIds);
+      setNoteFailedNames(namesFor(failedDevIds));
+      throw new Error('Some developers could not be notified.');
+    }
+
+    setNoteFailedNames([]);
+    setNoteDevIds([]);
+    setOpenAction(null);
+  }
+
+  async function handleAddQuestion(input: {
+    questionText: string;
+    kind: LeadQuestionKind;
+    options?: string[];
+  }) {
+    const { failedDevIds } = await sendToSelectedDevs(questionDevIds, date, (reportId) =>
+      addLeadQuestion(reportId, { taskId: '', sectionId: '', ...input }),
+    );
+
+    if (failedDevIds.length > 0) {
+      setQuestionDevIds(failedDevIds);
+      setQuestionFailedNames(namesFor(failedDevIds));
+      throw new Error('Some developers could not be asked.');
+    }
+
+    setQuestionFailedNames([]);
+    setQuestionDevIds([]);
+    setOpenAction(null);
   }
 
   return (
@@ -1860,6 +1991,65 @@ function LeadToolsPanel({
             <OnlyMineToggle checked={onlyMineFilter} onChange={onOnlyMineFilterChange} />
             <EditModeToggle checked={editMode} onChange={onEditModeChange} />
           </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+              Create for chosen developers
+            </p>
+            <div className="mt-2 flex gap-2">
+              <LeadActionButton
+                kind="question"
+                active={openAction === 'question'}
+                onClick={() => toggleAction('question')}
+              />
+              <LeadActionButton kind="note" active={openAction === 'note'} onClick={() => toggleAction('note')} />
+              <LeadActionButton kind="task" active={openAction === 'task'} onClick={() => toggleAction('task')} />
+            </div>
+          </div>
+
+          {openAction === 'question' ? (
+            <div>
+              <DevPicker devs={devs} selectedIds={questionDevIds} onToggle={toggleQuestionDev} label="Ask" />
+              <LeadQuestionComposer onAdd={handleAddQuestion} submitDisabled={questionDevIds.length === 0} />
+              {questionFailedNames.length > 0 ? (
+                <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
+                  Could not send to: {questionFailedNames.join(', ')}. They stay selected — retry when ready.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {openAction === 'note' ? (
+            <div>
+              <DevPicker devs={devs} selectedIds={noteDevIds} onToggle={toggleNoteDev} label="Note for" />
+              <NoteComposer
+                label="Lead note for chosen developers"
+                onAdd={handleAddNote}
+                submitDisabled={noteDevIds.length === 0}
+              />
+              {noteFailedNames.length > 0 ? (
+                <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">
+                  Could not save for: {noteFailedNames.join(', ')}. They stay selected — retry when ready.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {openAction === 'task' ? (
+            <AssignmentComposer
+              devs={devs}
+              preselectedDevId=""
+              onAssign={onCreateAssignment}
+              onDone={(assignmentId, assigneeIds) => {
+                setOpenAction(null);
+                // Scrolling only makes sense when it's unambiguous which
+                // developer's card to jump to.
+                if (assigneeIds.length === 1) {
+                  revealAssignment(assignmentId, assigneeIds[0]);
+                }
+              }}
+            />
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -2093,10 +2283,13 @@ export function LeadView({ leadUserId }: LeadViewProps) {
             error={teamOrderError}
           />
           <LeadToolsPanel
+            devs={displayedDevs}
+            date={normalizedSelectedDate}
             onlyMineFilter={onlyMineFilter}
             onOnlyMineFilterChange={handleOnlyMineFilterChange}
             editMode={editMode}
             onEditModeChange={setEditMode}
+            onCreateAssignment={handleCreateAssignment}
           />
         </aside>
 

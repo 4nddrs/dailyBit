@@ -156,10 +156,21 @@ service cloud.firestore {
         || (signedIn()
             && (resource == null || resource.data.userId == request.auth.uid));
       allow list: if isLead();
-      allow create: if isOwnReportCreate();
+      // A developer creates their own report as usual. The lead may also
+      // create one on a developer's behalf — from the Lead tools panel's
+      // note/question actions, when the chosen developer has none yet for
+      // the date — but only for that exact developer and date: `userId`
+      // must be a real `dev`, and the doc id must follow the
+      // `${userId}_${date}` convention (`reportIdFor`), so the lead can't
+      // create a report under an arbitrary id or for a non-dev user.
+      allow create: if isOwnReportCreate() || (
+        isLead() &&
+        userProfile(request.resource.data.userId).role == 'dev' &&
+        reportId == request.resource.data.userId + '_' + request.resource.data.date
+      );
       // A lead editing a developer's report in place (see "Lead edit mode"
       // below) only ever touches `updatedAt`, the same field every dev write
-      // below stamps on its parent report; report creation stays owner-only.
+      // below stamps on its parent report.
       allow update: if ownsExistingReport(reportId) || (
         isLead() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt'])
@@ -313,7 +324,8 @@ Security intent:
 - Authenticated developers can read and write their own report tree.
 - Developers may read a nonexistent own-report document so the client's get-or-create flow works; `list` on `reports` stays lead-only.
 - A brand-new developer may create their own `users` profile with `role: 'dev'`; only the admin console or the seed script can grant `lead`.
-- **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. Report **creation** stays owner-only (`isOwnReportCreate()`): a lead can only edit a report that already exists, so a developer with no report for the date stays read-only in edit mode.
+- **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. The editor itself never creates a report: a developer with no report for the date stays read-only in edit mode.
+- **Lead tools panel — create for chosen developers:** the lead's Question/Note/Task actions (in the "Lead tools" panel under the Team list) can target a developer who has no report yet for the selected date. In that case the client calls `ensureReport` for that developer before writing the note/question, which needs the lead to be able to create the developer's report doc. `reports` `create` therefore also allows `isLead()`, tightly scoped: the new doc's `userId` must belong to a real `role: 'dev'` user, and the report id must be exactly `${userId}_${date}` (the `reportIdFor` convention), so the lead can only ever create that one developer's report for that one date, never an arbitrary document.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
 - The report owner or the lead (editing in place) can create or delete `questions`, and edit a question's `questionText`, `options`, `optionDetails`, and `order`; only the lead can additionally *set* `selectedAnswer`, `answeredBy`, and `answeredAt` — the owner may only *clear* all three together (a stale answer after an option edit), never set one, since a write that touches them is rejected unless the resulting document has none of them. A dev question's option image attachments follow the same read shape as task images: the report owner or the lead creates or deletes them (also cascaded by `removeQuestion`), and either may update an image's `optionIndex` alone, to remap it to its option's new index when an edit removes or reorders options instead of deleting and recreating the image.
 - Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`, while the lead may update any field (unrestricted, since it also owns question creation). A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner or the lead (answering on the owner's behalf) creates them, and either can delete them, since `removeLeadQuestion` also cascades to them.
@@ -335,6 +347,8 @@ Security intent:
 > **Note:** `questions.optionDetails` and the `questions/{questionId}/images` subcollection are new. If your Firestore security rules were already deployed without the `questions/{questionId}/images` match block, redeploy the rules above before using this build, or attaching a link/image to a dev question's option will be rejected.
 >
 > **Note:** editing an existing dev question (text, options, per-option links/images) is new. The `questions/{questionId}` `update` rule changed shape — from "the owner may write any field except the answer ones" to an explicit allowlist that also lets the owner clear (never set) a stale answer — and `questions/{questionId}/images` gained an `update` rule scoped to `optionIndex`. If your Firestore security rules were already deployed with the previous shape, redeploy the rules above before using this build, or editing a dev question will be rejected.
+>
+> **Note:** the Lead tools panel's Question/Note/Task actions for chosen developers are new. `reports` `create` widened from owner-only to also allow `isLead()` for a single developer/date pair (`userId` a real `dev`, doc id `${userId}_${date}`). If your Firestore security rules were already deployed with the previous owner-only `create` rule, redeploy the rules above before using this build, or the lead's create-for-a-developer-with-no-report action will be rejected.
 
 ## Usage
 
@@ -356,6 +370,7 @@ Security intent:
 - Lets the lead ask a developer a per-task question (free text or multiple choice) and leave per-task notes; a free-text answer's links and images show alongside its text.
 - Lets the lead answer developer questions, including a section question, answered right where it appears among that section's tasks; only report-level questions (no `sectionId`) show in the trailing "Questions from {developer}" block, which stays hidden when there are none.
 - Shows a "Team" list with the lead's developers, in the same order the reports appear; the lead can reorder it (drag-and-drop or up/down buttons), which also reorders the reports. Clicking a name scrolls to that developer's report.
+- A collapsible "Lead tools" panel sits right below the Team list, in the same sticky column so both stay visible while scrolling. It holds the "Only my questions & tasks" and "Edit mode" switches (moved out of the top header), plus Question/Note/Task actions for one or more chosen developers: a Task opens `AssignmentComposer` with no preselected developer (multi-select); a Note/Question opens the usual composer next to a developer picker and, on submit, writes a report-level note/question to each selected developer's report for the currently selected date in parallel — creating that developer's report first if they don't have one yet for the date. A partial failure keeps the composer open, lists which developers failed by name, and narrows the selection to just those so retrying never re-sends to the ones that already succeeded.
 
 ## Data model
 
@@ -404,7 +419,7 @@ DeveloperView has a "Polish with AI" (sparkle) action next to a task description
 | Role | User | View | Permissions in the app |
 | --- | --- | --- | --- |
 | `dev` | Engineers | DeveloperView | Create and edit their own daily report; add tasks, images, links, and questions to the lead; answer the lead's per-task questions. |
-| `lead` | Team lead | LeadView | Read team reports; add per-task notes and questions; answer developer questions. |
+| `lead` | Team lead | LeadView | Read team reports; add per-task notes and questions; answer developer questions; create notes/questions/tasks for chosen developers (creating their report if they don't have one yet for the date). |
 
 ## Development
 
