@@ -623,8 +623,9 @@ function SparkleIcon() {
  * Shared state machine for a single "Polish with AI" action: calls the
  * `/api/polish` client service for `text`, then hands the result to `onUse`
  * only when the developer explicitly accepts it (never auto-replaces).
- * `status`/`exampleAnswer` only ever populate for an `answer` kind (see
- * `polishText`/`PolishError`); every other kind leaves them `null`.
+ * `status` only ever populates for an `answer` kind, and `exampleAnswer` for
+ * an off-topic `answer` or `option` (see `polishText`/`PolishError`); every
+ * other kind leaves them `null`.
  */
 function usePolishAction({
   kind,
@@ -727,6 +728,7 @@ function PolishSuggestionPanel({
   status,
   error,
   exampleAnswer,
+  exampleLabel = 'Example answer',
   onUse,
   onUseExample,
   onDismiss,
@@ -737,8 +739,10 @@ function PolishSuggestionPanel({
   // `undefined`/`null` and gets the unchanged plain-suggestion layout.
   status?: 'ok' | 'partial' | null;
   error: string | null;
-  // Only ever set for an off-topic `answer` (see `PolishError.exampleAnswer`).
+  // Only ever set for an off-topic `answer` or `option` (see
+  // `PolishError.exampleAnswer`).
   exampleAnswer?: string | null;
+  exampleLabel?: string;
   onUse: () => void;
   onUseExample?: () => void;
   onDismiss: () => void;
@@ -758,7 +762,7 @@ function PolishSuggestionPanel({
           </p>
           {exampleAnswer ? (
             <div className="mt-2 rounded-md border border-line bg-canvas p-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Example answer</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-fg-muted">{exampleLabel}</p>
               <p className="mt-1 text-fg">{exampleAnswer}</p>
               <div className="mt-2 flex justify-end">
                 <button
@@ -2336,7 +2340,10 @@ function QuestionOptionRow({
         loading={optionPolish.loading}
         suggestion={optionPolish.suggestion}
         error={optionPolish.error}
+        exampleAnswer={optionPolish.exampleAnswer}
+        exampleLabel="Example option"
         onUse={optionPolish.useSuggestion}
+        onUseExample={optionPolish.useExample}
         onDismiss={optionPolish.dismiss}
       />
       {showLinkForm ? (

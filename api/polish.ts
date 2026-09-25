@@ -155,7 +155,7 @@ const OPTION_RELEVANCE_INSTRUCTIONS = [
   'A text that does not answer what the question asks (for example, an object when the question asks for a color) is NOT related.',
   "Be lenient: short, partial, or not-yet-known answers that still address the question count as related.",
   'Respond ONLY with a JSON object of the form {"relevant": boolean, "suggestion": string}.',
-  'If the answer is not related to the question, set "relevant" to false and "suggestion" to an empty string.',
+  'If the option is not related to the question, set "relevant" to false and "suggestion" to an example of what a good answer option could look like: a short, specific phrase of at most 80 characters, without a leading letter or label and without a trailing period. Use [bracketed placeholders] for every fact you do not actually know from the question — never invent concrete facts such as names, numbers, ticket ids, or dates, and never use the developer\'s off-topic text as a fact source.',
 ].join(' ');
 
 // `answer` additionally judges whether a related answer is only partial, and
@@ -379,10 +379,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (!result.relevant) {
       const message = OFF_TOPIC_MESSAGES[kind] ?? 'The text does not match the question.';
-      // Only `answer` carries the example answer onward — `option`'s
-      // off-topic "suggestion" is always empty (see `parseRelevanceResult`)
-      // and stays backwards compatible with just `{ error }`.
-      throw new PolishError(422, message, kind === 'answer' && suggestion ? suggestion : undefined);
+      // `answer` and `option` carry the example onward when the model gave
+      // one; without it the response is just the off-topic `{ error }`.
+      throw new PolishError(
+        422,
+        message,
+        (kind === 'answer' || kind === 'option') && suggestion ? suggestion : undefined,
+      );
     }
 
     if (kind === 'answer') {

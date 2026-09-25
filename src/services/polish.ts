@@ -10,10 +10,10 @@ export interface PolishTextInput {
 
 /**
  * User-facing error from the AI polish flow; `message` is always short and
- * safe to show inline. `exampleAnswer` is set only when an `answer` kind is
- * rejected as off-topic (see `api/polish.ts`'s `ANSWER_RELEVANCE_INSTRUCTIONS`):
- * an example of what a good answer could look like, for the caller to offer
- * as a starting point.
+ * safe to show inline. `exampleAnswer` is set only when an `answer` or
+ * `option` kind is rejected as off-topic (see `api/polish.ts`'s relevance
+ * instructions): an example of what a good answer or option could look like,
+ * for the caller to offer as a starting point.
  */
 export class PolishError extends Error {
   exampleAnswer?: string;
