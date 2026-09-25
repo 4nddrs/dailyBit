@@ -1,4 +1,14 @@
-import { FormEvent, useCallback, useMemo, useState, useEffect, type ReactNode } from 'react';
+import {
+  FormEvent,
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  type TextareaHTMLAttributes,
+} from 'react';
 import {
   addLeadNote,
   addLeadQuestion,
@@ -532,6 +542,62 @@ function RemoveButton({
   );
 }
 
+// Lead composer text field: starts at 4 lines and grows with its content
+// (same fit-to-content approach as the developer's task field), so longer
+// notes, questions and task descriptions stay fully visible while typing.
+// Unlike the task field, Enter still inserts a newline.
+function AutoGrowTextarea({
+  className = '',
+  value,
+  ...props
+}: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'rows'> & { value: string }) {
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+
+  const fitHeight = useCallback(() => {
+    const field = fieldRef.current;
+    if (!field) {
+      return;
+    }
+    field.style.height = 'auto';
+    // scrollHeight excludes the border, which border-box sizing counts.
+    field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
+  }, []);
+
+  useLayoutEffect(fitHeight, [fitHeight, value]);
+
+  // Refit when the field's width changes (layout resize, panel opened) and
+  // once web fonts load, since both change where the text wraps.
+  useEffect(() => {
+    const field = fieldRef.current;
+    if (!field) {
+      return;
+    }
+    void document.fonts?.ready.then(fitHeight);
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    let lastWidth = field.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth !== lastWidth) {
+        lastWidth = field.clientWidth;
+        fitHeight();
+      }
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
+  }, [fitHeight]);
+
+  return (
+    <textarea
+      {...props}
+      ref={fieldRef}
+      rows={4}
+      className={`block resize-none overflow-hidden ${className}`}
+      value={value}
+    />
+  );
+}
+
 function NoteComposer({
   label,
   onAdd,
@@ -576,8 +642,8 @@ function NoteComposer({
     <form className="mt-3 rounded-md border-l-2 border-attention-emphasis bg-attention-muted p-4" onSubmit={handleSubmit}>
       <label className="block text-xs font-semibold uppercase tracking-wide text-attention-fg">
         {label}
-        <textarea
-          className="mt-2 min-h-20 w-full resize-y rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-attention-emphasis focus:ring-1 focus:ring-attention-muted"
+        <AutoGrowTextarea
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-attention-emphasis focus:ring-1 focus:ring-attention-muted"
           value={noteText}
           onChange={(event) => setNoteText(event.target.value)}
           placeholder="Add a private lead note"
@@ -666,8 +732,8 @@ function LeadQuestionComposer({
     <form className="mt-3 rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-4" onSubmit={handleSubmit}>
       <label className="block text-xs font-semibold uppercase tracking-wide text-done-fg">
         Question for the developer
-        <textarea
-          className="mt-2 min-h-20 w-full resize-y rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-done-emphasis focus:ring-1 focus:ring-done-muted"
+        <AutoGrowTextarea
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-done-emphasis focus:ring-1 focus:ring-done-muted"
           value={questionText}
           onChange={(event) => setQuestionText(event.target.value)}
           placeholder="What do you need to know about this task?"
@@ -861,8 +927,8 @@ function AssignmentComposer({
     <form className="mt-3 rounded-md border-l-2 border-accent-emphasis bg-canvas-subtle p-4" onSubmit={handleSubmit}>
       <label className="block text-xs font-semibold uppercase tracking-wide text-fg">
         Task description
-        <textarea
-          className="mt-2 min-h-16 w-full resize-y rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
+        <AutoGrowTextarea
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           maxLength={TASK_DESCRIPTION_LIMIT}
