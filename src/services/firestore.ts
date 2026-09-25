@@ -49,6 +49,7 @@ import type {
   UserProfileWithId,
   UserRole,
 } from '../types';
+import { todayDateString } from '../types';
 
 // `optionLinks[i]` are the links for `options[i]`, kept parallel by the
 // caller (the composer keeps per-option links aligned as options are added,
@@ -1187,6 +1188,8 @@ export async function updateLeadQuestion(
     payload.options = deleteField();
   }
 
+  const batch = writeBatch(db);
+
   if (clearAnswer) {
     await deleteLeadQuestionImages(reportId, questionId);
     payload.answerText = deleteField();
@@ -1194,43 +1197,37 @@ export async function updateLeadQuestion(
     payload.selectedAnswer = deleteField();
     payload.answeredAt = deleteField();
 
-    // The recipient dev is the only one allowed to write the pointer's
-    // `answeredDate` (see the Firestore rules), so the lead can't just clear
-    // that one field here. Instead, since the lead already has create/delete
-    // on the pointer, a still-answered carry-over is cleared by deleting and
-    // recreating it without `answeredDate` — a no-op when there is no
-    // pointer (a task-anchored question, or one asked before carry-over).
-    // Best-effort and sequential (not batched with the question update
-    // below, and a delete immediately followed by a set on the very same
-    // document isn't a combination the write-batch API documents), so a
-    // failure here never blocks the question edit itself.
-    try {
-      const pointerRef = leadQuestionCarryoverDoc(reportId, questionId);
-      const pointerSnapshot = await getDoc(pointerRef);
-      if (pointerSnapshot.exists()) {
-        const { answeredDate: _answeredDate, ...rest } = pointerSnapshot.data() as LeadQuestionCarryoverPointer;
-        await deleteDoc(pointerRef);
-        await setDoc(pointerRef, rest);
-      }
-    } catch (error) {
-      console.error('Lead question carry-over pointer clear failed', error);
+    // Clear the pointer's `answeredDate` in the same batch as the question
+    // clear below, so the two can never go out of sync — a stale
+    // `answeredDate` left behind by a non-atomic clear could otherwise hide
+    // a carried question whose answer was actually just cleared (see
+    // `isCarriedLeadQuestionVisible`). A no-op when there is no pointer (a
+    // task-anchored question, or one asked before carry-over): `update`
+    // rejects on a missing doc, so this checks existence first instead of
+    // relying on a best-effort catch, now that the lead has full update
+    // access on the pointer (see the Firestore rules).
+    const pointerRef = leadQuestionCarryoverDoc(reportId, questionId);
+    const pointerSnapshot = await getDoc(pointerRef);
+    if (pointerSnapshot.exists()) {
+      batch.update(pointerRef, { answeredDate: deleteField() });
     }
   }
 
-  await updateDoc(leadQuestionDoc(reportId, questionId), payload);
+  batch.update(leadQuestionDoc(reportId, questionId), payload);
+  await batch.commit();
 }
 
 // Firestore rejects undefined field values, so `answerLinks` is only included
 // when the caller actually passed it. `answeredDate` is the date string of
 // the day view the answer was saved from (mirrors `closeAssignment`'s
-// `closedDate`), stamped onto the carry-over pointer so the question stops
-// showing on later days; callers answering a task-anchored question (which
-// never gets a pointer — see `addLeadQuestion`) can omit it. That pointer
-// write is also best-effort for a report-level question: an older question
-// has no pointer (`updateDoc` on a missing doc rejects, caught below), and
-// only the recipient dev may write `answeredDate` on it (see the Firestore
-// rules), so the lead editing an already-answered question here simply
-// leaves the existing pointer state as-is.
+// `closedDate`); both the developer answering and the lead editing an
+// already-answered question on their behalf pass it. It's stamped onto the
+// carry-over pointer best-effort, purely as a cheap prefilter for
+// `subscribeLeadQuestionCarryoversFromQuery` to skip subscribing to a
+// long-answered question — visibility itself is decided from the question
+// doc's own `answeredAt` (see `isCarriedLeadQuestionVisible`), so a failure
+// here (e.g. an older question with no pointer — `updateDoc` on a missing
+// doc rejects, caught below) can never hide or wrongly show a question.
 export async function answerLeadQuestion(
   reportId: string,
   questionId: string,
@@ -1284,55 +1281,91 @@ export function removeLeadQuestionAnswerImage(
   return deleteDoc(leadQuestionImageDoc(reportId, questionId, imageId));
 }
 
-// A report-level lead question stays visible on every date after its origin
-// `date` (strictly after — it already shows on its own day the normal way)
-// up to (and including) `answeredDate`, or forever while unanswered. Mirrors
-// `isAssignmentVisibleOn`.
-export function isLeadQuestionCarryoverVisibleOn(
+// Cheap prefilter using only the pointer doc, to decide whether it's even
+// worth subscribing to the origin question: `pointer.date` never changes
+// once written, so `pointer.date < date` is always reliable. `answeredDate`
+// is only a best-effort mirror of the question's real `answeredAt` (see
+// `answerLeadQuestion`), so this uses it only to skip a pointer that's
+// definitely long answered — the real visibility decision, once subscribed,
+// is `isCarriedLeadQuestionVisible` below, applied against the live question.
+function shouldSubscribeToLeadQuestionCarryoverPointer(
   pointer: Pick<LeadQuestionCarryoverPointer, 'date' | 'answeredDate'>,
   date: string,
 ): boolean {
   return pointer.date < date && (!pointer.answeredDate || pointer.answeredDate >= date);
 }
 
+// Source of truth for whether a carried question is still visible on `date`:
+// unanswered, or answered on/after `date` (by the local calendar date of
+// `answeredAt`). `answeredAt` is stamped by every path that flips a lead
+// question to answered — `answerLeadQuestion` (text/links/options) and
+// `addLeadQuestionAnswerImage` (an image-only answer) — and cleared
+// atomically with the pointer's `answeredDate` by `updateLeadQuestion`'s
+// `clearAnswer` path, so this can never wrongly hide a just-cleared question.
+function isCarriedLeadQuestionVisible(question: LeadQuestion, date: string): boolean {
+  if (!question.answeredAt) {
+    return true;
+  }
+  return todayDateString(question.answeredAt.toDate()) >= date;
+}
+
 // The one origin lead question doc, plus its answer images, same combined
 // doc+subcollection shape `subscribeAssignmentUpdate` uses. Emits `null` if
-// the question was deleted out from under an open pointer.
+// the question was deleted out from under an open pointer. `question` and
+// `images` are kept in outer mutable variables and `emit` always reads both
+// current values, so an images-only update (which never re-fires the
+// question doc listener) still re-emits the latest question instead of the
+// one captured when the images listener was first created.
 function subscribeLeadQuestionWithImages(
   reportId: string,
   questionId: string,
   callback: (question: LeadQuestion | null, images: TaskImageWithId[]) => void,
+  onError?: (error: FirestoreError) => void,
 ): Unsubscribe {
+  let question: LeadQuestion | null = null;
   let images: TaskImageWithId[] = [];
   let imagesUnsubscribe: Unsubscribe | undefined;
 
-  const docUnsubscribe = onSnapshot(leadQuestionDoc(reportId, questionId), (snapshot) => {
-    if (!snapshot.exists()) {
-      images = [];
-      imagesUnsubscribe?.();
-      imagesUnsubscribe = undefined;
-      callback(null, []);
-      return;
-    }
-
-    const question = snapshot.data() as LeadQuestion;
-
-    if (!imagesUnsubscribe) {
-      const imagesQuery = query(
-        leadQuestionImagesCollection(reportId, questionId),
-        orderBy('createdAt', 'asc'),
-      );
-      imagesUnsubscribe = onSnapshot(imagesQuery, (imageSnapshot) => {
-        images = imageSnapshot.docs.map((imageDocument) => {
-          const image = imageDocument.data() as TaskImage;
-          return { id: imageDocument.id, imageBase64: image.imageBase64 };
-        });
-        callback(question, images);
-      });
-    }
-
+  const emit = () => {
     callback(question, images);
-  });
+  };
+
+  const docUnsubscribe = onSnapshot(
+    leadQuestionDoc(reportId, questionId),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        question = null;
+        images = [];
+        imagesUnsubscribe?.();
+        imagesUnsubscribe = undefined;
+        emit();
+        return;
+      }
+
+      question = snapshot.data() as LeadQuestion;
+
+      if (!imagesUnsubscribe) {
+        const imagesQuery = query(
+          leadQuestionImagesCollection(reportId, questionId),
+          orderBy('createdAt', 'asc'),
+        );
+        imagesUnsubscribe = onSnapshot(
+          imagesQuery,
+          (imageSnapshot) => {
+            images = imageSnapshot.docs.map((imageDocument) => {
+              const image = imageDocument.data() as TaskImage;
+              return { id: imageDocument.id, imageBase64: image.imageBase64 };
+            });
+            emit();
+          },
+          onError,
+        );
+      }
+
+      emit();
+    },
+    onError,
+  );
 
   return () => {
     docUnsubscribe();
@@ -1341,9 +1374,11 @@ function subscribeLeadQuestionWithImages(
 }
 
 // Shared by the assignee- and lead-scoped subscriptions below: for every
-// pointer visible on `date`, subscribes the origin question (+ its answer
-// images) and re-emits the combined list on any change, tearing down a
-// question subscription once its pointer stops being visible or disappears.
+// pointer that passes the cheap prefilter, subscribes the origin question
+// (+ its answer images) and re-emits the combined list on any change,
+// filtering the final results by the live question's real visibility and
+// tearing down a question subscription once its pointer fails the prefilter
+// or disappears.
 function subscribeLeadQuestionCarryoversFromQuery(
   pointersQuery: Query,
   date: string,
@@ -1360,7 +1395,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
 
     pointers.forEach((pointer, pointerId) => {
       const question = questions.get(pointerId);
-      if (!question) {
+      if (!question || !isCarriedLeadQuestionVisible(question, date)) {
         return;
       }
 
@@ -1396,7 +1431,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
         const pointer = pointerSnapshot.data() as LeadQuestionCarryoverPointer;
         pointers.set(pointerId, pointer);
 
-        if (!isLeadQuestionCarryoverVisibleOn(pointer, date)) {
+        if (!shouldSubscribeToLeadQuestionCarryoverPointer(pointer, date)) {
           stopQuestionSubscription(pointerId);
           return;
         }
@@ -1415,6 +1450,7 @@ function subscribeLeadQuestionCarryoversFromQuery(
               }
               emit();
             },
+            onError,
           );
           questionUnsubscribes.set(pointerId, unsubscribeQuestion);
         }

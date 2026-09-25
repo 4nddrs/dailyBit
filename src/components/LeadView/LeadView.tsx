@@ -386,13 +386,20 @@ export function AnswerAttachmentImages({ images }: { images: Array<{ id: string;
 // selected option. Links and images commit immediately on add/remove, same
 // as the developer's own answer flow (DeveloperView's `LeadQuestionCard`);
 // only the free-text answer itself needs an explicit Save.
+// `answeredDate` is the date string of the day view this editor is shown on
+// (omitted for a task-anchored question, which never carries over — see
+// `addLeadQuestion`); when set, it's passed through to `answerLeadQuestion`
+// so a lead-edited answer also stamps the carry-over pointer, same as the
+// developer's own answer does.
 function LeadQuestionAnswerEditor({
   reportId,
   question,
+  answeredDate,
   onDone,
 }: {
   reportId: string;
   question: LeadQuestionWithId;
+  answeredDate?: string;
   onDone: () => void;
 }) {
   const isText = question.kind === 'text';
@@ -414,7 +421,7 @@ function LeadQuestionAnswerEditor({
     setSubmittingText(true);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { answerText: answerText.trim(), answerLinks });
+      await answerLeadQuestion(reportId, question.id, { answerText: answerText.trim(), answerLinks }, answeredDate);
       onDone();
     } catch (caughtError) {
       console.error('Lead question answer edit failed', caughtError);
@@ -428,7 +435,7 @@ function LeadQuestionAnswerEditor({
     setSubmittingIndex(index);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index });
+      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index }, answeredDate);
       onDone();
     } catch (caughtError) {
       console.error('Lead question answer edit failed', caughtError);
@@ -447,16 +454,22 @@ function LeadQuestionAnswerEditor({
     const nextLinks = [...answerLinks, { label: linkLabel.trim(), url: trimmedUrl }];
     setLinkLabel('');
     setLinkUrl('');
-    answerLeadQuestion(reportId, question.id, { answerText: question.answerText ?? '', answerLinks: nextLinks }).catch(
-      (error: unknown) => console.error('Lead question answer link save failed', error),
-    );
+    answerLeadQuestion(
+      reportId,
+      question.id,
+      { answerText: question.answerText ?? '', answerLinks: nextLinks },
+      answeredDate,
+    ).catch((error: unknown) => console.error('Lead question answer link save failed', error));
   }
 
   function handleRemoveLink(index: number) {
     const nextLinks = answerLinks.filter((_, linkIndex) => linkIndex !== index);
-    answerLeadQuestion(reportId, question.id, { answerText: question.answerText ?? '', answerLinks: nextLinks }).catch(
-      (error: unknown) => console.error('Lead question answer link remove failed', error),
-    );
+    answerLeadQuestion(
+      reportId,
+      question.id,
+      { answerText: question.answerText ?? '', answerLinks: nextLinks },
+      answeredDate,
+    ).catch((error: unknown) => console.error('Lead question answer link remove failed', error));
   }
 
   async function handleImageSelected(file: File | undefined) {
@@ -639,12 +652,17 @@ function LeadQuestionAnswerEditor({
 export function LeadQuestionItem({
   reportId,
   question,
+  date,
   onRemove,
   onEdit,
   context,
 }: {
   reportId?: string;
   question: LeadQuestionWithId;
+  // The date string of the day view this item is shown on, passed through
+  // to the answer editor so a lead-edited answer also stamps the carry-over
+  // pointer (see `LeadQuestionAnswerEditor`'s `answeredDate`).
+  date?: string;
   onRemove?: (questionId: string) => void;
   onEdit?: (
     questionId: string,
@@ -699,7 +717,12 @@ export function LeadQuestionItem({
       {!isAnswered ? (
         <p className="mt-2 text-xs font-semibold text-done-fg">Waiting for answer</p>
       ) : editingAnswer && reportId ? (
-        <LeadQuestionAnswerEditor reportId={reportId} question={question} onDone={() => setEditingAnswer(false)} />
+        <LeadQuestionAnswerEditor
+          reportId={reportId}
+          question={question}
+          answeredDate={date}
+          onDone={() => setEditingAnswer(false)}
+        />
       ) : question.kind === 'text' ? (
         <>
           <div className="mt-2 flex items-start gap-2">
@@ -748,11 +771,13 @@ export function LeadQuestionItem({
 export function LeadQuestionBlock({
   reportId,
   questions,
+  date,
   onRemove,
   onEdit,
 }: {
   reportId?: string;
   questions: LeadQuestionWithId[];
+  date?: string;
   onRemove?: (questionId: string) => void;
   onEdit?: (
     questionId: string,
@@ -766,7 +791,14 @@ export function LeadQuestionBlock({
   return (
     <div className="mt-3 space-y-2">
       {questions.map((question) => (
-        <LeadQuestionItem key={question.id} reportId={reportId} question={question} onRemove={onRemove} onEdit={onEdit} />
+        <LeadQuestionItem
+          key={question.id}
+          reportId={reportId}
+          question={question}
+          date={date}
+          onRemove={onRemove}
+          onEdit={onEdit}
+        />
       ))}
     </div>
   );
@@ -2244,6 +2276,7 @@ function ReportCard({
                     key={question.id}
                     reportId={question.originReportId}
                     question={question}
+                    date={date}
                     context={`Asked on ${question.originDate}`}
                     onRemove={() => removeCarriedLeadQuestion(question)}
                     onEdit={(_questionId, input) => editCarriedLeadQuestion(question, input)}
@@ -2285,6 +2318,7 @@ function ReportCard({
                 <LeadQuestionBlock
                   reportId={report.id}
                   questions={reportLevelQuestions}
+                  date={date}
                   onRemove={handleRemoveQuestion}
                   onEdit={handleEditQuestion}
                 />
@@ -2301,6 +2335,7 @@ function ReportCard({
                 <LeadQuestionBlock
                   reportId={report.id}
                   questions={reportLevelQuestions}
+                  date={date}
                   onRemove={handleRemoveQuestion}
                   onEdit={handleEditQuestion}
                 />
@@ -2389,6 +2424,7 @@ function AssignmentOnlyCard({
   onRemoveAssignment,
   onEditAssignment,
   editMode,
+  date,
   carriedQuestions,
 }: {
   userId: string;
@@ -2405,6 +2441,9 @@ function AssignmentOnlyCard({
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
   editMode: boolean;
+  // The currently selected date, passed to each carried question so a
+  // lead-edited answer also stamps its carry-over pointer.
+  date: string;
   // This developer's report-level lead questions carried over from an
   // earlier day, still visible on the selected date, even though they have
   // no report for it.
@@ -2431,6 +2470,7 @@ function AssignmentOnlyCard({
                 key={question.id}
                 reportId={question.originReportId}
                 question={question}
+                date={date}
                 context={`Asked on ${question.originDate}`}
                 onRemove={() => removeCarriedLeadQuestion(question)}
                 onEdit={(_questionId, input) => editCarriedLeadQuestion(question, input)}
@@ -3148,6 +3188,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                   onRemoveAssignment={handleRemoveAssignment}
                   onEditAssignment={handleEditAssignment}
                   editMode={editMode}
+                  date={normalizedSelectedDate}
                   carriedQuestions={carriedQuestionsByUser.get(entry.userId) ?? []}
                 />
               ),
