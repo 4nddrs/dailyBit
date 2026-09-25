@@ -1519,7 +1519,7 @@ function ReportCard({
   ].filter((part): part is string => Boolean(part));
 
   return (
-    <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${report.userId}`}>
+    <article className="scroll-mt-36 rounded-md border border-line bg-canvas shadow-sm sm:scroll-mt-24" id={`report-${report.userId}`}>
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="break-words text-lg font-semibold text-fg">{developerName}</h2>
@@ -1687,7 +1687,7 @@ function AssignmentOnlyCard({
   const [composerOpen, setComposerOpen] = useState(false);
 
   return (
-    <article className="rounded-md border border-line bg-canvas shadow-sm" id={`report-${userId}`}>
+    <article className="scroll-mt-36 rounded-md border border-line bg-canvas shadow-sm sm:scroll-mt-24" id={`report-${userId}`}>
       <div className="flex items-center justify-between gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3">
         <h2 className="min-w-0 break-words text-lg font-semibold text-fg">{developerName}</h2>
         <LeadActionButton kind="task" active={composerOpen} onClick={() => setComposerOpen((current) => !current)} />
