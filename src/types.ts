@@ -197,7 +197,12 @@ export interface Assignment {
   startDate: string;
   status: AssignmentStatus;
   closedDate?: string;
-  relatedTask?: { description: string };
+  // `reportId`/`sectionId`/`taskId` are only set when the assignment was
+  // created from a developer's task (the "Task" action on a `TaskCard`), so
+  // Lead View can render it under that task instead of the trailing
+  // assignments block; an older assignment, or one created any other way,
+  // has only `description`.
+  relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

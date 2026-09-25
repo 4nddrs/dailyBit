@@ -1349,11 +1349,11 @@ function AssignmentComposer({
 }: {
   devs: UserProfileWithId[];
   preselectedDevId: string;
-  relatedTask?: { description: string };
+  relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   onAssign: (input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) => Promise<string>;
   // `assigneeIds` is the final set the assignment was created for, so a
   // caller with no single preselected dev (e.g. the Lead tools panel) can
@@ -1653,6 +1653,8 @@ function TaskCard({
   letter,
   notes,
   questions,
+  assignments,
+  updatesByAssignment,
   allDevs,
   reportOwnerId,
   onAddNote,
@@ -1662,6 +1664,9 @@ function TaskCard({
   onRemoveQuestion,
   onEditQuestion,
   onCreateAssignment,
+  onSetAssignmentClosed,
+  onRemoveAssignment,
+  onEditAssignment,
 }: {
   reportId: string;
   sectionId: string;
@@ -1669,6 +1674,11 @@ function TaskCard({
   letter: string;
   notes: LeadNoteWithId[];
   questions: LeadQuestionWithId[];
+  // Assignments created from this task (via the "Task" action below),
+  // rendered right here instead of the trailing "Assigned by lead" block —
+  // see `ReportCard`'s `assignmentsByTask`.
+  assignments: AssignmentWithId[];
+  updatesByAssignment: AssignmentUpdatesByAssignment;
   allDevs: UserProfileWithId[];
   reportOwnerId: string;
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
@@ -1687,8 +1697,11 @@ function TaskCard({
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) => Promise<string>;
+  onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
+  onRemoveAssignment: (assignmentId: string) => void;
+  onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
 }) {
   const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -1760,7 +1773,7 @@ function TaskCard({
         <AssignmentComposer
           devs={allDevs}
           preselectedDevId={reportOwnerId}
-          relatedTask={{ description: task.description }}
+          relatedTask={{ description: task.description, reportId, sectionId, taskId: task.id }}
           onAssign={onCreateAssignment}
           onDone={(assignmentId) => {
             setOpenComposer(null);
@@ -1771,6 +1784,22 @@ function TaskCard({
 
       <LeadQuestionBlock reportId={reportId} questions={questions} onRemove={onRemoveQuestion} onEdit={onEditQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} onEdit={onEditNote} />
+      {assignments.length > 0 ? (
+        <div className="mt-3 divide-y divide-line rounded-md border border-line bg-canvas">
+          {assignments.map((assignment) => (
+            <LeadAssignmentRow
+              key={assignment.id}
+              assignment={assignment}
+              assigneeId={reportOwnerId}
+              update={updatesByAssignment.get(assignment.id)?.get(reportOwnerId) ?? null}
+              allDevs={allDevs}
+              onSetClosed={onSetAssignmentClosed}
+              onRemove={onRemoveAssignment}
+              onEdit={onEditAssignment}
+            />
+          ))}
+        </div>
+      ) : null}
 
       {lightboxIndex !== null ? (
         <ImageLightbox
@@ -1789,6 +1818,8 @@ function SectionCard({
   number,
   notesByTarget,
   questionsByTarget,
+  assignmentsByTask,
+  updatesByAssignment,
   allDevs,
   reportOwnerId,
   leadUserId,
@@ -1799,12 +1830,17 @@ function SectionCard({
   onRemoveQuestion,
   onEditQuestion,
   onCreateAssignment,
+  onSetAssignmentClosed,
+  onRemoveAssignment,
+  onEditAssignment,
 }: {
   reportId: string;
   section: SectionWithTasks;
   number: number;
   notesByTarget: Map<string, LeadNoteWithId[]>;
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
+  assignmentsByTask: Map<string, AssignmentWithId[]>;
+  updatesByAssignment: AssignmentUpdatesByAssignment;
   allDevs: UserProfileWithId[];
   reportOwnerId: string;
   leadUserId: string;
@@ -1824,8 +1860,11 @@ function SectionCard({
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) => Promise<string>;
+  onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
+  onRemoveAssignment: (assignmentId: string) => void;
+  onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
 }) {
   // Section questions (dev-to-lead, answered in place here) are shown
   // interleaved with tasks by shared `order`, same merge as Developer View
@@ -1856,6 +1895,8 @@ function SectionCard({
                 letter={taskLetters.get(item.id) ?? ''}
                 notes={notesByTarget.get(item.id) ?? []}
                 questions={questionsByTarget.get(item.id) ?? []}
+                assignments={assignmentsByTask.get(item.id) ?? []}
+                updatesByAssignment={updatesByAssignment}
                 allDevs={allDevs}
                 reportOwnerId={reportOwnerId}
                 onAddNote={onAddNote}
@@ -1865,6 +1906,9 @@ function SectionCard({
                 onRemoveQuestion={onRemoveQuestion}
                 onEditQuestion={onEditQuestion}
                 onCreateAssignment={onCreateAssignment}
+                onSetAssignmentClosed={onSetAssignmentClosed}
+                onRemoveAssignment={onRemoveAssignment}
+                onEditAssignment={onEditAssignment}
               />
             ) : (
               <div className="px-4 py-3" key={`question-${item.id}`}>
@@ -2086,7 +2130,7 @@ function ReportCard({
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
@@ -2129,6 +2173,38 @@ function ReportCard({
     });
     return groupedQuestions;
   }, [leadQuestions]);
+
+  // Task ids that actually exist in this report right now, so an assignment
+  // whose origin task was since deleted falls back to the trailing
+  // "Assigned by lead" block instead of silently disappearing.
+  const taskIds = useMemo(
+    () => new Set(report.sections.flatMap((section) => section.tasks.map((task) => task.id))),
+    [report.sections],
+  );
+
+  // Assignments created from one of this report's own tasks (see the "Task"
+  // action on `TaskCard`), grouped by that task's id so `SectionCard` can
+  // render each one under its matching task instead of the trailing block —
+  // same placement `questionsByTarget` gives task-anchored lead questions.
+  // An assignment whose `relatedTask` predates this feature, targets a
+  // different report/date, or whose task no longer exists, is left out here
+  // and keeps showing in the trailing block below.
+  const assignmentsByTask = useMemo(() => {
+    const grouped = new Map<string, AssignmentWithId[]>();
+    assignments.forEach((assignment) => {
+      const taskId = assignment.relatedTask?.taskId;
+      if (!taskId || assignment.relatedTask?.reportId !== report.id || !taskIds.has(taskId)) {
+        return;
+      }
+      grouped.set(taskId, [...(grouped.get(taskId) ?? []), assignment]);
+    });
+    return grouped;
+  }, [assignments, report.id, taskIds]);
+
+  const inlineAssignmentIds = useMemo(
+    () => new Set(Array.from(assignmentsByTask.values()).flat().map((assignment) => assignment.id)),
+    [assignmentsByTask],
+  );
 
   async function handleAddNote(targetTaskId: string, noteText: string) {
     await addLeadNote(report.id, { targetTaskId, noteText });
@@ -2316,6 +2392,8 @@ function ReportCard({
                         number={sectionIndex + 1}
                         notesByTarget={notesByTarget}
                         questionsByTarget={questionsByTarget}
+                        assignmentsByTask={assignmentsByTask}
+                        updatesByAssignment={updatesByAssignment}
                         allDevs={allDevs}
                         reportOwnerId={report.userId}
                         leadUserId={leadUserId}
@@ -2326,6 +2404,9 @@ function ReportCard({
                         onRemoveQuestion={handleRemoveQuestion}
                         onEditQuestion={handleEditQuestion}
                         onCreateAssignment={onCreateAssignment}
+                        onSetAssignmentClosed={onSetAssignmentClosed}
+                        onRemoveAssignment={onRemoveAssignment}
+                        onEditAssignment={onEditAssignment}
                       />
                     ))
                   ) : (
@@ -2363,7 +2444,13 @@ function ReportCard({
             )}
 
             <LeadAssignmentsBox
-              assignments={assignments}
+              // "Only my questions & tasks" mode hides the section/task cards
+              // entirely (no task to render an assignment under, unlike
+              // `LeadTaskQuestionsOnly` below, which flattens task-anchored
+              // questions instead of dropping them), so it keeps every
+              // assignment here; the normal mode excludes the ones already
+              // rendered under their task above.
+              assignments={onlyMineFilter ? assignments : assignments.filter((a) => !inlineAssignmentIds.has(a.id))}
               assigneeId={report.userId}
               updatesByAssignment={updatesByAssignment}
               allDevs={allDevs}
@@ -2399,7 +2486,7 @@ function AssignmentOnlyCard({
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
@@ -2694,7 +2781,7 @@ function LeadToolsPanel({
   onCreateAssignment: (input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) => Promise<string>;
 }) {
   const [panelOpen, setPanelOpen] = useState(() => loadLeadToolsPanelOpen());
@@ -2907,7 +2994,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   async function handleCreateAssignment(input: {
     description: string;
     assigneeIds: string[];
-    relatedTask?: { description: string };
+    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
   }) {
     return createAssignment({
       description: input.description,
