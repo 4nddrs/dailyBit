@@ -135,7 +135,7 @@ function PreviewSectionCard({
                 <span className="mb-2 inline-flex items-center rounded-full border border-done-emphasis/60 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
                   Question
                 </span>
-                <PreviewDevQuestionCard question={item.question} />
+                <PreviewDevQuestionCard question={item.question} notes={notesByTask.get(item.id) ?? []} />
               </div>
             ),
           )
@@ -149,7 +149,13 @@ function PreviewSectionCard({
 
 // Dev-created multiple-choice question, shown with the lead's answer once
 // available. Mirrors Developer View's own read display of the same data.
-function PreviewDevQuestionCard({ question }: { question: QuestionWithId }) {
+function PreviewDevQuestionCard({
+  question,
+  notes,
+}: {
+  question: QuestionWithId;
+  notes: LeadNoteWithId[];
+}) {
   const isAnswered = question.selectedAnswer !== undefined;
 
   return (
@@ -176,6 +182,7 @@ function PreviewDevQuestionCard({ question }: { question: QuestionWithId }) {
           ) : null
         }
       />
+      <LeadNoteBlock notes={notes} />
     </article>
   );
 }
@@ -332,7 +339,11 @@ export function ReportPreview({ reportTree, developerId, date, assignments }: Re
           </div>
           <div className="space-y-3 p-4">
             {devQuestions.map((question) => (
-              <PreviewDevQuestionCard key={question.id} question={question} />
+              <PreviewDevQuestionCard
+                key={question.id}
+                question={question}
+                notes={notesByTask.get(question.id) ?? []}
+              />
             ))}
           </div>
         </section>

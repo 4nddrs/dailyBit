@@ -847,15 +847,28 @@ export interface UpdateQuestionInput {
   options: UpdateQuestionOptionInput[];
 }
 
+// Thrown by `updateQuestion` when the question itself saved but one or more
+// new option images failed to upload afterwards, so the caller can show a
+// distinct, more specific message than a plain save failure.
+export const QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE = 'Question saved, but some images could not be saved.';
+
 // Edits an existing dev question in place (text, options, per-option links
 // and images), reusing the same composer the developer used to create it.
 // Option images live one-per-doc tagged with `optionIndex`, so removing or
-// reordering options must remap or delete their images; this is done in one
-// batch with the question/report field updates so a failure never leaves an
-// image pointing at the wrong option. A stale answer — the option set or
-// order no longer matches what the lead answered — is cleared the same way
-// `answerQuestion` sets it, via `deleteField()`; text-only or links/images-only
-// edits keep the existing answer.
+// reordering options must remap or delete their images. The question/report
+// field updates plus the kept-image remap and the dropped-image deletes stay
+// in one small batch — new images are NOT included there: each can be ~900 KB
+// of base64, so 10+ of them in the same batch can exceed Firestore's
+// per-request size limit and fail the whole edit. Instead, new images are
+// uploaded one doc at a time (mirroring `addQuestion`/`addQuestionOptionImage`
+// on the create path) only after that batch has committed, each tagged with
+// its option's final index — so a failure can never leave an image attached
+// to the wrong (or a since-removed) option; at worst some images are missing
+// and `QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE` is thrown for the caller to
+// surface. A stale answer — the option set or order no longer matches what
+// the lead answered — is cleared the same way `answerQuestion` sets it, via
+// `deleteField()`; text-only or links/images-only edits keep the existing
+// answer.
 export async function updateQuestion(
   reportId: string,
   questionId: string,
@@ -901,10 +914,6 @@ export async function updateQuestion(
       keptImageIds.add(imageId);
       batch.update(ref, { optionIndex });
     });
-    (option.newImages ?? []).forEach((imageBase64) => {
-      const ref = doc(questionImagesCollection(reportId, questionId));
-      batch.set(ref, { imageBase64, optionIndex, createdAt: serverTimestamp() });
-    });
   });
 
   existingImageRefsById.forEach((ref, imageId) => {
@@ -915,6 +924,27 @@ export async function updateQuestion(
 
   batch.update(reportDoc(reportId), { updatedAt: serverTimestamp() });
   await batch.commit();
+
+  const newImageUploads = input.options.flatMap((option, optionIndex) =>
+    (option.newImages ?? []).map((imageBase64) =>
+      addQuestionOptionImage(reportId, questionId, optionIndex, imageBase64),
+    ),
+  );
+
+  if (newImageUploads.length === 0) {
+    return;
+  }
+
+  const uploadResults = await Promise.allSettled(newImageUploads);
+  const hasFailure = uploadResults.some((result) => result.status === 'rejected');
+  if (hasFailure) {
+    uploadResults.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.error('Question option image upload failed', result.reason);
+      }
+    });
+    throw new Error(QUESTION_IMAGE_UPLOAD_FAILURE_MESSAGE);
+  }
 }
 
 // Firestore never cascades deletes into subcollections, so a question's

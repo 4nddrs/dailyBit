@@ -1681,6 +1681,7 @@ function SectionQuestionCard({
   reportId,
   sectionId,
   question,
+  leadNotes,
   isFirst,
   isLast,
   onMoveUp,
@@ -1690,6 +1691,7 @@ function SectionQuestionCard({
   reportId: string;
   sectionId: string;
   question: QuestionWithId;
+  leadNotes: LeadNoteWithId[];
   isFirst: boolean;
   isLast: boolean;
   onMoveUp: () => void;
@@ -1756,7 +1758,7 @@ function SectionQuestionCard({
         <span className="mb-2 inline-flex items-center rounded-full border border-done-emphasis/60 bg-done-muted px-2 py-0.5 text-xs font-medium text-done-fg">
           Question
         </span>
-        <QuestionCard reportId={reportId} question={question} />
+        <QuestionCard reportId={reportId} question={question} leadNotes={leadNotes} />
       </div>
       <CardToolbar>
         <IconButton
@@ -1980,6 +1982,7 @@ function SectionCard({
                 reportId={reportId}
                 sectionId={section.id}
                 question={item.question}
+                leadNotes={leadNotesByTask.get(item.id) ?? []}
                 isFirst={itemIndex === 0}
                 isLast={itemIndex === displayedItems.length - 1}
                 onMoveUp={() => handleMoveItem(sectionItemKey(item), 'up')}
@@ -2164,6 +2167,7 @@ function QuestionOptionRow({
   links,
   images,
   canRemove,
+  blockedMessage,
   onChange,
   onLinksChange,
   onImagesChange,
@@ -2175,6 +2179,7 @@ function QuestionOptionRow({
   links: TaskLink[];
   images: Array<{ id: string; imageBase64: string }>;
   canRemove: boolean;
+  blockedMessage: string | null;
   onChange: (value: string) => void;
   onLinksChange: (links: TaskLink[]) => void;
   onImagesChange: (images: Array<{ id: string; imageBase64: string }>) => void;
@@ -2274,6 +2279,11 @@ function QuestionOptionRow({
           ) : null}
         </div>
       ) : null}
+      {blockedMessage ? (
+        <p className="ml-10 mt-2 text-xs font-medium text-danger-fg" role="alert">
+          {blockedMessage}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -2286,6 +2296,30 @@ interface ComposerOption {
 
 function emptyComposerOption(): ComposerOption {
   return { text: '', links: [], images: [] };
+}
+
+// An option with no text is dropped from the submitted question — silently
+// taking its links/images with it unless submit is blocked first.
+function optionDropsContentOnSubmit(option: ComposerOption): boolean {
+  return !option.text.trim() && (option.images.length > 0 || option.links.length > 0);
+}
+
+// Message shown on an option that would otherwise be silently dropped along
+// with its links/images (see `optionDropsContentOnSubmit`), or null once it's
+// no longer blocked.
+function optionBlockMessage(option: ComposerOption): string | null {
+  if (!optionDropsContentOnSubmit(option)) {
+    return null;
+  }
+  const hasImages = option.images.length > 0;
+  const hasLinks = option.links.length > 0;
+  if (hasImages && hasLinks) {
+    return 'Add text to this option, or remove its links and images.';
+  }
+  if (hasImages) {
+    return 'Add text to this option, or remove its images.';
+  }
+  return 'Add text to this option, or remove its links.';
 }
 
 // Seeds the composer from an existing question for edit mode: each option's
@@ -2361,40 +2395,47 @@ function QuestionComposer({
     setOptions((currentOptions) => currentOptions.filter((_, optionIndex) => optionIndex !== index));
   }
 
+  const hasBlockedOption = options.some(optionDropsContentOnSubmit);
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedQuestion = questionText.trim();
     const nonEmptyOptions = options.filter((option) => option.text.trim());
 
-    if (!trimmedQuestion || nonEmptyOptions.length < QUESTION_OPTION_MINIMUM) {
+    if (!trimmedQuestion || nonEmptyOptions.length < QUESTION_OPTION_MINIMUM || hasBlockedOption) {
       return;
     }
 
     setImageUploadError(null);
 
     if (question) {
-      // Edit mode: one atomic batch handles the question fields, the option
-      // image remap/delete/add, and the stale-answer clear, so there is
-      // nothing left to reconcile after it resolves.
+      // Edit mode: the question fields, option-image remap/delete and the
+      // stale-answer clear commit in one small batch; new option images
+      // upload separately afterwards (see `updateQuestion`), so a failed
+      // upload never blocks or corrupts the rest of the edit — it just
+      // surfaces below instead of failing silently.
       setSaving(true);
-      runSafely(
-        updateQuestion(reportId, question.id, {
-          questionText: trimmedQuestion,
-          options: nonEmptyOptions.map((option) => ({
-            text: option.text.trim(),
-            links: option.links,
-            keepImageIds: option.images
-              .filter((image) => !image.id.startsWith(LOCAL_IMAGE_PREFIX))
-              .map((image) => image.id),
-            newImages: option.images
-              .filter((image) => image.id.startsWith(LOCAL_IMAGE_PREFIX))
-              .map((image) => image.imageBase64),
-          })),
+      updateQuestion(reportId, question.id, {
+        questionText: trimmedQuestion,
+        options: nonEmptyOptions.map((option) => ({
+          text: option.text.trim(),
+          links: option.links,
+          keepImageIds: option.images
+            .filter((image) => !image.id.startsWith(LOCAL_IMAGE_PREFIX))
+            .map((image) => image.id),
+          newImages: option.images
+            .filter((image) => image.id.startsWith(LOCAL_IMAGE_PREFIX))
+            .map((image) => image.imageBase64),
+        })),
+      })
+        .then(() => onSaved?.())
+        .catch((caughtError) => {
+          console.error('Question update failed', caughtError);
+          setImageUploadError(
+            caughtError instanceof Error ? caughtError.message : 'Question could not be saved. Please try again.',
+          );
         })
-          .then(() => onSaved?.())
-          .finally(() => setSaving(false)),
-        'Question update failed',
-      );
+        .finally(() => setSaving(false));
       return;
     }
 
@@ -2482,6 +2523,7 @@ function QuestionComposer({
             links={option.links}
             images={option.images}
             canRemove={options.length > QUESTION_OPTION_MINIMUM}
+            blockedMessage={optionBlockMessage(option)}
             onChange={(value) => updateOption(index, value)}
             onLinksChange={(links) => updateOptionLinks(index, links)}
             onImagesChange={(images) => updateOptionImages(index, images)}
@@ -2521,7 +2563,8 @@ function QuestionComposer({
             disabled={
               saving ||
               !questionText.trim() ||
-              options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM
+              options.filter((option) => option.text.trim()).length < QUESTION_OPTION_MINIMUM ||
+              hasBlockedOption
             }
           >
             {isEditing ? (saving ? 'Saving...' : 'Save changes') : 'Add question'}
@@ -2532,7 +2575,15 @@ function QuestionComposer({
   );
 }
 
-function QuestionCard({ reportId, question }: { reportId: string; question: QuestionWithId }) {
+function QuestionCard({
+  reportId,
+  question,
+  leadNotes,
+}: {
+  reportId: string;
+  question: QuestionWithId;
+  leadNotes: LeadNoteWithId[];
+}) {
   const [editing, setEditing] = useState(false);
   const isAnswered = question.selectedAnswer !== undefined;
 
@@ -2582,6 +2633,7 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
           ) : null
         }
       />
+      <LeadNotesReadOnly notes={leadNotes} />
     </article>
   );
 }
@@ -2589,10 +2641,12 @@ function QuestionCard({ reportId, question }: { reportId: string; question: Ques
 function QuestionsPanel({
   reportId,
   questions = [],
+  leadNotesByTask,
   onAddQuestion,
 }: {
   reportId: string;
   questions?: QuestionWithId[];
+  leadNotesByTask: Map<string, LeadNoteWithId[]>;
   onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
 }) {
   // null means "not toggled yet": the panel then starts open only when there
@@ -2642,7 +2696,12 @@ function QuestionsPanel({
           </p>
           <QuestionComposer reportId={reportId} onAddQuestion={onAddQuestion} />
           {questions.map((question) => (
-            <QuestionCard key={question.id} reportId={reportId} question={question} />
+            <QuestionCard
+              key={question.id}
+              reportId={reportId}
+              question={question}
+              leadNotes={leadNotesByTask.get(question.id) ?? []}
+            />
           ))}
         </div>
       ) : null}
@@ -2750,7 +2809,12 @@ export function EditableReport({
         onAddQuestion={handleAddQuestion}
         showHeading={showWorkHeading}
       />
-      <QuestionsPanel reportId={reportId} questions={reportTree.questions} onAddQuestion={handleAddQuestion} />
+      <QuestionsPanel
+        reportId={reportId}
+        questions={reportTree.questions}
+        leadNotesByTask={leadNotesByTask}
+        onAddQuestion={handleAddQuestion}
+      />
     </>
   );
 }
