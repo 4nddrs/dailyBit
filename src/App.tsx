@@ -142,7 +142,7 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
   return (
     <div className="min-h-screen bg-canvas-inset">
       <header className="sticky top-0 z-10 border-b border-line bg-canvas-subtle">
-        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6">
+        <div className="mx-auto flex max-w-screen-2xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6 lg:px-8">
           <div className="flex items-center gap-2 text-sm">
             <Wordmark size="sm" />
             <span className="font-semibold text-fg">DailyBit</span>
@@ -165,7 +165,7 @@ function AppShell({ user, profile, signOut }: AppShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 md:px-6">
+      <main className="mx-auto max-w-screen-2xl px-4 py-6 md:px-6 lg:px-8">
         {profile?.role === 'lead' ? (
           <LeadView leadUserId={user.uid} />
         ) : (
