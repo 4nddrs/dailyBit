@@ -1,55 +1,62 @@
 /** @type {import('tailwindcss').Config} */
+
+// Solid tokens expose RGB channels so opacity modifiers (e.g. `bg-accent-emphasis/40`) keep working.
+const channel = (name) => `rgb(var(--color-${name}) / <alpha-value>)`;
+// Muted tokens already carry their own alpha, so they resolve to a full color value.
+const muted = (name) => `var(--color-${name})`;
+
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
         canvas: {
-          DEFAULT: '#0d1117',
-          subtle: '#151b23',
-          inset: '#010409',
+          DEFAULT: channel('canvas'),
+          subtle: channel('canvas-subtle'),
+          inset: channel('canvas-inset'),
         },
         line: {
-          DEFAULT: '#3d444d',
-          muted: '#3d444db3',
+          DEFAULT: channel('line'),
+          muted: muted('line-muted'),
         },
         fg: {
-          DEFAULT: '#f0f6fc',
-          muted: '#9198a1',
-          onEmphasis: '#ffffff',
+          DEFAULT: channel('fg'),
+          muted: channel('fg-muted'),
+          onEmphasis: channel('fg-on-emphasis'),
         },
         accent: {
-          fg: '#4493f8',
-          emphasis: '#1f6feb',
-          muted: '#388bfd1a',
+          fg: channel('accent-fg'),
+          emphasis: channel('accent-emphasis'),
+          muted: muted('accent-muted'),
         },
         success: {
-          fg: '#3fb950',
-          emphasis: '#238636',
-          hover: '#29903b',
-          muted: '#2ea04326',
+          fg: channel('success-fg'),
+          emphasis: channel('success-emphasis'),
+          hover: channel('success-hover'),
+          muted: muted('success-muted'),
         },
         danger: {
-          fg: '#f85149',
-          emphasis: '#da3633',
-          muted: '#f851491a',
+          fg: channel('danger-fg'),
+          emphasis: channel('danger-emphasis'),
+          muted: muted('danger-muted'),
         },
         attention: {
-          fg: '#d29922',
-          emphasis: '#9e6a03',
-          muted: '#bb800926',
+          fg: channel('attention-fg'),
+          emphasis: channel('attention-emphasis'),
+          muted: muted('attention-muted'),
         },
         done: {
-          fg: '#ab7df8',
-          emphasis: '#8957e5',
-          muted: '#ab7df826',
+          fg: channel('done-fg'),
+          emphasis: channel('done-emphasis'),
+          muted: muted('done-muted'),
         },
         control: {
-          DEFAULT: '#212830',
-          hover: '#262c36',
+          DEFAULT: channel('control'),
+          hover: channel('control-hover'),
         },
         neutral: {
-          muted: '#656c7633',
+          muted: muted('neutral-muted'),
         },
       },
     },

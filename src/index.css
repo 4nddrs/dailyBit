@@ -4,8 +4,36 @@
 
 @layer base {
   :root {
-    color: #f0f6fc;
-    background-color: #010409;
+    --color-canvas: 13 17 23;
+    --color-canvas-subtle: 21 27 35;
+    --color-canvas-inset: 1 4 9;
+    --color-line: 61 68 77;
+    --color-line-muted: rgb(61 68 77 / 0.7);
+    --color-fg: 240 246 252;
+    --color-fg-muted: 145 152 161;
+    --color-fg-on-emphasis: 255 255 255;
+    --color-accent-fg: 68 147 248;
+    --color-accent-emphasis: 31 111 235;
+    --color-accent-muted: rgb(56 139 253 / 0.1);
+    --color-success-fg: 63 185 80;
+    --color-success-emphasis: 35 134 54;
+    --color-success-hover: 41 144 59;
+    --color-success-muted: rgb(46 160 67 / 0.15);
+    --color-danger-fg: 248 81 73;
+    --color-danger-emphasis: 218 54 51;
+    --color-danger-muted: rgb(248 81 73 / 0.1);
+    --color-attention-fg: 210 153 34;
+    --color-attention-emphasis: 158 106 3;
+    --color-attention-muted: rgb(187 128 9 / 0.15);
+    --color-done-fg: 171 125 248;
+    --color-done-emphasis: 137 87 229;
+    --color-done-muted: rgb(171 125 248 / 0.15);
+    --color-control: 33 40 48;
+    --color-control-hover: 38 44 54;
+    --color-neutral-muted: rgb(101 108 118 / 0.2);
+
+    color: rgb(var(--color-fg));
+    background-color: rgb(var(--color-canvas-inset));
     color-scheme: dark;
     font-family:
       Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -14,6 +42,38 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  :root[data-theme='light'] {
+    --color-canvas: 255 255 255;
+    --color-canvas-subtle: 246 248 250;
+    --color-canvas-inset: 246 248 250;
+    --color-line: 209 217 224;
+    --color-line-muted: rgb(209 217 224 / 0.7);
+    --color-fg: 31 35 40;
+    --color-fg-muted: 89 99 110;
+    --color-fg-on-emphasis: 255 255 255;
+    --color-accent-fg: 9 105 218;
+    --color-accent-emphasis: 9 105 218;
+    --color-accent-muted: rgb(84 174 255 / 0.2);
+    --color-success-fg: 26 127 55;
+    --color-success-emphasis: 31 136 61;
+    --color-success-hover: 28 129 57;
+    --color-success-muted: rgb(74 194 107 / 0.2);
+    --color-danger-fg: 209 36 47;
+    --color-danger-emphasis: 207 34 46;
+    --color-danger-muted: rgb(255 129 130 / 0.2);
+    --color-attention-fg: 154 103 0;
+    --color-attention-emphasis: 154 103 0;
+    --color-attention-muted: rgb(212 167 44 / 0.2);
+    --color-done-fg: 130 80 223;
+    --color-done-emphasis: 130 80 223;
+    --color-done-muted: rgb(194 151 255 / 0.2);
+    --color-control: 246 248 250;
+    --color-control-hover: 239 242 245;
+    --color-neutral-muted: rgb(175 184 193 / 0.2);
+
+    color-scheme: light;
   }
 
   body {

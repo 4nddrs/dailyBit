@@ -2015,7 +2015,7 @@ function QuestionCard({
             className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
               isAnswered
                 ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-                : 'border-teal-500/40 bg-teal-400/10 text-teal-300'
+                : 'border-teal-500/40 bg-teal-400/10 text-teal-700 dark:text-teal-300'
             }`}
           >
             {isAnswered ? 'Answered' : 'Needs your answer'}
