@@ -16,6 +16,12 @@ export function useLeadQuestionCarryoversForDate(date: string): UseLeadQuestionC
 
   useEffect(() => {
     let cancelled = false;
+    // Unlike `useAssignmentsForDate`, this resets the list (not just
+    // `loading`) on every date change: carried questions are labeled by
+    // origin date and grouped by developer for the currently viewed date, so
+    // keeping the previous date's list visible while the new one loads
+    // would show stale entries under the wrong developer/date.
+    setCarriedQuestions([]);
     setLoading(true);
 
     const unsubscribe = subscribeLeadQuestionCarryoversForDate(

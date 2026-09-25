@@ -1217,22 +1217,33 @@ export async function updateLeadQuestion(
   await batch.commit();
 }
 
-// Firestore rejects undefined field values, so `answerLinks` is only included
-// when the caller actually passed it. `answeredDate` is the date string of
-// the day view the answer was saved from (mirrors `closeAssignment`'s
-// `closedDate`); both the developer answering and the lead editing an
-// already-answered question on their behalf pass it. It's stamped onto the
-// carry-over pointer best-effort, purely as a cheap prefilter for
+// Best-effort: stamps today's real local date (never the day view the
+// caller happens to be looking at — answering an earlier date's question
+// must still record when it was actually answered) onto the carry-over
+// pointer's `answeredDate`, from every path that answers a lead question.
+// This is purely a cheap prefilter for
 // `subscribeLeadQuestionCarryoversFromQuery` to skip subscribing to a
 // long-answered question — visibility itself is decided from the question
-// doc's own `answeredAt` (see `isCarriedLeadQuestionVisible`), so a failure
-// here (e.g. an older question with no pointer — `updateDoc` on a missing
-// doc rejects, caught below) can never hide or wrongly show a question.
+// doc's own `answeredAt` (see `isCarriedLeadQuestionVisible`), so using the
+// real "now" here (instead of a view date threaded in from the caller) is
+// what keeps the prefilter and the real visibility check from ever
+// disagreeing. A failure (e.g. an older question with no pointer —
+// `updateDoc` on a missing doc rejects, caught here) can never hide or
+// wrongly show a question either way.
+async function stampLeadQuestionCarryoverAnswered(reportId: string, questionId: string): Promise<void> {
+  try {
+    await updateDoc(leadQuestionCarryoverDoc(reportId, questionId), { answeredDate: todayDateString() });
+  } catch (error) {
+    console.error('Lead question carry-over pointer update failed', error);
+  }
+}
+
+// Firestore rejects undefined field values, so `answerLinks` is only included
+// when the caller actually passed it.
 export async function answerLeadQuestion(
   reportId: string,
   questionId: string,
   answer: AnswerLeadQuestionInput,
-  answeredDate?: string,
 ): Promise<void> {
   const payload: Record<string, unknown> = { answeredAt: serverTimestamp() };
 
@@ -1246,16 +1257,7 @@ export async function answerLeadQuestion(
   }
 
   await updateDoc(leadQuestionDoc(reportId, questionId), payload);
-
-  if (!answeredDate) {
-    return;
-  }
-
-  try {
-    await updateDoc(leadQuestionCarryoverDoc(reportId, questionId), { answeredDate });
-  } catch (error) {
-    console.error('Lead question carry-over pointer update failed', error);
-  }
+  await stampLeadQuestionCarryoverAnswered(reportId, questionId);
 }
 
 // Mirrors addTaskImage: an image on an otherwise-unanswered text question
@@ -1270,6 +1272,7 @@ export async function addLeadQuestionAnswerImage(
     createdAt: serverTimestamp(),
   });
   await updateDoc(leadQuestionDoc(reportId, questionId), { answeredAt: serverTimestamp() });
+  await stampLeadQuestionCarryoverAnswered(reportId, questionId);
   return ref.id;
 }
 
@@ -1389,8 +1392,18 @@ function subscribeLeadQuestionCarryoversFromQuery(
   const questions = new Map<string, LeadQuestion>();
   const questionImages = new Map<string, TaskImageWithId[]>();
   const questionUnsubscribes = new Map<string, Unsubscribe>();
+  // Pointer ids whose origin-question subscription hasn't delivered its
+  // first snapshot (or error) yet. `emit` is held back while any are
+  // pending, so the very first callback after a pointers-query change never
+  // fires with an incomplete (or empty) list — a flash the hooks would
+  // otherwise read as "loaded, nothing here" before the real list arrives.
+  const pendingFirstSnapshot = new Set<string>();
 
   const emit = () => {
+    if (pendingFirstSnapshot.size > 0) {
+      return;
+    }
+
     const results: CarriedLeadQuestion[] = [];
 
     pointers.forEach((pointer, pointerId) => {
@@ -1418,6 +1431,10 @@ function subscribeLeadQuestionCarryoversFromQuery(
     questionImages.delete(pointerId);
     questionUnsubscribes.get(pointerId)?.();
     questionUnsubscribes.delete(pointerId);
+    // A pointer that stops being subscribable before its question ever
+    // resolved (prefilter now fails, or the pointer itself disappeared)
+    // must not leave `emit` blocked forever.
+    pendingFirstSnapshot.delete(pointerId);
   };
 
   const pointersUnsubscribe = onSnapshot(
@@ -1437,6 +1454,15 @@ function subscribeLeadQuestionCarryoversFromQuery(
         }
 
         if (!questionUnsubscribes.has(pointerId)) {
+          pendingFirstSnapshot.add(pointerId);
+          let firstSnapshotDelivered = false;
+          const resolveFirstSnapshot = () => {
+            if (!firstSnapshotDelivered) {
+              firstSnapshotDelivered = true;
+              pendingFirstSnapshot.delete(pointerId);
+            }
+          };
+
           const unsubscribeQuestion = subscribeLeadQuestionWithImages(
             pointer.reportId,
             pointer.questionId,
@@ -1448,9 +1474,14 @@ function subscribeLeadQuestionCarryoversFromQuery(
                 questions.delete(pointerId);
                 questionImages.delete(pointerId);
               }
+              resolveFirstSnapshot();
               emit();
             },
-            onError,
+            (error) => {
+              resolveFirstSnapshot();
+              emit();
+              onError?.(error);
+            },
           );
           questionUnsubscribes.set(pointerId, unsubscribeQuestion);
         }

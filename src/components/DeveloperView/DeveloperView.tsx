@@ -1182,19 +1182,15 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
   );
 }
 
-// `answeredDate` is the date string of the day view this card is shown on
-// (omitted for a task-anchored question, which never carries over — see
-// `answerLeadQuestion`); `originDate` is set only for a carried-over
-// report-level question, and shows an "Asked on ..." label above it.
+// `originDate` is set only for a carried-over report-level question, and
+// shows an "Asked on ..." label above it.
 function LeadQuestionCard({
   reportId,
   question,
-  answeredDate,
   originDate,
 }: {
   reportId: string;
   question: LeadQuestionWithId;
-  answeredDate?: string;
   originDate?: string;
 }) {
   const isText = question.kind === 'text';
@@ -1238,7 +1234,7 @@ function LeadQuestionCard({
     setSubmittingText(true);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer, answerLinks }, answeredDate);
+      await answerLeadQuestion(reportId, question.id, { answerText: trimmedAnswer, answerLinks });
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1253,7 +1249,7 @@ function LeadQuestionCard({
     setSubmittingText(true);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { answerText: suggestion, answerLinks }, answeredDate);
+      await answerLeadQuestion(reportId, question.id, { answerText: suggestion, answerLinks });
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1267,7 +1263,7 @@ function LeadQuestionCard({
     setSubmittingIndex(index);
     setAnswerError(null);
     try {
-      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index }, answeredDate);
+      await answerLeadQuestion(reportId, question.id, { selectedAnswer: index });
       setEditing(false);
     } catch (caughtError) {
       console.error('Lead question answer failed', caughtError);
@@ -1279,12 +1275,7 @@ function LeadQuestionCard({
 
   function updateAnswerLinks(nextLinks: TaskLink[]) {
     runSafely(
-      answerLeadQuestion(
-        reportId,
-        question.id,
-        { answerText: question.answerText ?? '', answerLinks: nextLinks },
-        answeredDate,
-      ),
+      answerLeadQuestion(reportId, question.id, { answerText: question.answerText ?? '', answerLinks: nextLinks }),
       'Lead question answer links save failed',
     );
   }
@@ -2827,12 +2818,11 @@ export function EditableReport({
                     key={question.id}
                     reportId={question.originReportId}
                     question={question}
-                    answeredDate={date}
                     originDate={question.originDate}
                   />
                 ))}
                 {reportLevelLeadQuestions.map((question) => (
-                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} answeredDate={date} />
+                  <LeadQuestionCard key={question.id} reportId={reportId} question={question} />
                 ))}
               </div>
             ) : null}

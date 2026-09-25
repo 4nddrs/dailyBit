@@ -25,6 +25,12 @@ export function useMyLeadQuestionCarryovers(
     }
 
     let cancelled = false;
+    // Unlike `useMyAssignments`, this resets the list (not just `loading`)
+    // on every userId/date change: carried questions are labeled by origin
+    // date and sorted for the currently viewed date, so keeping the
+    // previous date's list visible while the new one loads would show
+    // stale entries under the wrong "Asked on" framing.
+    setCarriedQuestions([]);
     setLoading(true);
 
     const unsubscribe = subscribeLeadQuestionCarryoversForAssignee(
