@@ -284,7 +284,6 @@ function Header({
             className="rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none focus:border-accent-emphasis focus:ring-1 focus:ring-accent-emphasis"
             type="date"
             value={date}
-            max={todayDateString()}
             onChange={(event) => {
               if (event.target.value) {
                 onDateChange(event.target.value);
@@ -1945,13 +1944,14 @@ function SectionCard({
             ↓
           </button>
         </div>
-        <button
-          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100"
-          type="button"
-          onClick={() => runSafely(removeSection(reportId, section.id), 'Section remove failed')}
-        >
-          Remove
-        </button>
+        <div className="shrink-0 md:opacity-0 md:group-hover/section:opacity-100 md:group-focus-within/section:opacity-100">
+          <IconButton
+            icon={<TrashIcon />}
+            label="Remove section"
+            danger
+            onClick={() => runSafely(removeSection(reportId, section.id), 'Section remove failed')}
+          />
+        </div>
       </div>
 
       {itemOrderError ? (
@@ -2249,14 +2249,7 @@ function QuestionOptionRow({
           loading={optionPolish.loading}
           onClick={() => void optionPolish.trigger(value)}
         />
-        <button
-          className="rounded-md px-2 py-1 text-xs font-medium text-danger-fg transition hover:bg-danger-muted hover:text-danger-fg disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          disabled={!canRemove}
-          onClick={onRemove}
-        >
-          Remove
-        </button>
+        <IconButton icon={<TrashIcon />} label="Remove option" danger disabled={!canRemove} onClick={onRemove} />
       </div>
       <PolishSuggestionPanel
         loading={optionPolish.loading}
