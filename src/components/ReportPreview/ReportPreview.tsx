@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { subscribeAssignmentUpdate, subscribeLatestAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
+import { TaskScoreBadge } from '../TaskScoreBadge';
 import {
   AssignmentUpdateDisplay,
   carriedLeadQuestionLabel,
@@ -17,6 +18,7 @@ import type {
   AssignmentWithId,
   CarriedLeadQuestion,
   LeadNoteWithId,
+  TaskScoreWithId,
   LeadQuestionWithId,
   QuestionWithId,
   ReportTree,
@@ -66,11 +68,13 @@ function PreviewTaskCard({
   task,
   letter,
   notes,
+  score,
   questions,
 }: {
   task: TaskWithId;
   letter: string;
   notes: LeadNoteWithId[];
+  score: TaskScoreWithId | null;
   questions: LeadQuestionWithId[];
 }) {
   return (
@@ -91,6 +95,7 @@ function PreviewTaskCard({
 
       <LeadQuestionBlock questions={questions} />
       <LeadNoteBlock notes={notes} />
+      {score ? <TaskScoreBadge score={score} label="Lead score" /> : null}
     </article>
   );
 }
@@ -99,11 +104,13 @@ function PreviewSectionCard({
   section,
   number,
   notesByTask,
+  scoresByTask,
   questionsByTask,
 }: {
   section: SectionWithTasks;
   number: number;
   notesByTask: Map<string, LeadNoteWithId[]>;
+  scoresByTask: Map<string, TaskScoreWithId>;
   questionsByTask: Map<string, LeadQuestionWithId[]>;
 }) {
   // Same interleaved task/question ordering as Developer View and Lead View,
@@ -131,6 +138,7 @@ function PreviewSectionCard({
                 task={item.task}
                 letter={taskLetters.get(item.id) ?? ''}
                 notes={notesByTask.get(item.id) ?? []}
+                score={scoresByTask.get(item.id) ?? null}
                 questions={questionsByTask.get(item.id) ?? []}
               />
             ) : (
@@ -296,6 +304,11 @@ export function ReportPreview({
     return grouped;
   }, [notes]);
 
+  const scoresByTask = useMemo(
+    () => new Map((reportTree?.taskScores ?? []).map((score) => [score.id, score])),
+    [reportTree?.taskScores],
+  );
+
   const questionsByTask = useMemo(() => {
     const grouped = new Map<string, LeadQuestionWithId[]>();
     leadQuestions.forEach((question) => {
@@ -354,6 +367,7 @@ export function ReportPreview({
                 section={section}
                 number={sectionIndex + 1}
                 notesByTask={notesByTask}
+                scoresByTask={scoresByTask}
                 questionsByTask={questionsByTask}
               />
             ))}

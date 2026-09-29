@@ -99,6 +99,7 @@ reports/{userId}_{date}
   questions/{questionId}
     images/{imageId}
   leadNotes/{noteId}
+  taskScores/{taskId}
   leadQuestions/{questionId}
     images/{imageId}
 ```
@@ -269,6 +270,15 @@ service cloud.firestore {
         allow delete: if isLead() || ownsExistingReport(reportId);
       }
 
+      // The lead's writing-quality score for a task (doc id = task id). Read
+      // mirrors leadNotes because the shared report subscription listens to it
+      // for every viewer; Developer View never renders it.
+      match /taskScores/{taskId} {
+        allow read: if ownsExistingReport(reportId) || isLead();
+        allow create, update: if isLead();
+        allow delete: if isLead() || ownsExistingReport(reportId);
+      }
+
       match /leadQuestions/{questionId} {
         allow read: if ownsExistingReport(reportId) || isLead();
         allow create: if isLead();
@@ -379,6 +389,7 @@ Security intent:
 - **Lead edit mode:** with the "Edit mode" switch on, LeadView renders the same `EditableReport` editor DeveloperView uses, letting the lead fix a developer's sections, tasks, links, images, dev questions (and their options/images), and assignment updates in place. The rules below grant `isLead()` every dev-owned write path the editor touches, so those writes succeed for the lead exactly as they do for the report owner. The editor itself never creates a report: a developer with no report for the date stays read-only in edit mode.
 - **Lead tools panel — create for chosen developers:** the lead's Question/Note/Task actions (in the "Lead tools" panel under the Team list) can target a developer who has no report yet for the selected date. In that case the client calls `ensureReport`/`ensureReportWithStatus` for that developer before writing the note/question, which needs the lead to be able to create the developer's report doc. `reports` `create` therefore also allows `isLead()`, tightly scoped: the new doc's `userId` must belong to a real `role: 'dev'` user, and the report id must be exactly `${userId}_${date}` (the `reportIdFor` convention), so the lead can only ever create that one developer's report for that one date, never an arbitrary document. If the following note/question write then fails for a report the lead's own call just created, the client best-effort deletes that empty report so the developer doesn't end up looking "reported" with nothing in it; `reports` `delete` therefore also allows `isLead()` for any report — rules can't verify "created in this same client operation" across requests, so this is scoped only by the client only ever calling it right after its own create.
 - Only users with `role: 'lead'` can create or update `leadNotes`; the report owner may also delete them so removing a task or section cleans up its lead feedback.
+- Only users with `role: 'lead'` can create or update `taskScores` (one per task, doc id = task id); the report owner may read and delete them (task/section cleanup) but the developer UI never shows them.
 - The report owner or the lead (editing in place) can create or delete `questions`, and edit a question's `questionText`, `options`, `optionDetails`, and `order`; only the lead can additionally *set* `selectedAnswer`, `answeredBy`, and `answeredAt` — the owner may only *clear* all three together (a stale answer after an option edit), never set one, since a write that touches them is rejected unless the resulting document has none of them. A dev question's option image attachments follow the same read shape as task images: the report owner or the lead creates or deletes them (also cascaded by `removeQuestion`), and either may update an image's `optionIndex` alone, to remap it to its option's new index when an edit removes or reorders options instead of deleting and recreating the image.
 - Only users with `role: 'lead'` can create `leadQuestions`; the lead or the report owner may delete them (task/section cleanup); the report owner may update a `leadQuestions` document only to set `answerText`, `selectedAnswer`, `answeredAt`, and `answerLinks`, while the lead may update any field (unrestricted, since it also owns question creation). A `leadQuestions` answer's `images` follow the same read shape as task images: the report owner or the lead (answering on the owner's behalf) creates them, and either can delete them, since `removeLeadQuestion` also cascades to them.
 - Only users with `role: 'lead'` can read or write `settings/team`, which stores the lead's chosen developer ordering for the "Team" list and the reports rollup.
@@ -449,6 +460,7 @@ Security intent:
 | `reports/{reportId}/questions/{questionId}` | Developer-to-lead multiple-choice questions and the lead's selected answer. `optionDetails?: { links }[]` is parallel to `options` (only stored when at least one option has a link). Optional `sectionId`/`order` anchor the question inside a section, interleaved with its tasks; omitted (or empty `sectionId`) means a report-level question. |
 | `reports/{reportId}/questions/{questionId}/images/{imageId}` | An option's image attachment: `{ imageBase64, optionIndex, createdAt }`; one doc per image, same one-doc-per-image shape as task images. |
 | `reports/{reportId}/leadNotes/{noteId}` | The lead's private notes for a report or task; `targetTaskId` is empty for report-level notes. |
+| `reports/{reportId}/taskScores/{taskId}` | The lead's writing-quality score for a task: `{ level: 'unclear' \| 'vague' \| 'adequate' \| 'clear' \| 'excellent', reason, isCustomReason, scoredBy, sectionId, taskId, updatedAt }`. Doc id is the task id, so re-scoring overwrites. Shown in Lead View only. |
 | `reports/{reportId}/leadQuestions/{questionId}` | The lead's question to the report owner (`kind: 'text' | 'options'`) and the owner's answer; `taskId`/`sectionId` are empty for report-level questions. A `'text'` answer may also include `answerLinks`. |
 | `reports/{reportId}/leadQuestions/{questionId}/images/{imageId}` | Image attached to a `'text'` lead question's answer; same one-doc-per-image shape as task images. |
 | `leadQuestionCarryovers/{reportId}_{questionId}` | Pointer for a `leadQuestions` doc, report-level or task-anchored: `{ userId, reportId, questionId, date, answeredDate?, createdAt }`, where `date` is the origin report's date and `userId` is the recipient developer. On a later date D, the client subscribes to the origin question when `date < D` and (`answeredDate` is unset or its "visible through" date `>= D`) — a cheap prefilter to skip a long-answered question — then decides real visibility from the origin question's own `answeredAt`: unanswered, or its "visible through" date `>= D`. The "visible through" date is the answer's local calendar date for the developer's own view, or the next business day after it (`nextBusinessDate`, skipping Saturday/Sunday) for the lead's view. `answeredAt`/`answeredDate` are cleared (not just left set) the moment an edit leaves the question with no answer text, links, or images, so an emptied-out answer starts carrying over again. A task-anchored one also fetches its origin task's description (`reports/{reportId}/sections/{sectionId}/tasks/{taskId}`), one-time, for the "About task: ..." context on the carried item. Keeps an unanswered question showing on later days until answered, independent of `reports`, same as `assignments`. |

@@ -25,7 +25,9 @@ import {
   removeLeadNote,
   removeLeadQuestion,
   removeLeadQuestionAnswerImage,
+  removeTaskScore,
   removeUntouchedReport,
+  saveTaskScore,
   saveTeamOrder,
   updateAssignment,
   updateLeadNote,
@@ -33,6 +35,7 @@ import {
 } from '../../services/firestore';
 import { compressTaskImage, EditableReport } from '../DeveloperView/DeveloperView';
 import { ImageLightbox } from '../ImageLightbox';
+import { TaskScoreBadge } from '../TaskScoreBadge';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
 import { useAssignmentUpdates } from '../../hooks/useAssignmentUpdates';
@@ -43,6 +46,14 @@ import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import { taskLetter } from '../../utils/numbering';
 import { mergeSectionItems, taskLettersById } from '../../utils/sectionItems';
+import {
+  OTHER_REASON_LABEL,
+  TASK_SCORE_LEVELS,
+  TASK_SCORE_LEVEL_LABELS,
+  TASK_SCORE_LEVEL_STYLES,
+  TASK_SCORE_REASONS,
+  TASK_SCORE_REASON_LIMIT,
+} from '../../utils/taskScore';
 import { orderDevelopers, orderReportsByTeam } from '../../utils/team';
 import type {
   AssignmentUpdateWithImages,
@@ -55,6 +66,8 @@ import type {
   ReportTree,
   SectionWithTasks,
   TaskLink,
+  TaskScoreLevel,
+  TaskScoreWithId,
   TaskWithId,
   UserProfileWithId,
 } from '../../types';
@@ -817,19 +830,22 @@ function LeadTaskQuestionsOnly({
   );
 }
 
-type LeadActionKind = 'question' | 'note' | 'task';
+type LeadActionKind = 'question' | 'note' | 'task' | 'score';
 
 const leadActionStyles: Record<LeadActionKind, string> = {
   question:
     'border-done-emphasis/60 bg-done-muted text-done-fg hover:border-done-emphasis hover:bg-done-emphasis/40 aria-pressed:border-done-emphasis aria-pressed:bg-done-emphasis/40',
   note: 'border-attention-emphasis/60 bg-attention-muted text-attention-fg hover:border-attention-emphasis hover:bg-attention-emphasis/40 aria-pressed:border-attention-emphasis aria-pressed:bg-attention-emphasis/40',
   task: 'border-accent-emphasis/60 bg-accent-muted text-accent-fg hover:border-accent-emphasis hover:bg-accent-emphasis/40 aria-pressed:border-accent-emphasis aria-pressed:bg-accent-emphasis/40',
+  score:
+    'border-success-emphasis/60 bg-success-muted text-success-fg hover:border-success-emphasis hover:bg-success-emphasis/40 aria-pressed:border-success-emphasis aria-pressed:bg-success-emphasis/40',
 };
 
 const leadActionLabels: Record<LeadActionKind, string> = {
   question: 'Ask a question',
   note: 'Add a note',
   task: 'Assign a task',
+  score: 'Score the task text',
 };
 
 function LeadActionIcon({ kind }: { kind: LeadActionKind }) {
@@ -856,6 +872,10 @@ function LeadActionIcon({ kind }: { kind: LeadActionKind }) {
           <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="1.5" />
           <path d="M5 6.5h6M5 9.5h4" />
         </>
+      ) : kind === 'score' ? (
+        <>
+          <path d="M3 13V9.5M8 13V3.5M13 13V6.5" />
+        </>
       ) : (
         <>
           <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="1.5" />
@@ -866,7 +886,7 @@ function LeadActionIcon({ kind }: { kind: LeadActionKind }) {
   );
 }
 
-// Always-visible icon button for the lead's Question / Note / Task actions.
+// Always-visible icon button for the lead's Question / Note / Task / Score actions.
 // `active` marks the button whose composer is currently open.
 function LeadActionButton({
   kind,
@@ -998,6 +1018,148 @@ function AutoGrowTextarea({
       className={`block resize-none overflow-hidden ${className}`}
       value={value}
     />
+  );
+}
+
+// Picks a level, then one of that level's reasons (or a custom one). Prefilled
+// from `initial` when re-opened for an existing score.
+function TaskScoreComposer({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: TaskScoreWithId;
+  onSave: (input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean }) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [level, setLevel] = useState<TaskScoreLevel | null>(initial?.level ?? null);
+  // A reason select value: one of the level's reasons, OTHER_REASON_LABEL, or '' (nothing chosen).
+  const [reasonChoice, setReasonChoice] = useState(() => {
+    if (!initial) {
+      return '';
+    }
+    return initial.isCustomReason ? OTHER_REASON_LABEL : initial.reason;
+  });
+  const [customReason, setCustomReason] = useState(initial?.isCustomReason ? initial.reason : '');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isOther = reasonChoice === OTHER_REASON_LABEL;
+  const trimmedCustomReason = customReason.trim();
+  const canSave = level !== null && reasonChoice !== '' && (!isOther || trimmedCustomReason !== '');
+
+  function handleLevelChange(nextLevel: TaskScoreLevel) {
+    if (nextLevel === level) {
+      return;
+    }
+    setLevel(nextLevel);
+    // Reasons are per level, so a canned reason from the old level no longer applies.
+    if (!isOther) {
+      setReasonChoice('');
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!level || !canSave) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSave({
+        level,
+        reason: isOther ? trimmedCustomReason : reasonChoice,
+        isCustomReason: isOther,
+      });
+    } catch (caughtError) {
+      console.error('Task score failed', caughtError);
+      setError('Score could not be saved. Please try again.');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      className="mt-3 rounded-md border-l-2 border-success-emphasis bg-success-muted p-4"
+      onSubmit={handleSubmit}
+    >
+      <fieldset>
+        <legend className="text-xs font-semibold uppercase tracking-wide text-success-fg">
+          How clear is the task text?
+        </legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {TASK_SCORE_LEVELS.map((option) => (
+            <button
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis ${
+                level === option
+                  ? TASK_SCORE_LEVEL_STYLES[option]
+                  : 'border-line bg-control text-fg hover:bg-control-hover'
+              }`}
+              key={option}
+              type="button"
+              aria-pressed={level === option}
+              onClick={() => handleLevelChange(option)}
+            >
+              {TASK_SCORE_LEVEL_LABELS[option]}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      {level ? (
+        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-success-fg">
+          Reason
+          <select
+            className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition focus:border-success-emphasis focus:ring-1 focus:ring-success-muted"
+            value={reasonChoice}
+            onChange={(event) => setReasonChoice(event.target.value)}
+          >
+            <option value="" disabled>
+              Select a reason
+            </option>
+            {TASK_SCORE_REASONS[level].map((reason) => (
+              <option key={reason} value={reason}>
+                {reason}
+              </option>
+            ))}
+            <option value={OTHER_REASON_LABEL}>{OTHER_REASON_LABEL}</option>
+          </select>
+        </label>
+      ) : null}
+
+      {level && isOther ? (
+        <input
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-success-emphasis focus:ring-1 focus:ring-success-muted"
+          type="text"
+          value={customReason}
+          maxLength={TASK_SCORE_REASON_LIMIT}
+          onChange={(event) => setCustomReason(event.target.value)}
+          placeholder="Write your reason"
+          aria-label="Custom reason"
+          autoFocus
+        />
+      ) : null}
+
+      {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+          type="button"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+        <button
+          className="rounded-md bg-success-emphasis px-3 py-1.5 text-sm font-semibold text-fg-onEmphasis transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+          type="submit"
+          disabled={!canSave || submitting}
+        >
+          {submitting ? 'Saving...' : 'Save score'}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -1673,6 +1835,7 @@ function TaskCard({
   letter,
   notes,
   questions,
+  score,
   assignments,
   date,
   updatesByAssignment,
@@ -1681,6 +1844,8 @@ function TaskCard({
   onAddNote,
   onRemoveNote,
   onEditNote,
+  onSaveScore,
+  onRemoveScore,
   onAddQuestion,
   onRemoveQuestion,
   onEditQuestion,
@@ -1695,6 +1860,7 @@ function TaskCard({
   letter: string;
   notes: LeadNoteWithId[];
   questions: LeadQuestionWithId[];
+  score: TaskScoreWithId | null;
   // Assignments created from this task (via the "Task" action below),
   // rendered right here instead of the trailing "Assigned by lead" block —
   // see `ReportCard`'s `assignmentsByTask`.
@@ -1708,6 +1874,12 @@ function TaskCard({
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
   onEditNote: (noteId: string, noteText: string) => Promise<void>;
+  onSaveScore: (
+    taskId: string,
+    sectionId: string,
+    input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean },
+  ) => Promise<void>;
+  onRemoveScore: (taskId: string) => void;
   onAddQuestion: (
     taskId: string,
     sectionId: string,
@@ -1727,10 +1899,10 @@ function TaskCard({
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
 }) {
-  const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | null>(null);
+  const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | 'score' | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  function toggleComposer(composer: 'question' | 'note' | 'task') {
+  function toggleComposer(composer: 'question' | 'note' | 'task' | 'score') {
     setOpenComposer((current) => (current === composer ? null : composer));
   }
 
@@ -1771,6 +1943,7 @@ function TaskCard({
               <LeadActionButton kind="question" active={openComposer === 'question'} onClick={() => toggleComposer('question')} />
               <LeadActionButton kind="note" active={openComposer === 'note'} onClick={() => toggleComposer('note')} />
               <LeadActionButton kind="task" active={openComposer === 'task'} onClick={() => toggleComposer('task')} />
+              <LeadActionButton kind="score" active={openComposer === 'score'} onClick={() => toggleComposer('score')} />
             </div>
           </div>
         </div>
@@ -1793,6 +1966,16 @@ function TaskCard({
           }}
         />
       ) : null}
+      {openComposer === 'score' ? (
+        <TaskScoreComposer
+          initial={score ?? undefined}
+          onSave={async (input) => {
+            await onSaveScore(task.id, sectionId, input);
+            setOpenComposer(null);
+          }}
+          onCancel={() => setOpenComposer(null)}
+        />
+      ) : null}
       {openComposer === 'task' ? (
         <AssignmentComposer
           devs={allDevs}
@@ -1808,6 +1991,17 @@ function TaskCard({
 
       <LeadQuestionBlock reportId={reportId} questions={questions} onRemove={onRemoveQuestion} onEdit={onEditQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} onEdit={onEditNote} />
+      {score && openComposer !== 'score' ? (
+        <TaskScoreBadge
+          score={score}
+          actions={
+            <>
+              <EditButton label="Edit score" onClick={() => setOpenComposer('score')} />
+              <RemoveButton label="Remove score" onClick={() => onRemoveScore(task.id)} />
+            </>
+          }
+        />
+      ) : null}
       {assignments.length > 0 ? (
         <div className="mt-3 divide-y divide-line rounded-md border border-line bg-canvas">
           {assignments.map((assignment) => (
@@ -1842,6 +2036,7 @@ function SectionCard({
   section,
   number,
   notesByTarget,
+  scoresByTask,
   questionsByTarget,
   assignmentsByTask,
   date,
@@ -1852,6 +2047,8 @@ function SectionCard({
   onAddNote,
   onRemoveNote,
   onEditNote,
+  onSaveScore,
+  onRemoveScore,
   onAddQuestion,
   onRemoveQuestion,
   onEditQuestion,
@@ -1864,6 +2061,7 @@ function SectionCard({
   section: SectionWithTasks;
   number: number;
   notesByTarget: Map<string, LeadNoteWithId[]>;
+  scoresByTask: Map<string, TaskScoreWithId>;
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
   assignmentsByTask: Map<string, AssignmentWithId[]>;
   // The currently viewed date, threaded to `TaskCard` for
@@ -1876,6 +2074,12 @@ function SectionCard({
   onAddNote: (targetTaskId: string, noteText: string) => Promise<void>;
   onRemoveNote: (noteId: string) => void;
   onEditNote: (noteId: string, noteText: string) => Promise<void>;
+  onSaveScore: (
+    taskId: string,
+    sectionId: string,
+    input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean },
+  ) => Promise<void>;
+  onRemoveScore: (taskId: string) => void;
   onAddQuestion: (
     taskId: string,
     sectionId: string,
@@ -1924,6 +2128,7 @@ function SectionCard({
                 letter={taskLetters.get(item.id) ?? ''}
                 notes={notesByTarget.get(item.id) ?? []}
                 questions={questionsByTarget.get(item.id) ?? []}
+                score={scoresByTask.get(item.id) ?? null}
                 assignments={assignmentsByTask.get(item.id) ?? []}
                 date={date}
                 updatesByAssignment={updatesByAssignment}
@@ -1932,6 +2137,8 @@ function SectionCard({
                 onAddNote={onAddNote}
                 onRemoveNote={onRemoveNote}
                 onEditNote={onEditNote}
+                onSaveScore={onSaveScore}
+                onRemoveScore={onRemoveScore}
                 onAddQuestion={onAddQuestion}
                 onRemoveQuestion={onRemoveQuestion}
                 onEditQuestion={onEditQuestion}
@@ -2193,6 +2400,11 @@ function ReportCard({
     return groupedNotes;
   }, [notes]);
 
+  const scoresByTask = useMemo(
+    () => new Map((report.taskScores ?? []).map((score) => [score.id, score])),
+    [report.taskScores],
+  );
+
   const questionsByTarget = useMemo(() => {
     const groupedQuestions = new Map<string, LeadQuestionWithId[]>();
     leadQuestions.forEach((question) => {
@@ -2248,6 +2460,20 @@ function ReportCard({
 
   async function handleEditNote(noteId: string, noteText: string) {
     await updateLeadNote(report.id, noteId, noteText);
+  }
+
+  async function handleSaveScore(
+    taskId: string,
+    sectionId: string,
+    input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean },
+  ) {
+    await saveTaskScore(report.id, { ...input, taskId, sectionId, scoredBy: leadUserId });
+  }
+
+  function handleRemoveScore(taskId: string) {
+    removeTaskScore(report.id, taskId).catch((error: unknown) => {
+      console.error('Failed to remove score', error);
+    });
   }
 
   async function handleAddQuestion(
@@ -2421,6 +2647,7 @@ function ReportCard({
                         section={section}
                         number={sectionIndex + 1}
                         notesByTarget={notesByTarget}
+                        scoresByTask={scoresByTask}
                         questionsByTarget={questionsByTarget}
                         assignmentsByTask={assignmentsByTask}
                         date={date}
@@ -2431,6 +2658,8 @@ function ReportCard({
                         onAddNote={handleAddNote}
                         onRemoveNote={handleRemoveNote}
                         onEditNote={handleEditNote}
+                        onSaveScore={handleSaveScore}
+                        onRemoveScore={handleRemoveScore}
                         onAddQuestion={handleAddQuestion}
                         onRemoveQuestion={handleRemoveQuestion}
                         onEditQuestion={handleEditQuestion}

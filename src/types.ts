@@ -86,6 +86,23 @@ export interface LeadNote {
   createdAt: Timestamp;
 }
 
+// The lead's writing-quality rating of one dev task. Stored at
+// `reports/{reportId}/taskScores/{taskId}` (doc id = task id), so re-scoring
+// overwrites the previous score.
+export type TaskScoreLevel = 'unclear' | 'vague' | 'adequate' | 'clear' | 'excellent';
+
+export interface TaskScore {
+  level: TaskScoreLevel;
+  reason: string;
+  // True when `reason` was typed by the lead ("Other") instead of picked
+  // from the level's canned list.
+  isCustomReason: boolean;
+  scoredBy: string;
+  sectionId: string;
+  taskId: string;
+  updatedAt: Timestamp;
+}
+
 export type LeadQuestionKind = 'text' | 'options';
 
 export interface LeadQuestion {
@@ -130,6 +147,10 @@ export interface QuestionWithId extends Question {
 }
 
 export interface LeadNoteWithId extends LeadNote {
+  id: string;
+}
+
+export interface TaskScoreWithId extends TaskScore {
   id: string;
 }
 
@@ -181,6 +202,7 @@ export interface ReportTree extends Report {
   // questions live on that `SectionWithTasks.questions` instead.
   questions?: QuestionWithId[];
   notes?: LeadNoteWithId[];
+  taskScores?: TaskScoreWithId[];
   leadQuestions?: LeadQuestionWithId[];
 }
 

@@ -43,6 +43,8 @@ import type {
   TaskImage,
   TaskImageWithId,
   TaskLink,
+  TaskScore,
+  TaskScoreWithId,
   TaskWithId,
   TeamOrder,
   UserProfile,
@@ -61,6 +63,10 @@ export type CreateQuestionInput = Pick<Question, 'questionText' | 'options'> & {
   order?: number;
 };
 export type CreateLeadNoteInput = Pick<LeadNote, 'noteText' | 'targetTaskId'>;
+export type SaveTaskScoreInput = Pick<
+  TaskScore,
+  'level' | 'reason' | 'isCustomReason' | 'scoredBy' | 'sectionId' | 'taskId'
+>;
 export type CreateLeadQuestionInput = Pick<
   LeadQuestion,
   'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options'
@@ -80,6 +86,7 @@ const collections = {
   images: 'images',
   questions: 'questions',
   leadNotes: 'leadNotes',
+  taskScores: 'taskScores',
   leadQuestions: 'leadQuestions',
   settings: 'settings',
   assignments: 'assignments',
@@ -157,6 +164,15 @@ function leadNotesCollection(reportId: string) {
 
 function leadNoteDoc(reportId: string, noteId: string) {
   return doc(leadNotesCollection(reportId), noteId);
+}
+
+function taskScoresCollection(reportId: string) {
+  return collection(reportDoc(reportId), collections.taskScores);
+}
+
+// The score's doc id is its task id: one score per task, re-scoring overwrites.
+function taskScoreDoc(reportId: string, taskId: string) {
+  return doc(taskScoresCollection(reportId), taskId);
 }
 
 function leadQuestionsCollection(reportId: string) {
@@ -413,6 +429,7 @@ export function subscribeReport(
   const questionImages = new Map<string, Array<TaskImageWithId & { optionIndex: number }>>();
   const questionImageUnsubscribes = new Map<string, Unsubscribe>();
   const notes: LeadNoteWithId[] = [];
+  const taskScores: TaskScoreWithId[] = [];
   const leadQuestionsBase = new Map<string, LeadQuestion>();
   const leadQuestionImages = new Map<string, TaskImageWithId[]>();
   const leadQuestionImageUnsubscribes = new Map<string, Unsubscribe>();
@@ -474,6 +491,7 @@ export function subscribeReport(
       sections: sectionTrees,
       questions: reportLevelQuestions,
       notes: [...notes],
+      taskScores: [...taskScores],
       leadQuestions: leadQuestionTrees,
     });
   };
@@ -619,6 +637,17 @@ export function subscribeReport(
     emit();
   });
 
+  const taskScoresUnsubscribe = onSnapshot(taskScoresCollection(reportId), (snapshot) => {
+    taskScores.length = 0;
+    snapshot.docs.forEach((scoreSnapshot) => {
+      taskScores.push({
+        id: scoreSnapshot.id,
+        ...(scoreSnapshot.data() as TaskScore),
+      });
+    });
+    emit();
+  });
+
   const leadQuestionsUnsubscribe = onSnapshot(leadQuestionsCollection(reportId), (snapshot) => {
     const nextQuestionIds = new Set<string>();
 
@@ -663,6 +692,7 @@ export function subscribeReport(
     sectionsUnsubscribe();
     questionsUnsubscribe();
     notesUnsubscribe();
+    taskScoresUnsubscribe();
     leadQuestionsUnsubscribe();
     taskUnsubscribes.forEach((unsubscribe) => unsubscribe());
     imageUnsubscribes.forEach((unsubscribe) => unsubscribe());
@@ -783,6 +813,8 @@ async function deleteTaskLeadArtifacts(reportId: string, taskId: string) {
   const refsToDelete = [
     ...questionSnapshots.docs.map((questionSnapshot) => questionSnapshot.ref),
     ...noteSnapshots.docs.map((noteSnapshot) => noteSnapshot.ref),
+    // The task's score (doc id = task id); deleting one that doesn't exist is a no-op.
+    taskScoreDoc(reportId, taskId),
     ...questionSnapshots.docs.map((questionSnapshot) => leadQuestionCarryoverDoc(reportId, questionSnapshot.id)),
   ];
 
@@ -1105,6 +1137,18 @@ export function removeLeadNote(reportId: string, noteId: string): Promise<void> 
 
 export function updateLeadNote(reportId: string, noteId: string, noteText: string): Promise<void> {
   return updateDoc(leadNoteDoc(reportId, noteId), { noteText });
+}
+
+// `setDoc` on the task id overwrites, so re-scoring replaces the old score.
+export function saveTaskScore(reportId: string, score: SaveTaskScoreInput): Promise<void> {
+  return setDoc(taskScoreDoc(reportId, score.taskId), {
+    ...score,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export function removeTaskScore(reportId: string, taskId: string): Promise<void> {
+  return deleteDoc(taskScoreDoc(reportId, taskId));
 }
 
 // `origin` (the recipient developer and the report's own date) is used to

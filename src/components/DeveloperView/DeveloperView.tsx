@@ -47,6 +47,7 @@ import type {
   AssignmentWithId,
   CarriedLeadQuestion,
   LeadNoteWithId,
+  TaskScoreWithId,
   LeadQuestionWithId,
   QuestionWithId,
   ReportTree,
@@ -57,6 +58,7 @@ import type {
 } from '../../types';
 import { todayDateString } from '../../types';
 
+import { TaskScoreBadge } from '../TaskScoreBadge';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { taskLetter } from '../../utils/numbering';
 import { mergeSectionItems, taskLettersById, type SectionItem } from '../../utils/sectionItems';
@@ -1528,6 +1530,7 @@ function TaskCard({
   task,
   letter,
   leadNotes,
+  score,
   leadQuestions,
   isFirst,
   isLast,
@@ -1540,6 +1543,7 @@ function TaskCard({
   task: TaskWithId;
   letter: string;
   leadNotes: LeadNoteWithId[];
+  score: TaskScoreWithId | null;
   leadQuestions: LeadQuestionWithId[];
   isFirst: boolean;
   isLast: boolean;
@@ -1752,6 +1756,7 @@ function TaskCard({
       ) : null}
 
       <LeadNotesReadOnly notes={leadNotes} />
+      {score ? <TaskScoreBadge score={score} label="Lead score" /> : null}
       {leadQuestions.length > 0 ? (
         <div className="mt-2 space-y-2">
           {leadQuestions.map((question) => (
@@ -1873,6 +1878,7 @@ function SectionCard({
   section,
   number,
   leadNotesByTask,
+  scoresByTask,
   leadQuestionsByTask,
   isFirst,
   isLast,
@@ -1885,6 +1891,7 @@ function SectionCard({
   section: SectionWithTasks;
   number: number;
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
+  scoresByTask: Map<string, TaskScoreWithId>;
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
   isFirst: boolean;
   isLast: boolean;
@@ -2060,6 +2067,7 @@ function SectionCard({
                 task={item.task}
                 letter={taskLetters.get(item.id) ?? ''}
                 leadNotes={leadNotesByTask.get(item.id) ?? []}
+                score={scoresByTask.get(item.id) ?? null}
                 leadQuestions={leadQuestionsByTask.get(item.id) ?? []}
                 isFirst={itemIndex === 0}
                 isLast={itemIndex === displayedItems.length - 1}
@@ -2129,6 +2137,7 @@ function SectionsList({
   reportId,
   sections,
   leadNotesByTask,
+  scoresByTask,
   leadQuestionsByTask,
   onAddSection,
   onAddQuestion,
@@ -2137,6 +2146,7 @@ function SectionsList({
   reportId: string;
   sections: SectionWithTasks[];
   leadNotesByTask: Map<string, LeadNoteWithId[]>;
+  scoresByTask: Map<string, TaskScoreWithId>;
   leadQuestionsByTask: Map<string, LeadQuestionWithId[]>;
   onAddSection: (section: Section) => Promise<unknown>;
   onAddQuestion: (question: CreateQuestionInput) => Promise<string>;
@@ -2231,6 +2241,7 @@ function SectionsList({
               section={section}
               number={sectionIndex + 1}
               leadNotesByTask={leadNotesByTask}
+              scoresByTask={scoresByTask}
               leadQuestionsByTask={leadQuestionsByTask}
               isFirst={sectionIndex === 0}
               isLast={sectionIndex === displayedSections.length - 1}
@@ -2863,6 +2874,11 @@ export function EditableReport({
     return grouped;
   }, [reportTree.notes]);
 
+  const scoresByTask = useMemo(
+    () => new Map((reportTree.taskScores ?? []).map((score) => [score.id, score])),
+    [reportTree.taskScores],
+  );
+
   const leadQuestionsByTask = useMemo(() => {
     const grouped = new Map<string, LeadQuestionWithId[]>();
     (reportTree.leadQuestions ?? []).forEach((question) => {
@@ -2913,6 +2929,7 @@ export function EditableReport({
         reportId={reportId}
         sections={reportTree.sections}
         leadNotesByTask={leadNotesByTask}
+        scoresByTask={scoresByTask}
         leadQuestionsByTask={leadQuestionsByTask}
         onAddSection={handleAddSection}
         onAddQuestion={handleAddQuestion}
