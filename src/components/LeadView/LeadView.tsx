@@ -6,6 +6,7 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
+  type CSSProperties,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
@@ -50,7 +51,7 @@ import {
   OTHER_REASON_LABEL,
   TASK_SCORE_LEVELS,
   TASK_SCORE_LEVEL_LABELS,
-  TASK_SCORE_LEVEL_STYLES,
+  TASK_SCORE_LEVEL_COLORS,
   TASK_SCORE_REASONS,
   TASK_SCORE_REASON_LIMIT,
 } from '../../utils/taskScore';
@@ -1021,8 +1022,11 @@ function AutoGrowTextarea({
   );
 }
 
-// Picks a level, then one of that level's reasons (or a custom one). Prefilled
-// from `initial` when re-opened for an existing score.
+// Slider for the level, then one of that level's reasons (or a custom one).
+// Prefilled from `initial` when re-opened for an existing score. A new score
+// starts on the middle level (Adequate) so the slider always shows a value;
+// Save stays disabled until a reason is picked, so the lead still has to make
+// a deliberate choice.
 function TaskScoreComposer({
   initial,
   onSave,
@@ -1032,28 +1036,32 @@ function TaskScoreComposer({
   onSave: (input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [level, setLevel] = useState<TaskScoreLevel | null>(initial?.level ?? null);
+  const [level, setLevel] = useState<TaskScoreLevel>(initial?.level ?? 'adequate');
+  // A saved reason that isn't in its level's list (the list changed, or old data) is shown as custom text.
+  const initialIsCustom = initial ? initial.isCustomReason || !TASK_SCORE_REASONS[initial.level].includes(initial.reason) : false;
   // A reason select value: one of the level's reasons, OTHER_REASON_LABEL, or '' (nothing chosen).
   const [reasonChoice, setReasonChoice] = useState(() => {
     if (!initial) {
       return '';
     }
-    return initial.isCustomReason ? OTHER_REASON_LABEL : initial.reason;
+    return initialIsCustom ? OTHER_REASON_LABEL : initial.reason;
   });
-  const [customReason, setCustomReason] = useState(initial?.isCustomReason ? initial.reason : '');
+  const [customReason, setCustomReason] = useState(initial && initialIsCustom ? initial.reason : '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const levelIndex = TASK_SCORE_LEVELS.indexOf(level);
+  const levelColor = TASK_SCORE_LEVEL_COLORS[level];
   const isOther = reasonChoice === OTHER_REASON_LABEL;
   const trimmedCustomReason = customReason.trim();
-  const canSave = level !== null && reasonChoice !== '' && (!isOther || trimmedCustomReason !== '');
+  const canSave = reasonChoice !== '' && (!isOther || trimmedCustomReason !== '');
 
   function handleLevelChange(nextLevel: TaskScoreLevel) {
     if (nextLevel === level) {
       return;
     }
     setLevel(nextLevel);
-    // Reasons are per level, so a canned reason from the old level no longer applies.
+    // Reasons are per level: keep a custom reason, drop a canned one that no longer applies.
     if (!isOther) {
       setReasonChoice('');
     }
@@ -1061,7 +1069,7 @@ function TaskScoreComposer({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!level || !canSave) {
+    if (!canSave) {
       return;
     }
 
@@ -1081,57 +1089,63 @@ function TaskScoreComposer({
   }
 
   return (
-    <form
-      className="mt-3 rounded-md border-l-2 border-success-emphasis bg-success-muted p-4"
-      onSubmit={handleSubmit}
-    >
-      <fieldset>
-        <legend className="text-xs font-semibold uppercase tracking-wide text-success-fg">
-          How clear is the task text?
-        </legend>
-        <div className="mt-2 flex flex-wrap gap-2">
+    <form className="mt-3 border-t border-line pt-3" onSubmit={handleSubmit}>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs font-medium uppercase tracking-wide text-fg-muted">How clear is the task text?</span>
+        <span className="text-sm font-semibold transition-colors" style={{ color: levelColor }} aria-hidden="true">
+          {TASK_SCORE_LEVEL_LABELS[level]}
+        </span>
+      </div>
+
+      <div className="mt-2">
+        <input
+          className="score-slider"
+          type="range"
+          min={0}
+          max={TASK_SCORE_LEVELS.length - 1}
+          step={1}
+          value={levelIndex}
+          onChange={(event) => handleLevelChange(TASK_SCORE_LEVELS[Number(event.target.value)])}
+          aria-label="Task clarity level"
+          aria-valuetext={TASK_SCORE_LEVEL_LABELS[level]}
+          style={
+            {
+              '--score-color': levelColor,
+              '--score-fill': `calc(0.5rem + (100% - 1rem) * ${levelIndex / (TASK_SCORE_LEVELS.length - 1)})`,
+            } as CSSProperties
+          }
+        />
+        <div className="flex justify-between px-2" aria-hidden="true">
           {TASK_SCORE_LEVELS.map((option) => (
-            <button
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis ${
-                level === option
-                  ? TASK_SCORE_LEVEL_STYLES[option]
-                  : 'border-line bg-control text-fg hover:bg-control-hover'
-              }`}
-              key={option}
-              type="button"
-              aria-pressed={level === option}
-              onClick={() => handleLevelChange(option)}
-            >
-              {TASK_SCORE_LEVEL_LABELS[option]}
-            </button>
+            <span className="h-1.5 w-px bg-line" key={option} />
           ))}
         </div>
-      </fieldset>
+        <div className="mt-0.5 flex justify-between text-[11px] text-fg-muted" aria-hidden="true">
+          <span>{TASK_SCORE_LEVEL_LABELS[TASK_SCORE_LEVELS[0]]}</span>
+          <span>{TASK_SCORE_LEVEL_LABELS[TASK_SCORE_LEVELS[TASK_SCORE_LEVELS.length - 1]]}</span>
+        </div>
+      </div>
 
-      {level ? (
-        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-success-fg">
-          Reason
-          <select
-            className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm normal-case tracking-normal text-fg outline-none transition focus:border-success-emphasis focus:ring-1 focus:ring-success-muted"
-            value={reasonChoice}
-            onChange={(event) => setReasonChoice(event.target.value)}
-          >
-            <option value="" disabled>
-              Select a reason
-            </option>
-            {TASK_SCORE_REASONS[level].map((reason) => (
-              <option key={reason} value={reason}>
-                {reason}
-              </option>
-            ))}
-            <option value={OTHER_REASON_LABEL}>{OTHER_REASON_LABEL}</option>
-          </select>
-        </label>
-      ) : null}
+      <select
+        className="mt-3 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-muted"
+        value={reasonChoice}
+        onChange={(event) => setReasonChoice(event.target.value)}
+        aria-label="Reason"
+      >
+        <option value="" disabled>
+          Select a reason
+        </option>
+        {TASK_SCORE_REASONS[level].map((reason) => (
+          <option key={reason} value={reason}>
+            {reason}
+          </option>
+        ))}
+        <option value={OTHER_REASON_LABEL}>{OTHER_REASON_LABEL}</option>
+      </select>
 
-      {level && isOther ? (
+      {isOther ? (
         <input
-          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-2 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-success-emphasis focus:ring-1 focus:ring-success-muted"
+          className="mt-2 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition placeholder:text-fg-muted focus:border-accent-emphasis focus:ring-1 focus:ring-accent-muted"
           type="text"
           value={customReason}
           maxLength={TASK_SCORE_REASON_LIMIT}
@@ -1142,7 +1156,7 @@ function TaskScoreComposer({
         />
       ) : null}
 
-      {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
       <div className="mt-3 flex justify-end gap-2">
         <button
           className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
@@ -1879,7 +1893,7 @@ function TaskCard({
     sectionId: string,
     input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean },
   ) => Promise<void>;
-  onRemoveScore: (taskId: string) => void;
+  onRemoveScore: (taskId: string) => Promise<void>;
   onAddQuestion: (
     taskId: string,
     sectionId: string,
@@ -1901,6 +1915,16 @@ function TaskCard({
 }) {
   const [openComposer, setOpenComposer] = useState<'question' | 'note' | 'task' | 'score' | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const [scoreError, setScoreError] = useState<string | null>(null);
+
+  function handleRemoveScore() {
+    setScoreError(null);
+    onRemoveScore(task.id).catch((caughtError: unknown) => {
+      console.error('Failed to remove score', caughtError);
+      setScoreError('Score could not be removed. Please try again.');
+    });
+  }
 
   function toggleComposer(composer: 'question' | 'note' | 'task' | 'score') {
     setOpenComposer((current) => (current === composer ? null : composer));
@@ -1997,11 +2021,12 @@ function TaskCard({
           actions={
             <>
               <EditButton label="Edit score" onClick={() => setOpenComposer('score')} />
-              <RemoveButton label="Remove score" onClick={() => onRemoveScore(task.id)} />
+              <RemoveButton label="Remove score" onClick={handleRemoveScore} />
             </>
           }
         />
       ) : null}
+      {scoreError ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{scoreError}</p> : null}
       {assignments.length > 0 ? (
         <div className="mt-3 divide-y divide-line rounded-md border border-line bg-canvas">
           {assignments.map((assignment) => (
@@ -2079,7 +2104,7 @@ function SectionCard({
     sectionId: string,
     input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean },
   ) => Promise<void>;
-  onRemoveScore: (taskId: string) => void;
+  onRemoveScore: (taskId: string) => Promise<void>;
   onAddQuestion: (
     taskId: string,
     sectionId: string,
@@ -2470,10 +2495,8 @@ function ReportCard({
     await saveTaskScore(report.id, { ...input, taskId, sectionId, scoredBy: leadUserId });
   }
 
-  function handleRemoveScore(taskId: string) {
-    removeTaskScore(report.id, taskId).catch((error: unknown) => {
-      console.error('Failed to remove score', error);
-    });
+  async function handleRemoveScore(taskId: string) {
+    await removeTaskScore(report.id, taskId);
   }
 
   async function handleAddQuestion(

@@ -53,12 +53,13 @@ export const OTHER_REASON_LABEL = 'Other (write your own)';
 
 export const TASK_SCORE_REASON_LIMIT = 200;
 
-// Badge colors run danger -> success across the five levels, using the
-// theme tokens so they follow light/dark mode.
-export const TASK_SCORE_LEVEL_STYLES: Record<TaskScoreLevel, string> = {
-  unclear: 'border-danger-emphasis/50 bg-danger-muted text-danger-fg',
-  vague: 'border-orange-500/50 bg-orange-400/10 text-orange-700 dark:text-orange-300',
-  adequate: 'border-attention-emphasis/50 bg-attention-muted text-attention-fg',
-  clear: 'border-accent-emphasis/50 bg-accent-muted text-accent-fg',
-  excellent: 'border-success-emphasis/50 bg-success-muted text-success-fg',
+// Solid accent per level (CSS color), for the slider and the badge meter.
+// Runs danger -> success using the theme tokens so it follows light/dark mode;
+// "vague" has no theme token, so it uses a fixed orange that reads on both themes.
+export const TASK_SCORE_LEVEL_COLORS: Record<TaskScoreLevel, string> = {
+  unclear: 'rgb(var(--color-danger-fg))',
+  vague: 'rgb(234 138 30)',
+  adequate: 'rgb(var(--color-attention-fg))',
+  clear: 'rgb(var(--color-accent-fg))',
+  excellent: 'rgb(var(--color-success-fg))',
 };
