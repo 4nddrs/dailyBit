@@ -36,6 +36,8 @@ import {
 } from '../../services/firestore';
 import { compressTaskImage, EditableReport } from '../DeveloperView/DeveloperView';
 import { ImageLightbox } from '../ImageLightbox';
+import { SelectMenu } from '../SelectMenu';
+import type { SelectMenuOption } from '../SelectMenu';
 import { TaskScoreBadge } from '../TaskScoreBadge';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
@@ -1049,7 +1051,7 @@ function TaskScoreComposer({
   const initialIsCustom = initial
     ? initial.isCustomReason || initialLevel === '' || !TASK_SCORE_REASONS[initialLevel].includes(initial.reason)
     : false;
-  // A reason select value: one of the level's reasons, OTHER_REASON_LABEL, or '' (nothing chosen).
+  // A reason menu value: one of the level's reasons, OTHER_REASON_LABEL, or '' (nothing chosen).
   const [reasonChoice, setReasonChoice] = useState(() => {
     if (!initial) {
       return '';
@@ -1060,32 +1062,43 @@ function TaskScoreComposer({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popoverRef = useRef<HTMLFormElement>(null);
-  const levelSelectRef = useRef<HTMLSelectElement>(null);
+  const levelTriggerRef = useRef<HTMLButtonElement>(null);
+  const submittingRef = useRef(false);
   const onCancelRef = useRef(onCancel);
   onCancelRef.current = onCancel;
 
-  const levelColor = level ? TASK_SCORE_LEVEL_COLORS[level] : undefined;
+  submittingRef.current = submitting;
+
+  const levelOptions: SelectMenuOption[] = TASK_SCORE_LEVELS.map((option) => ({
+    value: option,
+    label: TASK_SCORE_LEVEL_LABELS[option],
+    color: TASK_SCORE_LEVEL_COLORS[option],
+  }));
+  const reasonOptions: SelectMenuOption[] = [
+    ...(level !== '' ? TASK_SCORE_REASONS[level].map((reason) => ({ value: reason, label: reason })) : []),
+    { value: OTHER_REASON_LABEL, label: OTHER_REASON_LABEL, separated: level !== '' },
+  ];
   const isOther = reasonChoice === OTHER_REASON_LABEL;
   const trimmedCustomReason = customReason.trim();
   const canSave = level !== '' && reasonChoice !== '' && (!isOther || trimmedCustomReason !== '');
 
-  // Focus the level select on open and give focus back to the Score button on close.
+  // The level trigger takes focus on open (autoFocus); give focus back to the Score button on close.
   useEffect(() => {
-    levelSelectRef.current?.focus();
     const anchor = anchorRef.current;
     return () => anchor?.focus();
   }, [anchorRef]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      // A save in flight keeps the popover open so a failure stays visible; an open list handles its own Escape.
+      if (event.key === 'Escape' && !event.defaultPrevented && !submittingRef.current) {
         onCancelRef.current();
       }
     }
     // The Score button toggles the popover itself, so it doesn't count as "outside".
     function handlePointerDown(event: MouseEvent) {
       const target = event.target as Node;
-      if (!popoverRef.current?.contains(target) && !anchorRef.current?.contains(target)) {
+      if (!submittingRef.current && !popoverRef.current?.contains(target) && !anchorRef.current?.contains(target)) {
         onCancelRef.current();
       }
     }
@@ -1129,9 +1142,6 @@ function TaskScoreComposer({
     }
   }
 
-  const selectClass =
-    'w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-muted';
-
   return (
     <form
       ref={popoverRef}
@@ -1140,52 +1150,27 @@ function TaskScoreComposer({
       aria-label="Score the task text"
       onSubmit={handleSubmit}
     >
-      <label className="block text-xs font-medium uppercase tracking-wide text-fg-muted" htmlFor="task-score-level">
-        How clear is the task text?
-      </label>
-      <div className="mt-1.5 flex items-center gap-2">
-        <span
-          className={`h-3 w-3 shrink-0 rounded-full ${levelColor ? '' : 'border border-line'}`}
-          style={levelColor ? { backgroundColor: levelColor } : undefined}
-          aria-hidden="true"
-        />
-        <select
-          id="task-score-level"
-          ref={levelSelectRef}
-          className={`${selectClass} font-medium`}
-          style={levelColor ? { color: levelColor } : undefined}
-          value={level}
-          onChange={(event) => handleLevelChange(event.target.value as TaskScoreLevel)}
-        >
-          <option value="" disabled>
-            Choose a level…
-          </option>
-          {TASK_SCORE_LEVELS.map((option) => (
-            <option key={option} value={option} style={{ color: TASK_SCORE_LEVEL_COLORS[option] }}>
-              {TASK_SCORE_LEVEL_LABELS[option]}
-            </option>
-          ))}
-        </select>
-      </div>
+      <span className="block text-xs font-medium uppercase tracking-wide text-fg-muted">How clear is the task text?</span>
+      <SelectMenu
+        ref={levelTriggerRef}
+        className="mt-1.5"
+        ariaLabel="Level"
+        placeholder="Choose a level…"
+        options={levelOptions}
+        value={level}
+        onChange={(next) => handleLevelChange(next as TaskScoreLevel)}
+        autoFocus
+      />
 
-      <select
-        className={`mt-2 ${selectClass} disabled:cursor-not-allowed disabled:opacity-50`}
+      <SelectMenu
+        className="mt-2"
+        ariaLabel="Reason"
+        placeholder="Select a reason"
+        options={reasonOptions}
         value={reasonChoice}
-        onChange={(event) => setReasonChoice(event.target.value)}
+        onChange={setReasonChoice}
         disabled={level === ''}
-        aria-label="Reason"
-      >
-        <option value="" disabled>
-          Select a reason
-        </option>
-        {level !== '' &&
-          TASK_SCORE_REASONS[level].map((reason) => (
-            <option key={reason} value={reason}>
-              {reason}
-            </option>
-          ))}
-        <option value={OTHER_REASON_LABEL}>{OTHER_REASON_LABEL}</option>
-      </select>
+      />
 
       {isOther ? (
         <input
@@ -1206,6 +1191,7 @@ function TaskScoreComposer({
           className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
           type="button"
           onClick={onCancel}
+          disabled={submitting}
         >
           Cancel
         </button>
