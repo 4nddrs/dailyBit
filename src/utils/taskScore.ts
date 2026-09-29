@@ -6,6 +6,11 @@ import type { TaskScoreLevel } from '../types';
 // Lowest to highest.
 export const TASK_SCORE_LEVELS: TaskScoreLevel[] = ['unclear', 'vague', 'adequate', 'clear', 'excellent'];
 
+// Stored data is cast straight to `TaskScoreLevel`, so check before indexing the maps below.
+export function isTaskScoreLevel(value: unknown): value is TaskScoreLevel {
+  return typeof value === 'string' && (TASK_SCORE_LEVELS as string[]).includes(value);
+}
+
 export const TASK_SCORE_LEVEL_LABELS: Record<TaskScoreLevel, string> = {
   unclear: 'Unclear',
   vague: 'Vague',
@@ -53,7 +58,7 @@ export const OTHER_REASON_LABEL = 'Other (write your own)';
 
 export const TASK_SCORE_REASON_LIMIT = 200;
 
-// Solid accent per level (CSS color), for the slider and the badge meter.
+// Solid accent per level (CSS color), for the score picker and the badge meter.
 // Runs danger -> success using the theme tokens so it follows light/dark mode;
 // "vague" has no theme token, so it uses a fixed orange that reads on both themes.
 export const TASK_SCORE_LEVEL_COLORS: Record<TaskScoreLevel, string> = {

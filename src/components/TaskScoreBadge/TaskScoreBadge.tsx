@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { TASK_SCORE_LEVELS, TASK_SCORE_LEVEL_COLORS, TASK_SCORE_LEVEL_LABELS } from '../../utils/taskScore';
+import { TASK_SCORE_LEVELS, TASK_SCORE_LEVEL_COLORS, TASK_SCORE_LEVEL_LABELS, isTaskScoreLevel } from '../../utils/taskScore';
 import type { TaskScore } from '../../types';
 
 // The lead's writing-quality score for a task: a mini 5-segment meter, the
@@ -15,9 +15,11 @@ export function TaskScoreBadge({
   label?: string;
   actions?: ReactNode;
 }) {
-  const levelIndex = TASK_SCORE_LEVELS.indexOf(score.level);
-  const color = TASK_SCORE_LEVEL_COLORS[score.level];
-  const levelLabel = TASK_SCORE_LEVEL_LABELS[score.level];
+  // Stored data may hold a level this build doesn't know: show a neutral empty meter.
+  const known = isTaskScoreLevel(score.level);
+  const levelIndex = known ? TASK_SCORE_LEVELS.indexOf(score.level) : -1;
+  const color = known ? TASK_SCORE_LEVEL_COLORS[score.level] : 'rgb(var(--color-fg-muted))';
+  const levelLabel = known ? TASK_SCORE_LEVEL_LABELS[score.level] : 'Unknown';
 
   return (
     <div className="mt-3 flex items-center justify-between gap-3 text-sm">
@@ -26,7 +28,7 @@ export function TaskScoreBadge({
         title={score.reason ? `${label}: ${levelLabel} — ${score.reason}` : `${label}: ${levelLabel}`}
       >
         <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-fg-muted">{label}</span>
-        <span className="flex shrink-0 items-center gap-0.5" role="img" aria-label={`${levelLabel}, ${levelIndex + 1} of 5`}>
+        <span className="flex shrink-0 items-center gap-0.5" role="img" aria-label={known ? `${levelLabel}, ${levelIndex + 1} of 5` : levelLabel}>
           {TASK_SCORE_LEVELS.map((level, index) => (
             <span
               className={`h-1.5 w-3 rounded-full ${index <= levelIndex ? '' : 'bg-line'}`}

@@ -90,72 +90,23 @@
   }
 }
 
-/* Level slider for the lead's task score. `--score-color` is set inline per level. */
+/* Floating popover for the lead's task score, anchored under the Score button. */
 @layer components {
-  .score-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    display: block;
-    width: 100%;
-    height: 1.25rem;
-    margin: 0;
-    background: transparent;
-    cursor: pointer;
+  .score-popover {
+    transform-origin: top right;
+    animation: score-popover-in 0.12s ease-out;
   }
 
-  .score-slider:focus {
-    outline: none;
+  @keyframes score-popover-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
   }
 
-  .score-slider::-webkit-slider-runnable-track {
-    height: 4px;
-    border-radius: 9999px;
-    background: linear-gradient(
-      to right,
-      var(--score-color) var(--score-fill, 50%),
-      rgb(var(--color-line)) var(--score-fill, 50%)
-    );
-  }
-
-  .score-slider::-moz-range-track {
-    height: 4px;
-    border-radius: 9999px;
-    background: rgb(var(--color-line));
-  }
-
-  .score-slider::-moz-range-progress {
-    height: 4px;
-    border-radius: 9999px;
-    background: var(--score-color);
-  }
-
-  .score-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 1rem;
-    height: 1rem;
-    margin-top: -6px;
-    border: 2px solid var(--score-color);
-    border-radius: 9999px;
-    background: rgb(var(--color-canvas));
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
-    transition: box-shadow 0.15s ease;
-  }
-
-  .score-slider::-moz-range-thumb {
-    width: 0.75rem;
-    height: 0.75rem;
-    border: 2px solid var(--score-color);
-    border-radius: 9999px;
-    background: rgb(var(--color-canvas));
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
-  }
-
-  .score-slider:focus-visible::-webkit-slider-thumb {
-    box-shadow: 0 0 0 3px rgb(var(--color-accent-emphasis) / 0.45);
-  }
-
-  .score-slider:focus-visible::-moz-range-thumb {
-    box-shadow: 0 0 0 3px rgb(var(--color-accent-emphasis) / 0.45);
+  @media (prefers-reduced-motion: reduce) {
+    .score-popover {
+      animation: none;
+    }
   }
 }

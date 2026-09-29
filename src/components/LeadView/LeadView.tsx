@@ -6,8 +6,8 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  type CSSProperties,
   type ReactNode,
+  type RefObject,
   type TextareaHTMLAttributes,
 } from 'react';
 import {
@@ -52,6 +52,7 @@ import {
   TASK_SCORE_LEVELS,
   TASK_SCORE_LEVEL_LABELS,
   TASK_SCORE_LEVEL_COLORS,
+  isTaskScoreLevel,
   TASK_SCORE_REASONS,
   TASK_SCORE_REASON_LIMIT,
 } from '../../utils/taskScore';
@@ -893,13 +894,16 @@ function LeadActionButton({
   kind,
   active = false,
   onClick,
+  buttonRef,
 }: {
   kind: LeadActionKind;
   active?: boolean;
   onClick: () => void;
+  buttonRef?: RefObject<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={buttonRef}
       className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition hover:scale-110 hover:shadow-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis ${leadActionStyles[kind]}`}
       type="button"
       aria-label={leadActionLabels[kind]}
@@ -1022,23 +1026,29 @@ function AutoGrowTextarea({
   );
 }
 
-// Slider for the level, then one of that level's reasons (or a custom one).
+// Floating popover under the Score button: a level combo box (with the level's
+// color beside it), then one of that level's reasons (or a custom one).
 // Prefilled from `initial` when re-opened for an existing score. A new score
-// starts on the middle level (Adequate) so the slider always shows a value;
-// Save stays disabled until a reason is picked, so the lead still has to make
-// a deliberate choice.
+// starts with no level; Save stays disabled until level and reason are valid.
+// Closes on Escape, outside click and Cancel, and hands focus back to the button.
 function TaskScoreComposer({
   initial,
+  anchorRef,
   onSave,
   onCancel,
 }: {
   initial?: TaskScoreWithId;
+  anchorRef: RefObject<HTMLButtonElement>;
   onSave: (input: { level: TaskScoreLevel; reason: string; isCustomReason: boolean }) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [level, setLevel] = useState<TaskScoreLevel>(initial?.level ?? 'adequate');
+  // A stored level this build doesn't know counts as no level chosen.
+  const initialLevel: TaskScoreLevel | '' = initial && isTaskScoreLevel(initial.level) ? initial.level : '';
+  const [level, setLevel] = useState<TaskScoreLevel | ''>(initialLevel);
   // A saved reason that isn't in its level's list (the list changed, or old data) is shown as custom text.
-  const initialIsCustom = initial ? initial.isCustomReason || !TASK_SCORE_REASONS[initial.level].includes(initial.reason) : false;
+  const initialIsCustom = initial
+    ? initial.isCustomReason || initialLevel === '' || !TASK_SCORE_REASONS[initialLevel].includes(initial.reason)
+    : false;
   // A reason select value: one of the level's reasons, OTHER_REASON_LABEL, or '' (nothing chosen).
   const [reasonChoice, setReasonChoice] = useState(() => {
     if (!initial) {
@@ -1049,12 +1059,43 @@ function TaskScoreComposer({
   const [customReason, setCustomReason] = useState(initial && initialIsCustom ? initial.reason : '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLFormElement>(null);
+  const levelSelectRef = useRef<HTMLSelectElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
-  const levelIndex = TASK_SCORE_LEVELS.indexOf(level);
-  const levelColor = TASK_SCORE_LEVEL_COLORS[level];
+  const levelColor = level ? TASK_SCORE_LEVEL_COLORS[level] : undefined;
   const isOther = reasonChoice === OTHER_REASON_LABEL;
   const trimmedCustomReason = customReason.trim();
-  const canSave = reasonChoice !== '' && (!isOther || trimmedCustomReason !== '');
+  const canSave = level !== '' && reasonChoice !== '' && (!isOther || trimmedCustomReason !== '');
+
+  // Focus the level select on open and give focus back to the Score button on close.
+  useEffect(() => {
+    levelSelectRef.current?.focus();
+    const anchor = anchorRef.current;
+    return () => anchor?.focus();
+  }, [anchorRef]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onCancelRef.current();
+      }
+    }
+    // The Score button toggles the popover itself, so it doesn't count as "outside".
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (!popoverRef.current?.contains(target) && !anchorRef.current?.contains(target)) {
+        onCancelRef.current();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [anchorRef]);
 
   function handleLevelChange(nextLevel: TaskScoreLevel) {
     if (nextLevel === level) {
@@ -1088,58 +1129,61 @@ function TaskScoreComposer({
     }
   }
 
-  return (
-    <form className="mt-3 border-t border-line pt-3" onSubmit={handleSubmit}>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-fg-muted">How clear is the task text?</span>
-        <span className="text-sm font-semibold transition-colors" style={{ color: levelColor }} aria-hidden="true">
-          {TASK_SCORE_LEVEL_LABELS[level]}
-        </span>
-      </div>
+  const selectClass =
+    'w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-muted';
 
-      <div className="mt-2">
-        <input
-          className="score-slider"
-          type="range"
-          min={0}
-          max={TASK_SCORE_LEVELS.length - 1}
-          step={1}
-          value={levelIndex}
-          onChange={(event) => handleLevelChange(TASK_SCORE_LEVELS[Number(event.target.value)])}
-          aria-label="Task clarity level"
-          aria-valuetext={TASK_SCORE_LEVEL_LABELS[level]}
-          style={
-            {
-              '--score-color': levelColor,
-              '--score-fill': `calc(0.5rem + (100% - 1rem) * ${levelIndex / (TASK_SCORE_LEVELS.length - 1)})`,
-            } as CSSProperties
-          }
+  return (
+    <form
+      ref={popoverRef}
+      className="score-popover absolute right-0 top-full z-30 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg"
+      role="dialog"
+      aria-label="Score the task text"
+      onSubmit={handleSubmit}
+    >
+      <label className="block text-xs font-medium uppercase tracking-wide text-fg-muted" htmlFor="task-score-level">
+        How clear is the task text?
+      </label>
+      <div className="mt-1.5 flex items-center gap-2">
+        <span
+          className={`h-3 w-3 shrink-0 rounded-full ${levelColor ? '' : 'border border-line'}`}
+          style={levelColor ? { backgroundColor: levelColor } : undefined}
+          aria-hidden="true"
         />
-        <div className="flex justify-between px-2" aria-hidden="true">
+        <select
+          id="task-score-level"
+          ref={levelSelectRef}
+          className={`${selectClass} font-medium`}
+          style={levelColor ? { color: levelColor } : undefined}
+          value={level}
+          onChange={(event) => handleLevelChange(event.target.value as TaskScoreLevel)}
+        >
+          <option value="" disabled>
+            Choose a level…
+          </option>
           {TASK_SCORE_LEVELS.map((option) => (
-            <span className="h-1.5 w-px bg-line" key={option} />
+            <option key={option} value={option} style={{ color: TASK_SCORE_LEVEL_COLORS[option] }}>
+              {TASK_SCORE_LEVEL_LABELS[option]}
+            </option>
           ))}
-        </div>
-        <div className="mt-0.5 flex justify-between text-[11px] text-fg-muted" aria-hidden="true">
-          <span>{TASK_SCORE_LEVEL_LABELS[TASK_SCORE_LEVELS[0]]}</span>
-          <span>{TASK_SCORE_LEVEL_LABELS[TASK_SCORE_LEVELS[TASK_SCORE_LEVELS.length - 1]]}</span>
-        </div>
+        </select>
       </div>
 
       <select
-        className="mt-3 w-full rounded-md border border-line bg-canvas-inset px-3 py-1.5 text-sm text-fg outline-none transition focus:border-accent-emphasis focus:ring-1 focus:ring-accent-muted"
+        className={`mt-2 ${selectClass} disabled:cursor-not-allowed disabled:opacity-50`}
         value={reasonChoice}
         onChange={(event) => setReasonChoice(event.target.value)}
+        disabled={level === ''}
         aria-label="Reason"
       >
         <option value="" disabled>
           Select a reason
         </option>
-        {TASK_SCORE_REASONS[level].map((reason) => (
-          <option key={reason} value={reason}>
-            {reason}
-          </option>
-        ))}
+        {level !== '' &&
+          TASK_SCORE_REASONS[level].map((reason) => (
+            <option key={reason} value={reason}>
+              {reason}
+            </option>
+          ))}
         <option value={OTHER_REASON_LABEL}>{OTHER_REASON_LABEL}</option>
       </select>
 
@@ -1917,6 +1961,7 @@ function TaskCard({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const [scoreError, setScoreError] = useState<string | null>(null);
+  const scoreButtonRef = useRef<HTMLButtonElement>(null);
 
   function handleRemoveScore() {
     setScoreError(null);
@@ -1967,7 +2012,25 @@ function TaskCard({
               <LeadActionButton kind="question" active={openComposer === 'question'} onClick={() => toggleComposer('question')} />
               <LeadActionButton kind="note" active={openComposer === 'note'} onClick={() => toggleComposer('note')} />
               <LeadActionButton kind="task" active={openComposer === 'task'} onClick={() => toggleComposer('task')} />
-              <LeadActionButton kind="score" active={openComposer === 'score'} onClick={() => toggleComposer('score')} />
+              <div className="relative">
+                <LeadActionButton
+                  kind="score"
+                  active={openComposer === 'score'}
+                  onClick={() => toggleComposer('score')}
+                  buttonRef={scoreButtonRef}
+                />
+                {openComposer === 'score' ? (
+                  <TaskScoreComposer
+                    initial={score ?? undefined}
+                    anchorRef={scoreButtonRef}
+                    onSave={async (input) => {
+                      await onSaveScore(task.id, sectionId, input);
+                      setOpenComposer(null);
+                    }}
+                    onCancel={() => setOpenComposer(null)}
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
@@ -1990,16 +2053,6 @@ function TaskCard({
           }}
         />
       ) : null}
-      {openComposer === 'score' ? (
-        <TaskScoreComposer
-          initial={score ?? undefined}
-          onSave={async (input) => {
-            await onSaveScore(task.id, sectionId, input);
-            setOpenComposer(null);
-          }}
-          onCancel={() => setOpenComposer(null)}
-        />
-      ) : null}
       {openComposer === 'task' ? (
         <AssignmentComposer
           devs={allDevs}
@@ -2015,7 +2068,7 @@ function TaskCard({
 
       <LeadQuestionBlock reportId={reportId} questions={questions} onRemove={onRemoveQuestion} onEdit={onEditQuestion} />
       <LeadNoteBlock notes={notes} onRemove={onRemoveNote} onEdit={onEditNote} />
-      {score && openComposer !== 'score' ? (
+      {score ? (
         <TaskScoreBadge
           score={score}
           actions={
