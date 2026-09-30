@@ -31,6 +31,7 @@ import type {
   LeadQuestion,
   LeadQuestionCarryoverPointer,
   LeadQuestionWithId,
+  PriorityLevel,
   Question,
   QuestionOptionImage,
   QuestionWithId,
@@ -1212,6 +1213,15 @@ export async function removeLeadQuestion(reportId: string, questionId: string): 
   await batch.commit();
 }
 
+// Sets the lead question's priority, or clears it with `null`.
+export async function setLeadQuestionPriority(
+  reportId: string,
+  questionId: string,
+  priority: PriorityLevel | null,
+): Promise<void> {
+  await updateDoc(leadQuestionDoc(reportId, questionId), { priority: priority ?? deleteField() });
+}
+
 // Edits an existing lead question's text, kind, and options in place. A
 // change to `kind` or the options array can invalidate the developer's
 // existing answer, so the caller (which knows both the previous and the new
@@ -1799,6 +1809,14 @@ export async function updateAssignment(assignmentId: string, input: UpdateAssign
   await updateDoc(assignmentDoc(assignmentId), {
     description,
     assigneeIds,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// Sets the assignment's priority, or clears it with `null`.
+export async function setAssignmentPriority(assignmentId: string, priority: PriorityLevel | null): Promise<void> {
+  await updateDoc(assignmentDoc(assignmentId), {
+    priority: priority ?? deleteField(),
     updatedAt: serverTimestamp(),
   });
 }

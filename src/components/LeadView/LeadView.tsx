@@ -1,6 +1,7 @@
 import {
   FormEvent,
   useCallback,
+  useId,
   useMemo,
   useState,
   useEffect,
@@ -30,6 +31,8 @@ import {
   removeUntouchedReport,
   saveTaskScore,
   saveTeamOrder,
+  setAssignmentPriority,
+  setLeadQuestionPriority,
   updateAssignment,
   updateLeadNote,
   updateLeadQuestion,
@@ -38,6 +41,7 @@ import { compressTaskImage, EditableReport } from '../DeveloperView/DeveloperVie
 import { ImageLightbox } from '../ImageLightbox';
 import { SelectMenu } from '../SelectMenu';
 import type { SelectMenuOption } from '../SelectMenu';
+import { PriorityBadge } from '../PriorityBadge';
 import { TaskScoreBadge } from '../TaskScoreBadge';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
@@ -48,6 +52,7 @@ import { useReportsByDate } from '../../hooks/useReportsByDate';
 import { useTeamOrder } from '../../hooks/useTeamOrder';
 import { useUserProfiles } from '../../hooks/useUserProfiles';
 import { taskLetter } from '../../utils/numbering';
+import { PRIORITY_LEVELS, PRIORITY_LEVEL_COLORS, PRIORITY_LEVEL_LABELS, isPriorityLevel } from '../../utils/priority';
 import { mergeSectionItems, taskLettersById } from '../../utils/sectionItems';
 import {
   OTHER_REASON_LABEL,
@@ -66,6 +71,7 @@ import type {
   LeadNoteWithId,
   LeadQuestionKind,
   LeadQuestionWithId,
+  PriorityLevel,
   QuestionWithId,
   ReportTree,
   SectionWithTasks,
@@ -706,8 +712,17 @@ export function LeadQuestionItem({
     <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
       {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <PriorityBadge priority={question.priority} />
+          <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
+        </div>
         <div className="flex shrink-0 items-center gap-1">
+          {onEdit && reportId ? (
+            <PriorityControl
+              value={question.priority}
+              onSave={(priority) => setLeadQuestionPriority(reportId, question.id, priority)}
+            />
+          ) : null}
           {onEdit ? <EditButton label="Edit question" onClick={() => setEditingQuestion(true)} /> : null}
           {onRemove ? <RemoveButton label="Remove question" onClick={() => onRemove(question.id)} /> : null}
         </div>
@@ -1204,6 +1219,170 @@ function TaskScoreComposer({
         </button>
       </div>
     </form>
+  );
+}
+
+// "!" icon button plus a small popover under it to set, change or clear the
+// priority of a lead question or assignment. Same popover behavior as
+// `TaskScoreComposer`: Escape, outside click and Cancel close it and hand focus
+// back to the button, and a save in flight keeps it open so a failure stays visible.
+const NO_PRIORITY_VALUE = 'none';
+
+function PriorityControl({
+  value,
+  onSave,
+  label = 'Priority',
+}: {
+  value: unknown;
+  onSave: (priority: PriorityLevel | null) => Promise<void>;
+  label?: string;
+}) {
+  const current: PriorityLevel | null = isPriorityLevel(value) ? value : null;
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState<string>(current ?? NO_PRIORITY_VALUE);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLFormElement>(null);
+  const submittingRef = useRef(false);
+  const dialogId = useId();
+
+  submittingRef.current = submitting;
+
+  const options: SelectMenuOption[] = [
+    ...PRIORITY_LEVELS.map((level) => ({
+      value: level,
+      label: PRIORITY_LEVEL_LABELS[level],
+      color: PRIORITY_LEVEL_COLORS[level],
+    })),
+    { value: NO_PRIORITY_VALUE, label: 'No priority', separated: true },
+  ];
+  const nextPriority: PriorityLevel | null = isPriorityLevel(choice) ? choice : null;
+  const changed = nextPriority !== current;
+
+  function close() {
+    setOpen(false);
+    setError(null);
+    buttonRef.current?.focus();
+  }
+
+  function toggle() {
+    if (open) {
+      close();
+      return;
+    }
+    setChoice(current ?? NO_PRIORITY_VALUE);
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      // A save in flight keeps the popover open; an open list handles its own Escape.
+      if (event.key === 'Escape' && !event.defaultPrevented && !submittingRef.current) {
+        setOpen(false);
+        setError(null);
+        buttonRef.current?.focus();
+      }
+    }
+    // The button toggles the popover itself, so it doesn't count as "outside".
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (!submittingRef.current && !popoverRef.current?.contains(target) && !buttonRef.current?.contains(target)) {
+        setOpen(false);
+        setError(null);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [open]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!changed) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSave(nextPriority);
+      setSubmitting(false);
+      close();
+    } catch (caughtError) {
+      console.error('Priority save failed', caughtError);
+      setError('Priority could not be saved. Please try again.');
+      setSubmitting(false);
+    }
+  }
+
+  const accent = current ? PRIORITY_LEVEL_COLORS[current] : undefined;
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm font-bold transition hover:scale-110 hover:bg-control-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis ${
+          accent ? '' : 'text-fg-muted'
+        }`}
+        style={accent ? { color: accent } : undefined}
+        type="button"
+        aria-label={label}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? dialogId : undefined}
+        title={current ? `${label}: ${PRIORITY_LEVEL_LABELS[current]}` : label}
+        onClick={toggle}
+      >
+        <span aria-hidden="true">!</span>
+      </button>
+      {open ? (
+        <form
+          ref={popoverRef}
+          id={dialogId}
+          className="score-popover absolute right-0 top-full z-30 mt-2 w-[min(14rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg"
+          role="dialog"
+          aria-label="Set priority"
+          onSubmit={handleSubmit}
+        >
+          <span className="block text-xs font-medium uppercase tracking-wide text-fg-muted">Priority</span>
+          <SelectMenu
+            className="mt-1.5"
+            ariaLabel="Priority level"
+            placeholder="Choose a priority…"
+            options={options}
+            value={choice}
+            onChange={setChoice}
+            disabled={submitting}
+            autoFocus
+          />
+          {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
+              type="button"
+              onClick={close}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              className="rounded-md bg-success-emphasis px-3 py-1.5 text-sm font-semibold text-fg-onEmphasis transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
+              type="submit"
+              disabled={!changed || submitting}
+            >
+              {submitting ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </div>
   );
 }
 
@@ -1788,6 +1967,7 @@ function LeadAssignmentRow({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <PriorityBadge priority={assignment.priority} />
           <span
             className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
               hasUpdateContent
@@ -1810,6 +1990,10 @@ function LeadAssignmentRow({
           >
             {isClosed ? 'Reopen' : 'Close'}
           </button>
+          <PriorityControl
+            value={assignment.priority}
+            onSave={(priority) => setAssignmentPriority(assignment.id, priority)}
+          />
           <EditButton label="Edit assignment" onClick={() => setEditing(true)} />
           <RemoveButton label="Remove assignment" onClick={() => onRemove(assignment.id)} />
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { subscribeAssignmentUpdate, subscribeLatestAssignmentUpdate } from '../../services/firestore';
 import { ImageLightbox } from '../ImageLightbox';
+import { PriorityBadge } from '../PriorityBadge';
 import { TaskScoreBadge } from '../TaskScoreBadge';
 import {
   AssignmentUpdateDisplay,
@@ -228,7 +229,10 @@ function PreviewAssignmentRow({
 
   return (
     <div className="border-l-2 border-accent-emphasis px-4 py-3">
-      <p className="break-words text-sm font-medium text-fg">{assignment.description}</p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 break-words text-sm font-medium text-fg">{assignment.description}</p>
+        <PriorityBadge priority={assignment.priority} />
+      </div>
       <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
       {assignment.relatedTask ? (
         <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>

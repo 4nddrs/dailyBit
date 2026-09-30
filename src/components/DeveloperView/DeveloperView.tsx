@@ -58,6 +58,7 @@ import type {
 } from '../../types';
 import { todayDateString } from '../../types';
 
+import { PriorityBadge } from '../PriorityBadge';
 import { TaskScoreBadge } from '../TaskScoreBadge';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { taskLetter } from '../../utils/numbering';
@@ -1181,15 +1182,18 @@ function AssignmentRow({
     <div className="group/task border-l-2 border-accent-emphasis px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 break-words text-sm font-medium text-fg">{assignment.description}</p>
-        <span
-          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
-            hasUpdateContent
-              ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
-              : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
-          }`}
-        >
-          {hasUpdateContent ? 'Updated' : 'Pending'}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <PriorityBadge priority={assignment.priority} />
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+              hasUpdateContent
+                ? 'border-success-emphasis/40 bg-success-muted text-success-fg'
+                : 'border-attention-emphasis/40 bg-attention-muted text-attention-fg'
+            }`}
+          >
+            {hasUpdateContent ? 'Updated' : 'Pending'}
+          </span>
+        </div>
       </div>
       <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
       {assignment.relatedTask ? (
@@ -1391,7 +1395,10 @@ function LeadQuestionCard({
         <p className="mb-1 text-xs font-medium text-fg-muted">{originLabel}</p>
       ) : null}
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <PriorityBadge priority={question.priority} />
+          <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        </div>
         {isText ? (
           <CardToolbar>
             <IconButton icon={<LinkIcon />} label="Add link" onClick={() => setShowLinkForm(true)} />

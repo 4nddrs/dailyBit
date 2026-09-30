@@ -103,6 +103,9 @@ export interface TaskScore {
   updatedAt: Timestamp;
 }
 
+// Optional priority the lead sets on their own questions and assignments.
+export type PriorityLevel = 'low' | 'medium' | 'high';
+
 export type LeadQuestionKind = 'text' | 'options';
 
 export interface LeadQuestion {
@@ -115,6 +118,7 @@ export interface LeadQuestion {
   answerLinks?: TaskLink[];
   selectedAnswer?: number;
   answeredAt?: Timestamp;
+  priority?: PriorityLevel;
   createdAt: Timestamp;
 }
 
@@ -219,6 +223,7 @@ export interface Assignment {
   startDate: string;
   status: AssignmentStatus;
   closedDate?: string;
+  priority?: PriorityLevel;
   // `reportId`/`sectionId`/`taskId` are only set when the assignment was
   // created from a developer's task (the "Task" action on a `TaskCard`), so
   // Lead View can render it under that task instead of the trailing
