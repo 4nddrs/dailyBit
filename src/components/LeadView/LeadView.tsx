@@ -1306,13 +1306,13 @@ function PriorityPicker({
       <div className="flex flex-wrap items-center gap-2">
         <button
           ref={toggleRef}
-          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis"
           type="button"
           aria-expanded={open}
           aria-controls={open ? groupId : undefined}
           onClick={() => (open ? collapse() : setOpen(true))}
         >
-          <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M3 1.75a.75.75 0 0 1 1.5 0v.4c.9-.4 1.9-.5 3-.2 1.6.5 2.8.4 4-.1.5-.2 1 .1 1 .7v6.1c0 .3-.2.6-.5.7-1.4.6-2.8.7-4.5.2-.9-.3-1.7-.3-3 .1v4.3a.75.75 0 0 1-1.5 0V1.75Z" />
           </svg>
           {current ? 'Priority' : 'Set priority'}
@@ -1326,7 +1326,7 @@ function PriorityPicker({
                 return (
                   <button
                     key={level}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:cursor-not-allowed ${
+                    className={`rounded-full border px-3 py-1 text-sm font-semibold transition focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:cursor-not-allowed ${
                       selected ? 'text-fg-onEmphasis' : 'hover:brightness-95'
                     } ${pending !== null && pending !== level ? 'opacity-50' : ''}`}
                     style={{
@@ -1345,7 +1345,7 @@ function PriorityPicker({
               })}
             </div>
             <button
-              className="rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:opacity-50"
+              className="rounded-md px-2 py-1 text-sm font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:opacity-50"
               type="button"
               disabled={pending !== null}
               onClick={collapse}
