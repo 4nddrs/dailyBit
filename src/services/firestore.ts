@@ -53,6 +53,7 @@ import type {
   UserRole,
 } from '../types';
 import { nextBusinessDate, todayDateString } from '../types';
+import { isPriorityLevel } from '../utils/priority';
 
 // `optionLinks[i]` are the links for `options[i]`, kept parallel by the
 // caller (the composer keeps per-option links aligned as options are added,
@@ -70,7 +71,7 @@ export type SaveTaskScoreInput = Pick<
 >;
 export type CreateLeadQuestionInput = Pick<
   LeadQuestion,
-  'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options'
+  'taskId' | 'sectionId' | 'questionText' | 'kind' | 'options' | 'priority'
 >;
 // Editing a lead question never moves it to a different task/section, so
 // only the text, kind, and options are writable.
@@ -97,7 +98,7 @@ const collections = {
 
 export type CreateAssignmentInput = Pick<
   Assignment,
-  'description' | 'assigneeIds' | 'createdBy' | 'startDate' | 'relatedTask'
+  'description' | 'assigneeIds' | 'createdBy' | 'startDate' | 'relatedTask' | 'priority'
 >;
 export type SaveAssignmentUpdateInput = { text?: string; links?: TaskLink[] };
 
@@ -1184,6 +1185,11 @@ export async function addLeadQuestion(
     payload.options = nonEmptyOptions;
   }
 
+  // Omitted (not undefined) when there is no priority: Firestore rejects undefined.
+  if (isPriorityLevel(question.priority)) {
+    payload.priority = question.priority;
+  }
+
   // The question doc's id is generated up front (instead of `addDoc`) so the
   // pointer can reference it and both writes land in the same batch.
   const questionRef = doc(leadQuestionsCollection(reportId));
@@ -1779,6 +1785,10 @@ export async function createAssignment(input: CreateAssignmentInput): Promise<st
 
   if (input.relatedTask !== undefined) {
     payload.relatedTask = input.relatedTask;
+  }
+
+  if (isPriorityLevel(input.priority)) {
+    payload.priority = input.priority;
   }
 
   const ref = await addDoc(assignmentsCollection(), payload);

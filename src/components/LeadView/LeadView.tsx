@@ -1232,10 +1232,14 @@ function PriorityControl({
   value,
   onSave,
   label = 'Priority',
+  applyOnPick = false,
 }: {
   value: unknown;
   onSave: (priority: PriorityLevel | null) => Promise<void>;
   label?: string;
+  // For a composer, where nothing is persisted yet: a pick is handed to `onSave`
+  // right away and closes the popover, with no Save/Cancel buttons.
+  applyOnPick?: boolean;
 }) {
   const current: PriorityLevel | null = isPriorityLevel(value) ? value : null;
   const [open, setOpen] = useState(false);
@@ -1303,6 +1307,16 @@ function PriorityControl({
     };
   }, [open]);
 
+  function handlePick(next: string) {
+    setChoice(next);
+    if (applyOnPick) {
+      onSave(isPriorityLevel(next) ? next : null).catch((caughtError: unknown) => {
+        console.error('Priority pick failed', caughtError);
+      });
+      close();
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!changed) {
@@ -1346,7 +1360,9 @@ function PriorityControl({
         <form
           ref={popoverRef}
           id={dialogId}
-          className="score-popover absolute right-0 top-full z-30 mt-2 w-[min(14rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg"
+          className={`score-popover absolute right-0 z-30 w-[min(14rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg ${
+            applyOnPick ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}
           role="dialog"
           aria-label="Set priority"
           onSubmit={handleSubmit}
@@ -1358,11 +1374,12 @@ function PriorityControl({
             placeholder="Choose a priority…"
             options={options}
             value={choice}
-            onChange={setChoice}
+            onChange={handlePick}
             disabled={submitting}
             autoFocus
           />
           {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
+          {applyOnPick ? null : (
           <div className="mt-3 flex justify-end gap-2">
             <button
               className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
@@ -1380,8 +1397,27 @@ function PriorityControl({
               {submitting ? 'Saving...' : 'Save'}
             </button>
           </div>
+          )}
         </form>
       ) : null}
+    </div>
+  );
+}
+
+// Priority picker for the question and task composers: the "!" popover plus a
+// small badge preview. The pick only updates the composer's local state; it is
+// written with the new doc when the lead submits.
+function ComposerPriority({
+  value,
+  onChange,
+}: {
+  value: PriorityLevel | null;
+  onChange: (priority: PriorityLevel | null) => void;
+}) {
+  return (
+    <div className="mr-auto flex items-center gap-2">
+      <PriorityControl value={value} applyOnPick onSave={async (priority) => onChange(priority)} />
+      <PriorityBadge priority={value} />
     </div>
   );
 }
@@ -1473,6 +1509,13 @@ function NoteComposer({
   );
 }
 
+type LeadQuestionSubmit = {
+  questionText: string;
+  kind: LeadQuestionKind;
+  options?: string[];
+  priority?: PriorityLevel;
+};
+
 function LeadQuestionComposer({
   onAdd,
   submitDisabled = false,
@@ -1484,8 +1527,9 @@ function LeadQuestionComposer({
   submittingLabel = 'Asking...',
   onCancel,
   warnOnAnswerClear = false,
+  withPriority = false,
 }: {
-  onAdd: (input: { questionText: string; kind: LeadQuestionKind; options?: string[] }) => Promise<void>;
+  onAdd: (input: LeadQuestionSubmit) => Promise<void>;
   // Extra disable condition on top of the composer's own (e.g. a people
   // picker rendered alongside it with nothing selected yet).
   submitDisabled?: boolean;
@@ -1506,7 +1550,11 @@ function LeadQuestionComposer({
   // existing answer on save (only meaningful when editing an already-answered
   // question).
   warnOnAnswerClear?: boolean;
+  // Shows the priority picker in the action row (create flows; the edit flow
+  // changes priority from the card instead).
+  withPriority?: boolean;
 }) {
+  const [priority, setPriority] = useState<PriorityLevel | null>(null);
   const [questionText, setQuestionText] = useState(initialQuestionText);
   const [kind, setKind] = useState<LeadQuestionKind>(initialKind);
   const [options, setOptions] = useState(
@@ -1555,7 +1603,9 @@ function LeadQuestionComposer({
         questionText: trimmedQuestion,
         kind,
         options: kind === 'options' ? trimmedOptions : undefined,
+        priority: priority ?? undefined,
       });
+      setPriority(null);
       setQuestionText(initialQuestionText);
       setOptions(initialOptions && initialOptions.length >= QUESTION_OPTION_MINIMUM ? initialOptions : ['', '']);
       setKind(initialKind);
@@ -1647,6 +1697,7 @@ function LeadQuestionComposer({
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
 
       <div className="mt-3 flex justify-end gap-2">
+        {withPriority ? <ComposerPriority value={priority} onChange={setPriority} /> : null}
         {onCancel ? (
           <button
             className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
@@ -1719,6 +1770,13 @@ function DevPicker({
   );
 }
 
+type AssignmentSubmit = {
+  description: string;
+  assigneeIds: string[];
+  relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
+  priority?: PriorityLevel;
+};
+
 function AssignmentComposer({
   devs,
   preselectedDevId,
@@ -1731,15 +1789,12 @@ function AssignmentComposer({
   submittingLabel = 'Assigning...',
   errorMessage = 'Task could not be assigned. Please try again.',
   onCancel,
+  withPriority = false,
 }: {
   devs: UserProfileWithId[];
   preselectedDevId: string;
   relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  onAssign: (input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) => Promise<string>;
+  onAssign: (input: AssignmentSubmit) => Promise<string>;
   // `assigneeIds` is the final set the assignment was created for, so a
   // caller with no single preselected dev (e.g. the Lead tools panel) can
   // still decide whether revealing the new row makes sense.
@@ -1753,7 +1808,10 @@ function AssignmentComposer({
   errorMessage?: string;
   // Renders a Cancel button next to the submit button, for the edit flow.
   onCancel?: () => void;
+  // Shows the priority picker in the action row (create flows only).
+  withPriority?: boolean;
 }) {
+  const [priority, setPriority] = useState<PriorityLevel | null>(null);
   const [description, setDescription] = useState(initialDescription);
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
     initialAssigneeIds ?? (preselectedDevId ? [preselectedDevId] : []),
@@ -1780,7 +1838,13 @@ function AssignmentComposer({
     setSubmitting(true);
     setError(null);
     try {
-      const assignmentId = await onAssign({ description: trimmedDescription, assigneeIds, relatedTask });
+      const assignmentId = await onAssign({
+        description: trimmedDescription,
+        assigneeIds,
+        relatedTask,
+        priority: priority ?? undefined,
+      });
+      setPriority(null);
       setDescription(initialDescription);
       setAssigneeIds(initialAssigneeIds ?? (preselectedDevId ? [preselectedDevId] : []));
       onDone(assignmentId, assigneeIds);
@@ -1814,6 +1878,7 @@ function AssignmentComposer({
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
 
       <div className="mt-3 flex justify-end gap-2">
+        {withPriority ? <ComposerPriority value={priority} onChange={setPriority} /> : null}
         {onCancel ? (
           <button
             className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
@@ -2111,18 +2176,14 @@ function TaskCard({
   onAddQuestion: (
     taskId: string,
     sectionId: string,
-    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+    input: LeadQuestionSubmit,
   ) => Promise<void>;
   onRemoveQuestion: (questionId: string) => void;
   onEditQuestion: (
     questionId: string,
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) => Promise<void>;
-  onCreateAssignment: (input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) => Promise<string>;
+  onCreateAssignment: (input: AssignmentSubmit) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
@@ -2208,6 +2269,7 @@ function TaskCard({
 
       {openComposer === 'question' ? (
         <LeadQuestionComposer
+          withPriority
           onAdd={async (input) => {
             await onAddQuestion(task.id, sectionId, input);
             setOpenComposer(null);
@@ -2225,6 +2287,7 @@ function TaskCard({
       ) : null}
       {openComposer === 'task' ? (
         <AssignmentComposer
+          withPriority
           devs={allDevs}
           preselectedDevId={reportOwnerId}
           relatedTask={{ description: task.description, reportId, sectionId, taskId: task.id }}
@@ -2331,18 +2394,14 @@ function SectionCard({
   onAddQuestion: (
     taskId: string,
     sectionId: string,
-    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+    input: LeadQuestionSubmit,
   ) => Promise<void>;
   onRemoveQuestion: (questionId: string) => void;
   onEditQuestion: (
     questionId: string,
     input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
   ) => Promise<void>;
-  onCreateAssignment: (input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) => Promise<string>;
+  onCreateAssignment: (input: AssignmentSubmit) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
@@ -2612,11 +2671,7 @@ function ReportCard({
   allDevs: UserProfileWithId[];
   assignments: AssignmentWithId[];
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onCreateAssignment: (input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) => Promise<string>;
+  onCreateAssignment: (input: AssignmentSubmit) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
@@ -2725,7 +2780,7 @@ function ReportCard({
   async function handleAddQuestion(
     taskId: string,
     sectionId: string,
-    input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+    input: LeadQuestionSubmit,
   ) {
     await addLeadQuestion(
       report.id,
@@ -2831,6 +2886,7 @@ function ReportCard({
             ) : null}
             {openComposer === 'question' ? (
               <LeadQuestionComposer
+                withPriority
                 onAdd={async (input) => {
                   await handleAddQuestion('', '', input);
                   setOpenComposer(null);
@@ -2848,6 +2904,7 @@ function ReportCard({
             ) : null}
             {openComposer === 'task' ? (
               <AssignmentComposer
+                withPriority
                 devs={allDevs}
                 preselectedDevId={report.userId}
                 onAssign={onCreateAssignment}
@@ -2994,11 +3051,7 @@ function AssignmentOnlyCard({
   // so it can label an update carried over from an earlier day.
   date: string;
   updatesByAssignment: AssignmentUpdatesByAssignment;
-  onCreateAssignment: (input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) => Promise<string>;
+  onCreateAssignment: (input: AssignmentSubmit) => Promise<string>;
   onSetAssignmentClosed: (assignmentId: string, closed: boolean) => void;
   onRemoveAssignment: (assignmentId: string) => void;
   onEditAssignment: (assignmentId: string, input: { description: string; assigneeIds: string[] }) => Promise<void>;
@@ -3039,6 +3092,7 @@ function AssignmentOnlyCard({
 
         {composerOpen ? (
           <AssignmentComposer
+            withPriority
             devs={allDevs}
             preselectedDevId={userId}
             onAssign={onCreateAssignment}
@@ -3234,7 +3288,7 @@ function removeCarriedLeadQuestion(question: CarriedLeadQuestion): void {
 
 async function editCarriedLeadQuestion(
   question: CarriedLeadQuestion,
-  input: { questionText: string; kind: LeadQuestionKind; options?: string[] },
+  input: LeadQuestionSubmit,
 ): Promise<void> {
   // Same "only a kind/options change can invalidate the existing answer" rule
   // `ReportCard`'s own `handleEditQuestion` applies for today's questions.
@@ -3290,11 +3344,7 @@ function LeadToolsPanel({
   onOnlyMineFilterChange: (checked: boolean) => void;
   editMode: boolean;
   onEditModeChange: (checked: boolean) => void;
-  onCreateAssignment: (input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) => Promise<string>;
+  onCreateAssignment: (input: AssignmentSubmit) => Promise<string>;
 }) {
   const [panelOpen, setPanelOpen] = useState(() => loadLeadToolsPanelOpen());
   const [openAction, setOpenAction] = useState<LeadToolsAction | null>(null);
@@ -3355,11 +3405,7 @@ function LeadToolsPanel({
     setOpenAction(null);
   }
 
-  async function handleAddQuestion(input: {
-    questionText: string;
-    kind: LeadQuestionKind;
-    options?: string[];
-  }) {
+  async function handleAddQuestion(input: LeadQuestionSubmit) {
     const { failedDevIds } = await sendToSelectedDevs(questionDevIds, date, (reportId, userId) =>
       addLeadQuestion(reportId, { taskId: '', sectionId: '', ...input }, { userId, date }),
     );
@@ -3412,6 +3458,7 @@ function LeadToolsPanel({
           {openAction === 'question' ? (
             <div>
               <LeadQuestionComposer
+                withPriority
                 onAdd={handleAddQuestion}
                 submitDisabled={questionDevIds.length === 0}
                 beforeSubmit={
@@ -3446,6 +3493,7 @@ function LeadToolsPanel({
 
           {openAction === 'task' ? (
             <AssignmentComposer
+              withPriority
               devs={devs}
               preselectedDevId=""
               onAssign={onCreateAssignment}
@@ -3503,17 +3551,14 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     return grouped;
   }, [assignments]);
 
-  async function handleCreateAssignment(input: {
-    description: string;
-    assigneeIds: string[];
-    relatedTask?: { description: string; reportId?: string; sectionId?: string; taskId?: string };
-  }) {
+  async function handleCreateAssignment(input: AssignmentSubmit) {
     return createAssignment({
       description: input.description,
       assigneeIds: input.assigneeIds,
       createdBy: leadUserId,
       startDate: normalizedSelectedDate,
       relatedTask: input.relatedTask,
+      priority: input.priority,
     });
   }
 
