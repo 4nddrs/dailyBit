@@ -723,10 +723,10 @@ export function LeadQuestionItem({
       </div>
 
       {onEdit && reportId ? (
-        <CardPriority
+        <PriorityPicker
           className="mt-2"
           value={question.priority}
-          onSave={(priority) => setLeadQuestionPriority(reportId, question.id, priority)}
+          onChange={(priority) => setLeadQuestionPriority(reportId, question.id, priority)}
         />
       ) : null}
 
@@ -1224,18 +1224,19 @@ function TaskScoreComposer({
   );
 }
 
-// "Set priority" text button on a saved lead question or assignment card. It
-// reveals the three levels as inline pills; a click saves right away (clicking
-// the active level again clears it) and collapses them. A save in flight
-// disables the pills, and a failure stays visible inline. Escape, click outside
-// and Done collapse the pills.
-function CardPriority({
+// "Set priority" text button that reveals the three levels as inline pills; a
+// click hands the pick to `onChange` (clicking the active level again passes
+// null) and collapses them. On saved cards `onChange` is async: a save in
+// flight disables the pills and a failure stays visible inline. In the
+// composers it is sync and only updates local state. Escape, click outside and
+// Done collapse the pills.
+function PriorityPicker({
   value,
-  onSave,
+  onChange,
   className = '',
 }: {
   value: unknown;
-  onSave: (priority: PriorityLevel | null) => Promise<void>;
+  onChange: (priority: PriorityLevel | null) => void | Promise<void>;
   className?: string;
 }) {
   const current: PriorityLevel | null = isPriorityLevel(value) ? value : null;
@@ -1284,11 +1285,14 @@ function CardPriority({
     if (savingRef.current) {
       return;
     }
-    setPending(level);
     setError(null);
     try {
-      await onSave(level === current ? null : level);
-      setPending(null);
+      const result = onChange(level === current ? null : level);
+      if (result) {
+        setPending(level);
+        await result;
+        setPending(null);
+      }
       collapse();
     } catch (caughtError) {
       console.error('Priority save failed', caughtError);
@@ -1354,134 +1358,6 @@ function CardPriority({
         )}
       </div>
       {error ? <p className="mt-1 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
-    </div>
-  );
-}
-
-// "!" icon button plus a small popover with the priority select, for the
-// composers, where nothing is persisted yet: a pick is handed to `onSave` right
-// away and closes the popover. Same popover behavior as `TaskScoreComposer`:
-// Escape and outside click close it and hand focus back to the button.
-const NO_PRIORITY_VALUE = 'none';
-
-function PriorityControl({
-  value,
-  onSave,
-}: {
-  value: unknown;
-  onSave: (priority: PriorityLevel | null) => Promise<void>;
-}) {
-  const current: PriorityLevel | null = isPriorityLevel(value) ? value : null;
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const dialogId = useId();
-
-  const options: SelectMenuOption[] = [
-    ...PRIORITY_LEVELS.map((level) => ({
-      value: level,
-      label: PRIORITY_LEVEL_LABELS[level],
-      color: PRIORITY_LEVEL_COLORS[level],
-    })),
-    { value: NO_PRIORITY_VALUE, label: 'No priority', separated: true },
-  ];
-
-  function close() {
-    setOpen(false);
-    buttonRef.current?.focus();
-  }
-
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      // An open list handles its own Escape.
-      if (event.key === 'Escape' && !event.defaultPrevented) {
-        setOpen(false);
-        buttonRef.current?.focus();
-      }
-    }
-    // The button toggles the popover itself, so it doesn't count as "outside".
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (!popoverRef.current?.contains(target) && !buttonRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handlePointerDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handlePointerDown);
-    };
-  }, [open]);
-
-  function handlePick(next: string) {
-    onSave(isPriorityLevel(next) ? next : null).catch((caughtError: unknown) => {
-      console.error('Priority pick failed', caughtError);
-    });
-    close();
-  }
-
-  const accent = current ? PRIORITY_LEVEL_COLORS[current] : undefined;
-
-  return (
-    <div className="relative">
-      <button
-        ref={buttonRef}
-        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm font-bold transition hover:scale-110 hover:bg-control-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis ${
-          accent ? '' : 'text-fg-muted'
-        }`}
-        style={accent ? { color: accent } : undefined}
-        type="button"
-        aria-label="Priority"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? dialogId : undefined}
-        title={current ? `Priority: ${PRIORITY_LEVEL_LABELS[current]}` : 'Priority'}
-        onClick={() => (open ? close() : setOpen(true))}
-      >
-        <span aria-hidden="true">!</span>
-      </button>
-      {open ? (
-        <div
-          ref={popoverRef}
-          id={dialogId}
-          className="score-popover absolute bottom-full right-0 z-30 mb-2 w-[min(14rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg"
-          role="dialog"
-          aria-label="Set priority"
-        >
-          <span className="block text-xs font-medium uppercase tracking-wide text-fg-muted">Priority</span>
-          <SelectMenu
-            className="mt-1.5"
-            ariaLabel="Priority level"
-            placeholder="Choose a priority…"
-            options={options}
-            value={current ?? NO_PRIORITY_VALUE}
-            onChange={handlePick}
-            autoFocus
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// Priority picker for the question and task composers: the "!" popover plus a
-// small badge preview. The pick only updates the composer's local state; it is
-// written with the new doc when the lead submits.
-function ComposerPriority({
-  value,
-  onChange,
-}: {
-  value: PriorityLevel | null;
-  onChange: (priority: PriorityLevel | null) => void;
-}) {
-  return (
-    <div className="mr-auto flex items-center gap-2">
-      <PriorityControl value={value} onSave={async (priority) => onChange(priority)} />
-      <PriorityBadge priority={value} />
     </div>
   );
 }
@@ -1760,8 +1636,9 @@ function LeadQuestionComposer({
 
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg">{error}</p> : null}
 
+      {withPriority ? <PriorityPicker className="mt-3" value={priority} onChange={setPriority} /> : null}
+
       <div className="mt-3 flex justify-end gap-2">
-        {withPriority ? <ComposerPriority value={priority} onChange={setPriority} /> : null}
         {onCancel ? (
           <button
             className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
@@ -1941,8 +1818,9 @@ function AssignmentComposer({
 
       {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
 
+      {withPriority ? <PriorityPicker className="mt-3" value={priority} onChange={setPriority} /> : null}
+
       <div className="mt-3 flex justify-end gap-2">
-        {withPriority ? <ComposerPriority value={priority} onChange={setPriority} /> : null}
         {onCancel ? (
           <button
             className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
@@ -2123,10 +2001,10 @@ function LeadAssignmentRow({
         </div>
       </div>
 
-      <CardPriority
+      <PriorityPicker
         className="mt-2"
         value={assignment.priority}
-        onSave={(priority) => setAssignmentPriority(assignment.id, priority)}
+        onChange={(priority) => setAssignmentPriority(assignment.id, priority)}
       />
 
       <div className="mt-2">
