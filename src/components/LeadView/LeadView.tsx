@@ -693,7 +693,7 @@ export function LeadQuestionItem({
   if (editingQuestion) {
     return (
       <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
-        {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
+        {context ? <p className="mb-1 break-words text-sm font-medium text-fg-muted">{context}</p> : null}
         <LeadQuestionComposer
           onAdd={handleSaveQuestion}
           initialQuestionText={question.questionText}
@@ -710,7 +710,7 @@ export function LeadQuestionItem({
 
   return (
     <div className="rounded-md border-l-2 border-done-emphasis bg-canvas-subtle px-3 py-2 text-sm">
-      {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
+      {context ? <p className="mb-1 break-words text-sm font-medium text-fg-muted">{context}</p> : null}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {onEdit && reportId ? null : <PriorityBadge priority={question.priority} />}
@@ -1963,14 +1963,14 @@ function LeadAssignmentRow({
           >
             {assignment.description}
           </p>
-          <p className="mt-1 text-xs text-fg-muted">
+          <p className="mt-1 text-sm text-fg-muted">
             Assigned {assignment.startDate}
             {otherAssigneeCount > 0
               ? ` · Shared with ${otherAssigneeCount} other ${pluralize(otherAssigneeCount, 'developer', 'developers')}`
               : ''}
           </p>
           {assignment.relatedTask ? (
-            <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>
+            <p className="mt-1 truncate text-sm text-fg-muted">About: {assignment.relatedTask.description}</p>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">

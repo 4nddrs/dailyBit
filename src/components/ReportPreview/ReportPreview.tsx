@@ -233,9 +233,9 @@ function PreviewAssignmentRow({
         <p className="min-w-0 break-words text-sm font-medium text-fg">{assignment.description}</p>
         <PriorityBadge priority={assignment.priority} />
       </div>
-      <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
+      <p className="mt-1 text-sm text-fg-muted">Assigned {assignment.startDate}</p>
       {assignment.relatedTask ? (
-        <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>
+        <p className="mt-1 truncate text-sm text-fg-muted">About: {assignment.relatedTask.description}</p>
       ) : null}
       <div className="mt-3">
         <AssignmentUpdateDisplay update={update} date={date} />

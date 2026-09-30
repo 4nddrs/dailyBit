@@ -1195,9 +1195,9 @@ function AssignmentRow({
           </span>
         </div>
       </div>
-      <p className="mt-1 text-xs text-fg-muted">Assigned {assignment.startDate}</p>
+      <p className="mt-1 text-sm text-fg-muted">Assigned {assignment.startDate}</p>
       {assignment.relatedTask ? (
-        <p className="mt-1 truncate text-xs text-fg-muted">About: {assignment.relatedTask.description}</p>
+        <p className="mt-1 truncate text-sm text-fg-muted">About: {assignment.relatedTask.description}</p>
       ) : null}
 
       <AssignmentUpdateEditor assignmentId={assignment.id} assigneeId={assigneeId} date={date} update={update} />
@@ -1392,7 +1392,7 @@ function LeadQuestionCard({
   return (
     <article className="group/task rounded-md border-l-2 border-done-emphasis bg-canvas-subtle p-3">
       {originLabel ? (
-        <p className="mb-1 text-xs font-medium text-fg-muted">{originLabel}</p>
+        <p className="mb-1 text-sm font-medium text-fg-muted">{originLabel}</p>
       ) : null}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
