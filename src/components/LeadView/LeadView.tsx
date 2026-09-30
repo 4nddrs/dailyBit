@@ -713,20 +713,22 @@ export function LeadQuestionItem({
       {context ? <p className="mb-1 break-words text-xs font-medium text-fg-muted">{context}</p> : null}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <PriorityBadge priority={question.priority} />
+          {onEdit && reportId ? null : <PriorityBadge priority={question.priority} />}
           <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {onEdit && reportId ? (
-            <PriorityControl
-              value={question.priority}
-              onSave={(priority) => setLeadQuestionPriority(reportId, question.id, priority)}
-            />
-          ) : null}
           {onEdit ? <EditButton label="Edit question" onClick={() => setEditingQuestion(true)} /> : null}
           {onRemove ? <RemoveButton label="Remove question" onClick={() => onRemove(question.id)} /> : null}
         </div>
       </div>
+
+      {onEdit && reportId ? (
+        <CardPriority
+          className="mt-2"
+          value={question.priority}
+          onSave={(priority) => setLeadQuestionPriority(reportId, question.id, priority)}
+        />
+      ) : null}
 
       {!isAnswered ? (
         <p className="mt-2 text-xs font-semibold text-done-fg">Waiting for answer</p>
@@ -1222,61 +1224,35 @@ function TaskScoreComposer({
   );
 }
 
-// "!" icon button plus a small popover under it to set, change or clear the
-// priority of a lead question or assignment. Same popover behavior as
-// `TaskScoreComposer`: Escape, outside click and Cancel close it and hand focus
-// back to the button, and a save in flight keeps it open so a failure stays visible.
-const NO_PRIORITY_VALUE = 'none';
-
-function PriorityControl({
+// "Set priority" text button on a saved lead question or assignment card. It
+// reveals the three levels as inline pills; a click saves right away (clicking
+// the active level again clears it) and collapses them. A save in flight
+// disables the pills, and a failure stays visible inline. Escape, click outside
+// and Done collapse the pills.
+function CardPriority({
   value,
   onSave,
-  label = 'Priority',
-  applyOnPick = false,
+  className = '',
 }: {
   value: unknown;
   onSave: (priority: PriorityLevel | null) => Promise<void>;
-  label?: string;
-  // For a composer, where nothing is persisted yet: a pick is handed to `onSave`
-  // right away and closes the popover, with no Save/Cancel buttons.
-  applyOnPick?: boolean;
+  className?: string;
 }) {
   const current: PriorityLevel | null = isPriorityLevel(value) ? value : null;
   const [open, setOpen] = useState(false);
-  const [choice, setChoice] = useState<string>(current ?? NO_PRIORITY_VALUE);
-  const [submitting, setSubmitting] = useState(false);
+  const [pending, setPending] = useState<PriorityLevel | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLFormElement>(null);
-  const submittingRef = useRef(false);
-  const dialogId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const savingRef = useRef(false);
+  const groupId = useId();
 
-  submittingRef.current = submitting;
+  savingRef.current = pending !== null;
 
-  const options: SelectMenuOption[] = [
-    ...PRIORITY_LEVELS.map((level) => ({
-      value: level,
-      label: PRIORITY_LEVEL_LABELS[level],
-      color: PRIORITY_LEVEL_COLORS[level],
-    })),
-    { value: NO_PRIORITY_VALUE, label: 'No priority', separated: true },
-  ];
-  const nextPriority: PriorityLevel | null = isPriorityLevel(choice) ? choice : null;
-  const changed = nextPriority !== current;
-
-  function close() {
+  function collapse() {
     setOpen(false);
     setError(null);
-    buttonRef.current?.focus();
-  }
-
-  function toggle() {
-    if (open) {
-      close();
-      return;
-    }
-    setChoice(current ?? NO_PRIORITY_VALUE);
-    setOpen(true);
+    toggleRef.current?.focus();
   }
 
   useEffect(() => {
@@ -1284,17 +1260,14 @@ function PriorityControl({
       return undefined;
     }
     function handleKeyDown(event: KeyboardEvent) {
-      // A save in flight keeps the popover open; an open list handles its own Escape.
-      if (event.key === 'Escape' && !event.defaultPrevented && !submittingRef.current) {
+      if (event.key === 'Escape' && !savingRef.current) {
         setOpen(false);
         setError(null);
-        buttonRef.current?.focus();
+        toggleRef.current?.focus();
       }
     }
-    // The button toggles the popover itself, so it doesn't count as "outside".
     function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node;
-      if (!submittingRef.current && !popoverRef.current?.contains(target) && !buttonRef.current?.contains(target)) {
+      if (!savingRef.current && !rootRef.current?.contains(event.target as Node)) {
         setOpen(false);
         setError(null);
       }
@@ -1307,33 +1280,148 @@ function PriorityControl({
     };
   }, [open]);
 
-  function handlePick(next: string) {
-    setChoice(next);
-    if (applyOnPick) {
-      onSave(isPriorityLevel(next) ? next : null).catch((caughtError: unknown) => {
-        console.error('Priority pick failed', caughtError);
-      });
-      close();
-    }
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!changed) {
+  async function handlePick(level: PriorityLevel) {
+    if (savingRef.current) {
       return;
     }
-
-    setSubmitting(true);
+    setPending(level);
     setError(null);
     try {
-      await onSave(nextPriority);
-      setSubmitting(false);
-      close();
+      await onSave(level === current ? null : level);
+      setPending(null);
+      collapse();
     } catch (caughtError) {
       console.error('Priority save failed', caughtError);
       setError('Priority could not be saved. Please try again.');
-      setSubmitting(false);
+      setPending(null);
     }
+  }
+
+  return (
+    <div ref={rootRef} className={className}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          ref={toggleRef}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis"
+          type="button"
+          aria-expanded={open}
+          aria-controls={open ? groupId : undefined}
+          onClick={() => (open ? collapse() : setOpen(true))}
+        >
+          <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M3 1.75a.75.75 0 0 1 1.5 0v.4c.9-.4 1.9-.5 3-.2 1.6.5 2.8.4 4-.1.5-.2 1 .1 1 .7v6.1c0 .3-.2.6-.5.7-1.4.6-2.8.7-4.5.2-.9-.3-1.7-.3-3 .1v4.3a.75.75 0 0 1-1.5 0V1.75Z" />
+          </svg>
+          {current ? 'Priority' : 'Set priority'}
+        </button>
+        {open ? (
+          <>
+            <div id={groupId} className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Priority level">
+              {PRIORITY_LEVELS.map((level) => {
+                const selected = (pending ?? current) === level;
+                const color = PRIORITY_LEVEL_COLORS[level];
+                return (
+                  <button
+                    key={level}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:cursor-not-allowed ${
+                      selected ? 'text-fg-onEmphasis' : 'hover:brightness-95'
+                    } ${pending !== null && pending !== level ? 'opacity-50' : ''}`}
+                    style={{
+                      borderColor: selected ? color : `color-mix(in srgb, ${color} 40%, transparent)`,
+                      backgroundColor: selected ? color : `color-mix(in srgb, ${color} 12%, transparent)`,
+                      color: selected ? undefined : color,
+                    }}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={pending !== null}
+                    onClick={() => handlePick(level)}
+                  >
+                    {pending === level ? 'Saving...' : PRIORITY_LEVEL_LABELS[level]}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              className="rounded-md px-1.5 py-0.5 text-xs font-medium text-fg-muted transition hover:bg-control-hover hover:text-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-emphasis disabled:opacity-50"
+              type="button"
+              disabled={pending !== null}
+              onClick={collapse}
+            >
+              Done
+            </button>
+          </>
+        ) : (
+          <PriorityBadge priority={current} />
+        )}
+      </div>
+      {error ? <p className="mt-1 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
+    </div>
+  );
+}
+
+// "!" icon button plus a small popover with the priority select, for the
+// composers, where nothing is persisted yet: a pick is handed to `onSave` right
+// away and closes the popover. Same popover behavior as `TaskScoreComposer`:
+// Escape and outside click close it and hand focus back to the button.
+const NO_PRIORITY_VALUE = 'none';
+
+function PriorityControl({
+  value,
+  onSave,
+}: {
+  value: unknown;
+  onSave: (priority: PriorityLevel | null) => Promise<void>;
+}) {
+  const current: PriorityLevel | null = isPriorityLevel(value) ? value : null;
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const dialogId = useId();
+
+  const options: SelectMenuOption[] = [
+    ...PRIORITY_LEVELS.map((level) => ({
+      value: level,
+      label: PRIORITY_LEVEL_LABELS[level],
+      color: PRIORITY_LEVEL_COLORS[level],
+    })),
+    { value: NO_PRIORITY_VALUE, label: 'No priority', separated: true },
+  ];
+
+  function close() {
+    setOpen(false);
+    buttonRef.current?.focus();
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      // An open list handles its own Escape.
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    }
+    // The button toggles the popover itself, so it doesn't count as "outside".
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (!popoverRef.current?.contains(target) && !buttonRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [open]);
+
+  function handlePick(next: string) {
+    onSave(isPriorityLevel(next) ? next : null).catch((caughtError: unknown) => {
+      console.error('Priority pick failed', caughtError);
+    });
+    close();
   }
 
   const accent = current ? PRIORITY_LEVEL_COLORS[current] : undefined;
@@ -1347,25 +1435,22 @@ function PriorityControl({
         }`}
         style={accent ? { color: accent } : undefined}
         type="button"
-        aria-label={label}
+        aria-label="Priority"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? dialogId : undefined}
-        title={current ? `${label}: ${PRIORITY_LEVEL_LABELS[current]}` : label}
-        onClick={toggle}
+        title={current ? `Priority: ${PRIORITY_LEVEL_LABELS[current]}` : 'Priority'}
+        onClick={() => (open ? close() : setOpen(true))}
       >
         <span aria-hidden="true">!</span>
       </button>
       {open ? (
-        <form
+        <div
           ref={popoverRef}
           id={dialogId}
-          className={`score-popover absolute right-0 z-30 w-[min(14rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg ${
-            applyOnPick ? 'bottom-full mb-2' : 'top-full mt-2'
-          }`}
+          className="score-popover absolute bottom-full right-0 z-30 mb-2 w-[min(14rem,calc(100vw-2rem))] rounded-md border border-line bg-canvas p-3 shadow-lg"
           role="dialog"
           aria-label="Set priority"
-          onSubmit={handleSubmit}
         >
           <span className="block text-xs font-medium uppercase tracking-wide text-fg-muted">Priority</span>
           <SelectMenu
@@ -1373,32 +1458,11 @@ function PriorityControl({
             ariaLabel="Priority level"
             placeholder="Choose a priority…"
             options={options}
-            value={choice}
+            value={current ?? NO_PRIORITY_VALUE}
             onChange={handlePick}
-            disabled={submitting}
             autoFocus
           />
-          {error ? <p className="mt-2 text-xs font-medium text-danger-fg" role="alert">{error}</p> : null}
-          {applyOnPick ? null : (
-          <div className="mt-3 flex justify-end gap-2">
-            <button
-              className="rounded-md border border-line bg-control px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-control-hover"
-              type="button"
-              onClick={close}
-              disabled={submitting}
-            >
-              Cancel
-            </button>
-            <button
-              className="rounded-md bg-success-emphasis px-3 py-1.5 text-sm font-semibold text-fg-onEmphasis transition hover:bg-success-hover disabled:cursor-not-allowed disabled:opacity-50"
-              type="submit"
-              disabled={!changed || submitting}
-            >
-              {submitting ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-          )}
-        </form>
+        </div>
       ) : null}
     </div>
   );
@@ -1416,7 +1480,7 @@ function ComposerPriority({
 }) {
   return (
     <div className="mr-auto flex items-center gap-2">
-      <PriorityControl value={value} applyOnPick onSave={async (priority) => onChange(priority)} />
+      <PriorityControl value={value} onSave={async (priority) => onChange(priority)} />
       <PriorityBadge priority={value} />
     </div>
   );
@@ -2032,7 +2096,6 @@ function LeadAssignmentRow({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <PriorityBadge priority={assignment.priority} />
           <span
             className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
               hasUpdateContent
@@ -2055,14 +2118,16 @@ function LeadAssignmentRow({
           >
             {isClosed ? 'Reopen' : 'Close'}
           </button>
-          <PriorityControl
-            value={assignment.priority}
-            onSave={(priority) => setAssignmentPriority(assignment.id, priority)}
-          />
           <EditButton label="Edit assignment" onClick={() => setEditing(true)} />
           <RemoveButton label="Remove assignment" onClick={() => onRemove(assignment.id)} />
         </div>
       </div>
+
+      <CardPriority
+        className="mt-2"
+        value={assignment.priority}
+        onSave={(priority) => setAssignmentPriority(assignment.id, priority)}
+      />
 
       <div className="mt-2">
         <AssignmentUpdateDisplay update={update} date={date} />
