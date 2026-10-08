@@ -43,6 +43,7 @@ import { SelectMenu } from '../SelectMenu';
 import type { SelectMenuOption } from '../SelectMenu';
 import { PriorityBadge } from '../PriorityBadge';
 import { TaskScoreBadge } from '../TaskScoreBadge';
+import { KeyboardScoreBar } from '../KeyboardScoreBar';
 import { TASK_DESCRIPTION_LIMIT } from '../../constants';
 import { useAssignmentsForDate } from '../../hooks/useAssignmentsForDate';
 import { useAssignmentUpdates } from '../../hooks/useAssignmentUpdates';
@@ -136,6 +137,23 @@ interface LeadViewProps {
 interface CardEntry {
   userId: string;
   report: ReportTree | null;
+}
+
+// One scoreable task in the keyboard scoring flow, in the Lead View's display
+// order. `key` is `${reportId}:${taskId}` (stable across re-renders), and
+// `reportId`/`sectionId`/`taskId` are what a save needs.
+interface KeyboardScoreTask {
+  key: string;
+  userId: string;
+  reportId: string;
+  sectionId: string;
+  taskId: string;
+  developerName: string;
+}
+
+// The 1-9 shortcuts the keyboard flow listens for; anything else is ignored.
+function digitFromKey(key: string): number | null {
+  return /^[1-9]$/.test(key) ? Number(key) : null;
 }
 
 function normalizeDateString(dateString: string): string {
@@ -2072,6 +2090,7 @@ function TaskCard({
   notes,
   questions,
   score,
+  isScoreSelected,
   assignments,
   date,
   updatesByAssignment,
@@ -2097,6 +2116,9 @@ function TaskCard({
   notes: LeadNoteWithId[];
   questions: LeadQuestionWithId[];
   score: TaskScoreWithId | null;
+  // True when the keyboard scoring flow has this task selected: draws the ring
+  // and scrolls the card into view.
+  isScoreSelected: boolean;
   // Assignments created from this task (via the "Task" action below),
   // rendered right here instead of the trailing "Assigned by lead" block —
   // see `ReportCard`'s `assignmentsByTask`.
@@ -2136,6 +2158,16 @@ function TaskCard({
 
   const [scoreError, setScoreError] = useState<string | null>(null);
   const scoreButtonRef = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLElement | null>(null);
+
+  // Keep the keyboard-selected task centered in the viewport, so stepping down
+  // scrolls the page along with the selection and leaves room below it. (The
+  // earlier "jumps back up" was the duplicate-task-id bug, not this scroll.)
+  useEffect(() => {
+    if (isScoreSelected) {
+      cardRef.current?.scrollIntoView({ block: 'center' });
+    }
+  }, [isScoreSelected]);
 
   function handleRemoveScore() {
     setScoreError(null);
@@ -2150,7 +2182,11 @@ function TaskCard({
   }
 
   return (
-    <article className="px-4 py-3">
+    <article
+      ref={cardRef}
+      data-score-key={`${reportId}:${sectionId}:${task.id}`}
+      className={`px-4 py-3 ${isScoreSelected ? 'ring-2 ring-accent-emphasis' : ''}`}
+    >
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -2289,6 +2325,7 @@ function SectionCard({
   reportId,
   section,
   number,
+  scoreSelectedTaskKey,
   notesByTarget,
   scoresByTask,
   questionsByTarget,
@@ -2314,6 +2351,9 @@ function SectionCard({
   reportId: string;
   section: SectionWithTasks;
   number: number;
+  // The keyboard scoring selection key (`${reportId}:${taskId}`), or null.
+  // Threaded down so the matching `TaskCard` can ring and scroll itself.
+  scoreSelectedTaskKey: string | null;
   notesByTarget: Map<string, LeadNoteWithId[]>;
   scoresByTask: Map<string, TaskScoreWithId>;
   questionsByTarget: Map<string, LeadQuestionWithId[]>;
@@ -2379,6 +2419,7 @@ function SectionCard({
                 notes={notesByTarget.get(item.id) ?? []}
                 questions={questionsByTarget.get(item.id) ?? []}
                 score={scoresByTask.get(item.id) ?? null}
+                isScoreSelected={scoreSelectedTaskKey === `${reportId}:${section.id}:${item.id}`}
                 assignments={assignmentsByTask.get(item.id) ?? []}
                 date={date}
                 updatesByAssignment={updatesByAssignment}
@@ -2594,6 +2635,7 @@ function QuestionCard({
 
 function ReportCard({
   report,
+  scoreSelectedTaskKey,
   developerName,
   leadUserId,
   allDevs,
@@ -2609,6 +2651,8 @@ function ReportCard({
   carriedQuestions,
 }: {
   report: ReportTree;
+  // The keyboard scoring selection key (`${reportId}:${taskId}`), or null.
+  scoreSelectedTaskKey: string | null;
   developerName: string;
   leadUserId: string;
   allDevs: UserProfileWithId[];
@@ -2892,6 +2936,7 @@ function ReportCard({
                         reportId={report.id}
                         section={section}
                         number={sectionIndex + 1}
+                        scoreSelectedTaskKey={scoreSelectedTaskKey}
                         notesByTarget={notesByTarget}
                         scoresByTask={scoresByTask}
                         questionsByTarget={questionsByTarget}
@@ -3121,9 +3166,13 @@ function TeamBox({
                 ⋮⋮
               </span>
               <button
-                className="min-w-0 flex-1 truncate text-left text-sm font-medium text-fg transition hover:text-accent-fg"
+                className="min-w-0 flex-1 truncate rounded-sm text-left text-sm font-medium text-fg transition hover:text-accent-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-emphasis"
                 type="button"
-                onClick={() => onSelectDev(dev.id)}
+                onClick={(event) => {
+                  onSelectDev(dev.id);
+                  // Drop focus so the arrow keys don't flip the focus ring back on.
+                  event.currentTarget.blur();
+                }}
               >
                 {dev.name}
               </button>
@@ -3597,6 +3646,265 @@ export function LeadView({ leadUserId }: LeadViewProps) {
     });
   }, [orderedCardEntries, onlyMineFilter, assignmentsByAssignee, carriedQuestionsByUser]);
 
+  // --- Keyboard-only scoring --------------------------------------------
+  // A flat list over the tasks in the order the Lead View renders them:
+  // visible dev card -> section -> task. `visibleCardEntries` is the ordered,
+  // filtered list actually rendered, so the keyboard selection follows what is
+  // on screen. The "only my questions & tasks" filter hides the section cards
+  // entirely, so there are no rendered tasks to score in that mode.
+  const keyboardScoreTasks = useMemo<KeyboardScoreTask[]>(() => {
+    if (onlyMineFilter) {
+      return [];
+    }
+
+    const tasks: KeyboardScoreTask[] = [];
+    visibleCardEntries.forEach((entry) => {
+      const report = entry.report;
+      if (!report) {
+        return;
+      }
+      report.sections.forEach((section) => {
+        section.tasks.forEach((task) => {
+          tasks.push({
+            key: `${report.id}:${section.id}:${task.id}`,
+            userId: entry.userId,
+            reportId: report.id,
+            sectionId: section.id,
+            taskId: task.id,
+            developerName: developerNames[entry.userId] ?? '',
+          });
+        });
+      });
+    });
+    return tasks;
+  }, [visibleCardEntries, onlyMineFilter, developerNames]);
+
+  const [keyboardSelectedKey, setKeyboardSelectedKey] = useState<string | null>(null);
+  const [keyboardLevel, setKeyboardLevel] = useState<TaskScoreLevel | null>(null);
+  const [keyboardReasonStep, setKeyboardReasonStep] = useState(false);
+  const [keyboardOtherOpen, setKeyboardOtherOpen] = useState(false);
+  const [keyboardCustomReason, setKeyboardCustomReason] = useState('');
+  const [keyboardError, setKeyboardError] = useState<string | null>(null);
+  const keyboardSavingRef = useRef(false);
+  // True once the lead has actually picked a task (arrow, click, or a level
+  // key). Until then the selection stays anchored to the first task, because
+  // reports stream in one at a time and the "first" task changes as they load.
+  const keyboardUserSelectedRef = useRef(false);
+
+  // The flow is only live while the section/task cards are actually rendered.
+  const keyboardScoringEnabled = !editMode && keyboardScoreTasks.length > 0;
+
+  // "Harshad · 4/66" — makes the current selection unambiguous.
+  const keyboardPositionLabel = useMemo(() => {
+    const index = keyboardScoreTasks.findIndex((task) => task.key === keyboardSelectedKey);
+    if (index === -1) {
+      return null;
+    }
+    const task = keyboardScoreTasks[index];
+    return `${task.developerName || 'Unknown'} · ${index + 1}/${keyboardScoreTasks.length}`;
+  }, [keyboardScoreTasks, keyboardSelectedKey]);
+
+  // Mirror the latest values into refs so the window listener reads them
+  // without re-attaching on every state change.
+  const keyboardScoreTasksRef = useRef(keyboardScoreTasks);
+  keyboardScoreTasksRef.current = keyboardScoreTasks;
+  const keyboardSelectedKeyRef = useRef(keyboardSelectedKey);
+  keyboardSelectedKeyRef.current = keyboardSelectedKey;
+  const keyboardLevelRef = useRef(keyboardLevel);
+  keyboardLevelRef.current = keyboardLevel;
+  const keyboardReasonStepRef = useRef(keyboardReasonStep);
+  keyboardReasonStepRef.current = keyboardReasonStep;
+  const keyboardOtherOpenRef = useRef(keyboardOtherOpen);
+  keyboardOtherOpenRef.current = keyboardOtherOpen;
+
+  const resetKeyboardStep = useCallback(() => {
+    setKeyboardLevel(null);
+    setKeyboardReasonStep(false);
+    setKeyboardOtherOpen(false);
+    setKeyboardCustomReason('');
+  }, []);
+
+  // Default to the first task, and keep the selection valid as the list
+  // changes (fall back to the first when the selected task disappears).
+  useEffect(() => {
+    setKeyboardSelectedKey((current) => {
+      if (keyboardScoreTasks.length === 0) {
+        return null;
+      }
+      const stillValid = current !== null && keyboardScoreTasks.some((task) => task.key === current);
+      if (keyboardUserSelectedRef.current && stillValid) {
+        return current;
+      }
+      return keyboardScoreTasks[0].key;
+    });
+  }, [keyboardScoreTasks]);
+
+  // Moving the selection (arrows, or the auto-advance after a save) starts a
+  // fresh level decision.
+  useEffect(() => {
+    resetKeyboardStep();
+    setKeyboardError(null);
+  }, [keyboardSelectedKey, resetKeyboardStep]);
+
+  const advanceKeyboardSelection = useCallback(() => {
+    keyboardUserSelectedRef.current = true;
+    const tasks = keyboardScoreTasksRef.current;
+    const index = tasks.findIndex((task) => task.key === keyboardSelectedKeyRef.current);
+    if (index === -1) {
+      if (tasks.length > 0) {
+        setKeyboardSelectedKey(tasks[0].key);
+      }
+      return;
+    }
+    const nextIndex = Math.min(index + 1, tasks.length - 1);
+    if (nextIndex === index) {
+      // Already on the last task: the key does not change, so reset here.
+      resetKeyboardStep();
+    } else {
+      setKeyboardSelectedKey(tasks[nextIndex].key);
+    }
+  }, [resetKeyboardStep]);
+
+  const saveKeyboardScore = useCallback(
+    async (level: TaskScoreLevel, reason: string, isCustomReason: boolean) => {
+      if (keyboardSavingRef.current) {
+        return;
+      }
+      const task = keyboardScoreTasksRef.current.find(
+        (candidate) => candidate.key === keyboardSelectedKeyRef.current,
+      );
+      if (!task) {
+        return;
+      }
+
+      keyboardSavingRef.current = true;
+      setKeyboardError(null);
+      try {
+        await saveTaskScore(task.reportId, {
+          level,
+          reason,
+          isCustomReason,
+          taskId: task.taskId,
+          sectionId: task.sectionId,
+          scoredBy: leadUserId,
+        });
+        advanceKeyboardSelection();
+      } catch (caughtError) {
+        console.error('Keyboard score failed', caughtError);
+        setKeyboardError('Score could not be saved. Please try again.');
+      } finally {
+        keyboardSavingRef.current = false;
+      }
+    },
+    [advanceKeyboardSelection, leadUserId],
+  );
+
+  const submitKeyboardCustomReason = useCallback(() => {
+    const level = keyboardLevelRef.current;
+    const trimmedReason = keyboardCustomReason.trim();
+    if (!level || trimmedReason === '') {
+      return;
+    }
+    void saveKeyboardScore(level, trimmedReason, true);
+  }, [keyboardCustomReason, saveKeyboardScore]);
+
+  const cancelKeyboardCustomReason = useCallback(() => {
+    resetKeyboardStep();
+  }, [resetKeyboardStep]);
+
+  useEffect(() => {
+    if (!keyboardScoringEnabled) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      // Let the existing inputs, dialogs, edit mode and browser shortcuts win.
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      const activeElement = document.activeElement;
+      if (
+        activeElement instanceof HTMLElement &&
+        (activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.tagName === 'SELECT' ||
+          activeElement.isContentEditable)
+      ) {
+        return;
+      }
+      if (document.querySelector('[role="dialog"]')) {
+        return;
+      }
+      // A save in flight owns the flow; ignore keys until it settles.
+      if (keyboardSavingRef.current) {
+        return;
+      }
+
+      const tasks = keyboardScoreTasksRef.current;
+      const currentIndex = tasks.findIndex((task) => task.key === keyboardSelectedKeyRef.current);
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (tasks.length === 0) {
+          return;
+        }
+        event.preventDefault();
+        keyboardUserSelectedRef.current = true;
+        const baseIndex = currentIndex === -1 ? 0 : currentIndex;
+        const nextIndex =
+          event.key === 'ArrowDown'
+            ? Math.min(baseIndex + 1, tasks.length - 1)
+            : Math.max(baseIndex - 1, 0);
+        setKeyboardSelectedKey(tasks[nextIndex].key);
+        return;
+      }
+
+      if (keyboardReasonStepRef.current) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          resetKeyboardStep();
+          return;
+        }
+        const level = keyboardLevelRef.current;
+        if (!level || keyboardOtherOpenRef.current) {
+          return;
+        }
+        const digit = digitFromKey(event.key);
+        if (digit === null) {
+          return;
+        }
+        const reasons = TASK_SCORE_REASONS[level];
+        const reasonIndex = digit - 1;
+        if (reasonIndex < reasons.length) {
+          event.preventDefault();
+          void saveKeyboardScore(level, reasons[reasonIndex], false);
+        } else if (reasonIndex === reasons.length) {
+          event.preventDefault();
+          setKeyboardOtherOpen(true);
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        setKeyboardLevel(null);
+        return;
+      }
+
+      const digit = digitFromKey(event.key);
+      if (digit !== null && digit <= TASK_SCORE_LEVELS.length) {
+        event.preventDefault();
+        keyboardUserSelectedRef.current = true;
+        setKeyboardOtherOpen(false);
+        setKeyboardCustomReason('');
+        setKeyboardLevel(TASK_SCORE_LEVELS[digit - 1]);
+        setKeyboardReasonStep(true);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [keyboardScoringEnabled, saveKeyboardScore, resetKeyboardStep]);
+  // --- end keyboard-only scoring ----------------------------------------
+
   async function persistOrder(nextIds: string[]) {
     const previousIds = displayedDevs.map((dev) => dev.id);
     setOrderOverride(nextIds);
@@ -3641,6 +3949,12 @@ export function LeadView({ leadUserId }: LeadViewProps) {
 
   function handleSelectDev(devId: string) {
     document.getElementById(`report-${devId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Moving the scoring focus there too, onto that person's first task.
+    const firstTask = keyboardScoreTasksRef.current.find((task) => task.userId === devId);
+    if (firstTask) {
+      keyboardUserSelectedRef.current = true;
+      setKeyboardSelectedKey(firstTask.key);
+    }
   }
 
   useEffect(() => {
@@ -3680,7 +3994,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   }, [developerNames, cardEntries]);
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${keyboardScoringEnabled ? 'pb-28' : ''}`}>
       <LeadHeader
         date={normalizedSelectedDate}
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
@@ -3709,7 +4023,18 @@ export function LeadView({ leadUserId }: LeadViewProps) {
           />
         </aside>
 
-        <div className="min-w-0 flex-1 space-y-6 lg:order-1">
+        <div
+          className="min-w-0 flex-1 space-y-6 lg:order-1"
+          onClick={(event) => {
+            // Clicking anywhere inside a task card moves the scoring focus there.
+            const element = (event.target as HTMLElement).closest('[data-score-key]');
+            const key = element?.getAttribute('data-score-key') ?? null;
+            if (key && key !== keyboardSelectedKeyRef.current) {
+              keyboardUserSelectedRef.current = true;
+              setKeyboardSelectedKey(key);
+            }
+          }}
+        >
           {loading ? (
             <div className="rounded-md border border-line bg-canvas p-4 text-sm text-fg-muted shadow-sm">
               Loading reports...
@@ -3720,6 +4045,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
                 <ReportCard
                   key={entry.userId}
                   report={entry.report}
+                  scoreSelectedTaskKey={keyboardSelectedKey}
                   developerName={developerNames[entry.userId] ?? 'Loading…'}
                   leadUserId={leadUserId}
                   allDevs={displayedDevs}
@@ -3759,8 +4085,25 @@ export function LeadView({ leadUserId }: LeadViewProps) {
               No reports yet today. Try a different date if you are reviewing past work.
             </p>
           )}
+          {/* Room below the last card so the keyboard selection can stay
+              centered even on the final tasks. */}
+          <div aria-hidden="true" className="h-[40vh]" />
         </div>
       </div>
+
+      {keyboardScoringEnabled ? (
+        <KeyboardScoreBar
+          positionLabel={keyboardPositionLabel}
+          level={keyboardLevel}
+          reasonStep={keyboardReasonStep}
+          otherOpen={keyboardOtherOpen}
+          customReason={keyboardCustomReason}
+          onCustomReasonChange={setKeyboardCustomReason}
+          onCustomSubmit={submitKeyboardCustomReason}
+          onCustomCancel={cancelKeyboardCustomReason}
+          error={keyboardError}
+        />
+      ) : null}
     </div>
   );
 }

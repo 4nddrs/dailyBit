@@ -19,12 +19,13 @@ export const TASK_SCORE_LEVEL_LABELS: Record<TaskScoreLevel, string> = {
   excellent: 'Excellent',
 };
 
+// Every level has exactly four canned reasons, so the keyboard shortcuts are
+// uniform: 1-4 pick a reason and 5 is always "write your own".
 export const TASK_SCORE_REASONS: Record<TaskScoreLevel, string[]> = {
   unclear: [
     "Can't tell what was done",
     'Missing context',
     'Too short or one-word description',
-    'Ambiguous wording',
     'Spelling/grammar makes it hard to read',
   ],
   vague: [
@@ -32,7 +33,6 @@ export const TASK_SCORE_REASONS: Record<TaskScoreLevel, string[]> = {
     'Missing the outcome or result',
     'Missing the why',
     'Mixes several tasks in one',
-    'Missing ticket or reference',
   ],
   adequate: [
     'Understandable but lacks detail',
