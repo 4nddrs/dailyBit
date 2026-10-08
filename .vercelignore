@@ -49,3 +49,6 @@ npm-debug.log*
 .codegraph/
 .claude/
 odd/
+
+# Local source documents (not app code; e.g. the standup doc export, ~150 MB)
+*.docx
