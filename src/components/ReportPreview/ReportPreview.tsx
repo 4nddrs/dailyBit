@@ -87,7 +87,7 @@ function PreviewTaskCard({
             <span className="shrink-0 font-semibold text-fg-muted tabular-nums">{letter}.</span>
             {/* Links share the text column so they indent with the description. */}
             <div className="min-w-0">
-              <p className="break-words">{task.description}</p>
+              <p className="whitespace-pre-wrap break-words">{task.description}</p>
               <LinkChips links={task.links} />
             </div>
           </div>

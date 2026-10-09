@@ -90,6 +90,19 @@
   }
 }
 
+/* Scrollable region without a visible scrollbar (wheel/trackpad still scrolls). */
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
 /* Floating popover for the lead's task score, anchored under the Score button. */
 @layer components {
   .score-popover {

@@ -2214,7 +2214,7 @@ function TaskCard({
               <span className="shrink-0 font-semibold text-fg-muted tabular-nums">{letter}.</span>
               {/* Links share the text column so they indent with the description. */}
               <div className="min-w-0">
-                <p className="break-words">{task.description}</p>
+                <p className="whitespace-pre-wrap break-words">{task.description}</p>
                 <LinkChips links={task.links} />
               </div>
             </div>
@@ -4003,7 +4003,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
       />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-        <aside className="lg:order-2 lg:w-80 lg:shrink-0 xl:w-96 lg:sticky lg:top-20 lg:self-start">
+        <aside className="no-scrollbar lg:order-2 lg:w-80 lg:shrink-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-13rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain xl:w-96">
           <TeamBox
             devs={displayedDevs}
             reportedUserIds={reportedUserIds}

@@ -49,7 +49,7 @@ export const TASK_SCORE_REASONS: Record<TaskScoreLevel, string[]> = {
   excellent: [
     'Clear, concise and complete',
     'Includes context, outcome and next steps',
-    'Anyone on the team could understand it',
+    'No follow-up questions needed',
     'Useful references or links',
   ],
 };
