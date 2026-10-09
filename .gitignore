@@ -50,3 +50,4 @@ odd/
 
 # Local source documents (not app code; e.g. the standup doc export, ~150 MB)
 *.docx
+ZSGW_group_tasks.md
