@@ -2189,7 +2189,7 @@ function TaskCard({
       data-score-key={`${reportId}:${sectionId}:${task.id}`}
       className={`scroll-mt-36 scroll-mb-36 px-4 py-3 transition-colors sm:scroll-mt-24 ${
         isScoreSelected
-          ? 'bg-accent-muted shadow-[inset_3px_0_0_0_rgb(var(--color-accent-emphasis))]'
+          ? 'bg-accent-emphasis/[0.06] shadow-[inset_2px_0_0_0_rgb(var(--color-accent-emphasis))]'
           : ''
       }`}
     >
@@ -2840,7 +2840,7 @@ function ReportCard({
   return (
     <article
       className={`scroll-mt-36 rounded-md border bg-canvas shadow-sm sm:scroll-mt-24 ${
-        hasSelectedTask ? 'border-accent-emphasis/60 ring-1 ring-accent-emphasis/20' : 'border-line'
+        hasSelectedTask ? 'border-accent-emphasis/40 ring-1 ring-accent-emphasis/10' : 'border-line'
       }`}
       id={`report-${report.userId}`}
     >
