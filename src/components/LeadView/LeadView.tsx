@@ -151,6 +151,13 @@ interface KeyboardScoreTask {
   developerName: string;
 }
 
+// Picker inputs we must NOT let keep the keyboard hostage. A `date` field keeps
+// focus after the lead chooses a date, and its native arrow/digit handling would
+// otherwise swallow the whole scoring flow (arrows and the 1-5 levels) until the
+// lead happened to click elsewhere. In the Lead View those keys belong to the
+// flow, so it takes over and drops the picker's focus.
+const PICKER_INPUT_TYPES = new Set(['date', 'time', 'datetime-local', 'month', 'week']);
+
 // The 1-9 shortcuts the keyboard flow listens for; anything else is ignored.
 function digitFromKey(key: string): number | null {
   return /^[1-9]$/.test(key) ? Number(key) : null;
@@ -2160,12 +2167,14 @@ function TaskCard({
   const scoreButtonRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLElement | null>(null);
 
-  // Keep the keyboard-selected task centered in the viewport, so stepping down
-  // scrolls the page along with the selection and leaves room below it. (The
-  // earlier "jumps back up" was the duplicate-task-id bug, not this scroll.)
+  // Keep the keyboard-selected task visible, but only scroll when it would
+  // otherwise leave the viewport and then by the minimum amount. Centering
+  // every step moved the whole page ~half a step even when the task was
+  // already on screen, which was disorienting. The article's scroll margins
+  // (below) keep the card clear of the sticky header and the fixed score bar.
   useEffect(() => {
     if (isScoreSelected) {
-      cardRef.current?.scrollIntoView({ block: 'center' });
+      cardRef.current?.scrollIntoView({ block: 'nearest' });
     }
   }, [isScoreSelected]);
 
@@ -2185,7 +2194,11 @@ function TaskCard({
     <article
       ref={cardRef}
       data-score-key={`${reportId}:${sectionId}:${task.id}`}
-      className={`px-4 py-3 ${isScoreSelected ? 'ring-2 ring-accent-emphasis' : ''}`}
+      className={`scroll-mt-36 scroll-mb-36 px-4 py-3 transition-colors sm:scroll-mt-24 ${
+        isScoreSelected
+          ? 'bg-accent-emphasis/[0.06] shadow-[inset_2px_0_0_0_rgb(var(--color-accent-emphasis))]'
+          : ''
+      }`}
     >
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
@@ -2824,8 +2837,20 @@ function ReportCard({
       : null,
   ].filter((part): part is string => Boolean(part));
 
+  // The selection key is `${reportId}:${sectionId}:${taskId}`, so a prefix
+  // match tells this card whether the keyboard focus is inside it. Used to
+  // outline the current developer's card, so crossing a developer boundary
+  // while stepping with the arrows is obvious.
+  const hasSelectedTask =
+    scoreSelectedTaskKey !== null && scoreSelectedTaskKey.startsWith(`${report.id}:`);
+
   return (
-    <article className="scroll-mt-36 rounded-md border border-line bg-canvas shadow-sm sm:scroll-mt-24" id={`report-${report.userId}`}>
+    <article
+      className={`scroll-mt-36 rounded-md border bg-canvas shadow-sm sm:scroll-mt-24 ${
+        hasSelectedTask ? 'border-accent-emphasis/40 ring-1 ring-accent-emphasis/10' : 'border-line'
+      }`}
+      id={`report-${report.userId}`}
+    >
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="break-words text-lg font-semibold text-fg">{developerName}</h2>
@@ -3823,7 +3848,12 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         return;
       }
       const activeElement = document.activeElement;
-      if (
+      // A date/time picker keeps focus after the lead picks a value. Bailing on
+      // it like a text field left the whole scoring flow dead until the lead
+      // clicked somewhere else. Drop that focus and let the flow own the keys.
+      if (activeElement instanceof HTMLInputElement && PICKER_INPUT_TYPES.has(activeElement.type)) {
+        activeElement.blur();
+      } else if (
         activeElement instanceof HTMLElement &&
         (activeElement.tagName === 'INPUT' ||
           activeElement.tagName === 'TEXTAREA' ||
@@ -3994,7 +4024,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   }, [developerNames, cardEntries]);
 
   return (
-    <div className={`space-y-6 ${keyboardScoringEnabled ? 'pb-28' : ''}`}>
+    <div className={`space-y-6 ${keyboardScoringEnabled ? 'pb-36' : ''}`}>
       <LeadHeader
         date={normalizedSelectedDate}
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
@@ -4085,9 +4115,6 @@ export function LeadView({ leadUserId }: LeadViewProps) {
               No reports yet today. Try a different date if you are reviewing past work.
             </p>
           )}
-          {/* Room below the last card so the keyboard selection can stay
-              centered even on the final tasks. */}
-          <div aria-hidden="true" className="h-[40vh]" />
         </div>
       </div>
 
