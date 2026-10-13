@@ -2187,8 +2187,10 @@ function TaskCard({
     <article
       ref={cardRef}
       data-score-key={`${reportId}:${sectionId}:${task.id}`}
-      className={`scroll-mt-36 scroll-mb-36 px-4 py-3 sm:scroll-mt-24 ${
-        isScoreSelected ? 'ring-2 ring-accent-emphasis' : ''
+      className={`scroll-mt-36 scroll-mb-36 px-4 py-3 transition-colors sm:scroll-mt-24 ${
+        isScoreSelected
+          ? 'bg-accent-muted shadow-[inset_3px_0_0_0_rgb(var(--color-accent-emphasis))]'
+          : ''
       }`}
     >
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
@@ -2828,8 +2830,20 @@ function ReportCard({
       : null,
   ].filter((part): part is string => Boolean(part));
 
+  // The selection key is `${reportId}:${sectionId}:${taskId}`, so a prefix
+  // match tells this card whether the keyboard focus is inside it. Used to
+  // outline the current developer's card, so crossing a developer boundary
+  // while stepping with the arrows is obvious.
+  const hasSelectedTask =
+    scoreSelectedTaskKey !== null && scoreSelectedTaskKey.startsWith(`${report.id}:`);
+
   return (
-    <article className="scroll-mt-36 rounded-md border border-line bg-canvas shadow-sm sm:scroll-mt-24" id={`report-${report.userId}`}>
+    <article
+      className={`scroll-mt-36 rounded-md border bg-canvas shadow-sm sm:scroll-mt-24 ${
+        hasSelectedTask ? 'border-accent-emphasis/60 ring-1 ring-accent-emphasis/20' : 'border-line'
+      }`}
+      id={`report-${report.userId}`}
+    >
       <div className="flex flex-col gap-3 rounded-t-md border-b border-line bg-canvas-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h2 className="break-words text-lg font-semibold text-fg">{developerName}</h2>
