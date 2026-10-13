@@ -2160,12 +2160,14 @@ function TaskCard({
   const scoreButtonRef = useRef<HTMLButtonElement>(null);
   const cardRef = useRef<HTMLElement | null>(null);
 
-  // Keep the keyboard-selected task centered in the viewport, so stepping down
-  // scrolls the page along with the selection and leaves room below it. (The
-  // earlier "jumps back up" was the duplicate-task-id bug, not this scroll.)
+  // Keep the keyboard-selected task visible, but only scroll when it would
+  // otherwise leave the viewport and then by the minimum amount. Centering
+  // every step moved the whole page ~half a step even when the task was
+  // already on screen, which was disorienting. The article's scroll margins
+  // (below) keep the card clear of the sticky header and the fixed score bar.
   useEffect(() => {
     if (isScoreSelected) {
-      cardRef.current?.scrollIntoView({ block: 'center' });
+      cardRef.current?.scrollIntoView({ block: 'nearest' });
     }
   }, [isScoreSelected]);
 
@@ -2185,7 +2187,9 @@ function TaskCard({
     <article
       ref={cardRef}
       data-score-key={`${reportId}:${sectionId}:${task.id}`}
-      className={`px-4 py-3 ${isScoreSelected ? 'ring-2 ring-accent-emphasis' : ''}`}
+      className={`scroll-mt-36 scroll-mb-36 px-4 py-3 sm:scroll-mt-24 ${
+        isScoreSelected ? 'ring-2 ring-accent-emphasis' : ''
+      }`}
     >
       <div className={`grid gap-3 ${task.images.length > 0 ? 'md:grid-cols-[7rem_1fr]' : ''}`}>
         {task.images.length > 0 ? (
@@ -3994,7 +3998,7 @@ export function LeadView({ leadUserId }: LeadViewProps) {
   }, [developerNames, cardEntries]);
 
   return (
-    <div className={`space-y-6 ${keyboardScoringEnabled ? 'pb-28' : ''}`}>
+    <div className={`space-y-6 ${keyboardScoringEnabled ? 'pb-36' : ''}`}>
       <LeadHeader
         date={normalizedSelectedDate}
         onDateChange={(nextDate) => setSelectedDate(normalizeDateString(nextDate))}
@@ -4085,9 +4089,6 @@ export function LeadView({ leadUserId }: LeadViewProps) {
               No reports yet today. Try a different date if you are reviewing past work.
             </p>
           )}
-          {/* Room below the last card so the keyboard selection can stay
-              centered even on the final tasks. */}
-          <div aria-hidden="true" className="h-[40vh]" />
         </div>
       </div>
 
