@@ -151,6 +151,13 @@ interface KeyboardScoreTask {
   developerName: string;
 }
 
+// Picker inputs we must NOT let keep the keyboard hostage. A `date` field keeps
+// focus after the lead chooses a date, and its native arrow/digit handling would
+// otherwise swallow the whole scoring flow (arrows and the 1-5 levels) until the
+// lead happened to click elsewhere. In the Lead View those keys belong to the
+// flow, so it takes over and drops the picker's focus.
+const PICKER_INPUT_TYPES = new Set(['date', 'time', 'datetime-local', 'month', 'week']);
+
 // The 1-9 shortcuts the keyboard flow listens for; anything else is ignored.
 function digitFromKey(key: string): number | null {
   return /^[1-9]$/.test(key) ? Number(key) : null;
@@ -3841,7 +3848,12 @@ export function LeadView({ leadUserId }: LeadViewProps) {
         return;
       }
       const activeElement = document.activeElement;
-      if (
+      // A date/time picker keeps focus after the lead picks a value. Bailing on
+      // it like a text field left the whole scoring flow dead until the lead
+      // clicked somewhere else. Drop that focus and let the flow own the keys.
+      if (activeElement instanceof HTMLInputElement && PICKER_INPUT_TYPES.has(activeElement.type)) {
+        activeElement.blur();
+      } else if (
         activeElement instanceof HTMLElement &&
         (activeElement.tagName === 'INPUT' ||
           activeElement.tagName === 'TEXTAREA' ||
