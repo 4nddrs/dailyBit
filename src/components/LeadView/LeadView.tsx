@@ -381,7 +381,7 @@ function LeadNoteRow({
 
   return (
     <div className="flex items-start justify-between gap-3 rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm text-attention-fg">
-      <p className="min-w-0 break-words leading-6">{note.noteText}</p>
+      <p className="min-w-0 whitespace-pre-wrap break-words leading-6">{note.noteText}</p>
       <div className="flex shrink-0 items-center gap-1">
         {onEdit ? <EditButton label="Edit note" onClick={() => setEditing(true)} /> : null}
         {onRemove ? <RemoveButton label="Remove note" onClick={() => onRemove(note.id)} /> : null}
@@ -739,7 +739,7 @@ export function LeadQuestionItem({
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           {onEdit && reportId ? null : <PriorityBadge priority={question.priority} />}
-          <p className="min-w-0 break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
+          <p className="min-w-0 whitespace-pre-wrap break-words font-semibold leading-6 text-done-fg">{question.questionText}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onEdit ? <EditButton label="Edit question" onClick={() => setEditingQuestion(true)} /> : null}
@@ -762,7 +762,7 @@ export function LeadQuestionItem({
       ) : question.kind === 'text' ? (
         <>
           <div className="mt-2 flex items-start gap-2">
-            <p className="min-w-0 flex-1 break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+            <p className="min-w-0 flex-1 whitespace-pre-wrap break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
               {question.answerText}
             </p>
             {reportId ? <EditButton label="Edit answer" onClick={() => setEditingAnswer(true)} /> : null}
@@ -1899,7 +1899,7 @@ export function AssignmentUpdateDisplay({
   return (
     <>
       {lastUpdateLabel ? <p className="mb-1 text-xs font-medium text-fg-muted">{lastUpdateLabel}</p> : null}
-      {update?.text ? <p className="text-sm text-fg">{update.text}</p> : null}
+      {update?.text ? <p className="whitespace-pre-wrap text-sm text-fg">{update.text}</p> : null}
       <LinkChips links={update?.links} />
       {images.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -1984,7 +1984,7 @@ function LeadAssignmentRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p
-            className={`break-words text-sm font-medium leading-6 ${isClosed ? 'text-fg-muted line-through' : 'text-fg'}`}
+            className={`whitespace-pre-wrap break-words text-sm font-medium leading-6 ${isClosed ? 'text-fg-muted line-through' : 'text-fg'}`}
           >
             {assignment.description}
           </p>
@@ -2581,7 +2581,7 @@ function QuestionCard({
   return (
     <article className="rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         <div className="flex shrink-0 items-center gap-2">
           <LeadActionButton
             kind="note"

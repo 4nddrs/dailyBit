@@ -173,7 +173,7 @@ function PreviewDevQuestionCard({
   return (
     <article className="rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         <span
           className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
             isAnswered
@@ -230,7 +230,7 @@ function PreviewAssignmentRow({
   return (
     <div className="border-l-2 border-accent-emphasis px-4 py-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-medium text-fg">{assignment.description}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium text-fg">{assignment.description}</p>
         <PriorityBadge priority={assignment.priority} />
       </div>
       <p className="mt-1 text-sm text-fg-muted">Assigned {assignment.startDate}</p>

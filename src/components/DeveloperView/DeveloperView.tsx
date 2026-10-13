@@ -450,7 +450,7 @@ function AddTaskForm({
           value={description}
           onValueChange={setDescription}
           onEnter={(field) => field.form?.requestSubmit()}
-          placeholder="What did you work on? Press Enter to add it."
+          placeholder="What did you work on? Press Enter to add it, Alt+Enter for a new line."
           maxLength={TASK_DESCRIPTION_LIMIT}
           autoFocus
         />
@@ -547,8 +547,9 @@ type TaskTextareaProps = Omit<
 };
 
 // Task text wraps and grows with its content so long descriptions stay
-// readable while typing. Task text is still a single paragraph: Enter runs
-// `onEnter` instead of inserting a newline, and pasted line breaks become spaces.
+// readable while typing. Enter runs `onEnter` (commit and move on); Alt+Enter
+// inserts a line break (see `onKeyDown`), so multi-line descriptions keep their
+// shape. Line endings are normalized to `\n` so pasted CRLF text stays consistent.
 function TaskTextarea({ value, onValueChange, onEnter, className = '', ...props }: TaskTextareaProps) {
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
@@ -595,12 +596,22 @@ function TaskTextarea({ value, onValueChange, onEnter, className = '', ...props 
       rows={1}
       className={`block resize-none overflow-hidden ${className}`}
       value={value}
-      onChange={(event) => onValueChange(event.target.value.replace(/\r\n|[\r\n]/g, ' '))}
+      onChange={(event) => onValueChange(event.target.value.replace(/\r\n?/g, '\n'))}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-          event.preventDefault();
-          onEnter(event.currentTarget);
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing) {
+          return;
         }
+        // A plain Enter commits and moves on; Alt+Enter inserts a line break.
+        // macOS does not insert a newline for Option+Enter in a textarea, so we
+        // insert it ourselves rather than relying on the browser's default.
+        event.preventDefault();
+        if (event.altKey) {
+          const field = event.currentTarget;
+          field.setRangeText('\n', field.selectionStart, field.selectionEnd, 'end');
+          onValueChange(field.value);
+          return;
+        }
+        onEnter(event.currentTarget);
       }}
     />
   );
@@ -1181,7 +1192,7 @@ function AssignmentRow({
   return (
     <div className="group/task border-l-2 border-accent-emphasis px-4 py-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-medium text-fg">{assignment.description}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words text-sm font-medium text-fg">{assignment.description}</p>
         <div className="flex shrink-0 items-center gap-2">
           <PriorityBadge priority={assignment.priority} />
           <span
@@ -1244,7 +1255,7 @@ function LeadNotesReadOnly({ notes }: { notes: LeadNoteWithId[] }) {
     <div className="mt-3 space-y-2">
       {notes.map((note) => (
         <p
-          className="break-words rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm leading-6 text-attention-fg"
+          className="whitespace-pre-wrap break-words rounded-md border-l-2 border-attention-emphasis bg-attention-muted px-3 py-2 text-sm leading-6 text-attention-fg"
           key={note.id}
         >
           {note.noteText}
@@ -1397,7 +1408,7 @@ function LeadQuestionCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <PriorityBadge priority={question.priority} />
-          <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+          <p className="min-w-0 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         </div>
         {isText ? (
           <CardToolbar>
@@ -1433,7 +1444,7 @@ function LeadQuestionCard({
       {!editing && isAnswered ? (
         <div className="mt-2">
           {isText ? (
-            <p className="break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
+            <p className="whitespace-pre-wrap break-words rounded-md border border-success-emphasis/40 bg-success-muted px-3 py-2 text-sm text-success-fg">
               {question.answerText}
             </p>
           ) : (
@@ -2722,7 +2733,7 @@ function QuestionCard({
   return (
     <article className="group/question rounded-md border border-line bg-canvas p-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="min-w-0 break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
+        <p className="min-w-0 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-fg">{question.questionText}</p>
         <div className="flex shrink-0 items-center gap-2">
           <span
             className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
